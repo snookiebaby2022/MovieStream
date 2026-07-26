@@ -194,6 +194,10 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .auth-box{width:100%;max-width:380px;background:var(--s1);border:1px solid var(--s4);border-radius:14px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.55)}
 .auth-box h2{font-size:18px;margin-bottom:6px}.auth-box p{font-size:12px;color:var(--t3);margin-bottom:14px}
 .auth-box input{width:100%;padding:10px 12px;margin-bottom:10px;border-radius:8px;border:1px solid var(--s5);background:var(--s2);color:#fff;font-size:13px}
+.pass-wrap{position:relative;margin-bottom:10px}
+.pass-wrap input{margin-bottom:0;padding-right:74px}
+.pass-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--t3);font-size:11px;font-weight:700;cursor:pointer;padding:6px 8px;border-radius:6px;font-family:inherit}
+.pass-toggle:hover{color:#fff;background:rgba(255,255,255,.06)}
 .auth-box .pbtn{width:100%;margin-top:4px}
 .auth-switch{margin-top:12px;font-size:12px;color:var(--t3);text-align:center}.auth-switch a{color:var(--red);cursor:pointer}
 .gate-box,.promo-box{width:100%;max-width:420px;background:linear-gradient(165deg,#1a1214 0%,#121212 45%,#0d0d0d 100%);border:1px solid rgba(229,9,20,.35);border-radius:16px;padding:28px 24px 22px;box-shadow:0 28px 70px rgba(0,0,0,.65);text-align:center;position:relative;overflow:hidden}
@@ -418,7 +422,10 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
     <div id="authErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
     <input id="authUser" placeholder="Username" autocomplete="username">
     <input id="authEmail" placeholder="Email (optional)" style="display:none" autocomplete="email">
-    <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="pass-wrap">
+      <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
+      <button type="button" class="pass-toggle" id="authPassToggle" onclick="togglePassVisibility('authPass','authPassToggle')" aria-label="Show password">Show</button>
+    </div>
     <button class="pbtn" id="authSubmit" onclick="submitAuth()">Sign In</button>
     <div class="auth-switch" id="authSwitch">No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="FlixExtra.forgotPassword()">Forgot password?</a> · <a onclick="closeAuth()">Close</a></div>
   </div>
@@ -654,6 +661,14 @@ function refreshAuthBtn(){
     }
   }
   refreshRdBtn();
+}
+function togglePassVisibility(inputId, btnId){
+  var inp=$(inputId); var btn=$(btnId);
+  if(!inp||!btn)return;
+  var show=inp.type==='password';
+  inp.type=show?'text':'password';
+  btn.textContent=show?'Hide':'Show';
+  btn.setAttribute('aria-label', show?'Hide password':'Show password');
 }
 function openAuth(mode){
   closeWatchGate();

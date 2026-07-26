@@ -517,6 +517,14 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
   box-shadow:0 0 0 4px rgba(229,9,20,.12);
   background:rgba(255,255,255,.06);
 }
+.pass-wrap{position:relative}
+.pass-wrap .form-input{padding-right:78px}
+.pass-toggle{
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  border:0;background:transparent;color:var(--muted);font-size:11px;font-weight:700;
+  cursor:pointer;padding:6px 8px;border-radius:8px;font-family:inherit;
+}
+.pass-toggle:hover{color:var(--text);background:rgba(255,255,255,.06)}
 .form-row{display:flex;gap:12px;align-items:flex-end}
 .form-row .form-group{flex:1;margin-bottom:0}
 
@@ -729,11 +737,14 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
       <div class="login-err" id="loginErr"></div>
       <div class="form-group">
         <label class="form-label">Username</label>
-        <input class="form-input" id="lu" type="text" placeholder="admin" autocomplete="username">
+        <input class="form-input" id="lu" type="text" value="admin" placeholder="admin" autocomplete="username">
       </div>
       <div class="form-group">
         <label class="form-label">Password</label>
-        <input class="form-input" id="lp" type="password" placeholder="••••••••" autocomplete="current-password">
+        <div class="pass-wrap">
+          <input class="form-input" id="lp" type="password" placeholder="••••••••" autocomplete="current-password">
+          <button type="button" class="pass-toggle" id="lpToggle" onclick="togglePassVisibility('lp','lpToggle')" aria-label="Show password">Show</button>
+        </div>
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Sign In →</button>
     </div>
@@ -1432,6 +1443,16 @@ async function af(path,opts={}){
   return r.json();
 }
 
+function togglePassVisibility(inputId, btnId){
+  const inp=document.getElementById(inputId);
+  const btn=document.getElementById(btnId);
+  if(!inp||!btn)return;
+  const show=inp.type==='password';
+  inp.type=show?'text':'password';
+  btn.textContent=show?'Hide':'Show';
+  btn.setAttribute('aria-label', show?'Hide password':'Show password');
+}
+
 async function doLogin(){
   const u=document.getElementById('lu').value.trim();
   const p=document.getElementById('lp').value;
@@ -1450,7 +1471,9 @@ async function doLogin(){
       toast('Welcome back, '+d.username,'success');
       closeSidebar();
     }else{
-      err.textContent=d.error||'Login failed';
+      let msg=d.error||'Login failed';
+      if(u && u.toLowerCase()!=='admin') msg+=' — admin username is "admin" (not a site account)';
+      err.textContent=msg;
       err.style.display='block';
     }
   }catch(e){
