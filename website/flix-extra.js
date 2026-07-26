@@ -670,6 +670,7 @@
     sendRequest: sendRequest,
     forgotPassword: forgotPassword,
     loadContinueFromServer: loadContinueFromServer,
+    fapi: fapi,
     kidsActive: kidsActive,
     openSubPicker: openSubPicker,
     startCheckout: startCheckout,

@@ -196,6 +196,21 @@ router.post('/history', authRequired, async (req, res) => {
   }
 });
 
+router.delete('/history/:type/:tmdbId', authRequired, async (req, res) => {
+  try {
+    if (!dbReady(res)) return;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, error: 'Not found' });
+    const id = parseInt(req.params.tmdbId, 10);
+    const type = req.params.type === 'tv' ? 'tv' : 'movie';
+    user.history = (user.history || []).filter(x => !(Number(x.tmdbId) === id && x.type === type));
+    await user.save();
+    res.json({ success: true, data: user.history });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 router.get('/comments/:type/:tmdbId', async (req, res) => {
   try {
     if (!dbReady(res)) return;

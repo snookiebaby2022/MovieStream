@@ -206,8 +206,11 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .loadmore:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
 .heart{position:absolute;bottom:8px;right:8px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:4;pointer-events:auto}
 .heart.on{color:var(--red);border-color:rgba(229,9,20,.5)}
+.cw-x{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;pointer-events:auto}
+.cw-x:hover{background:var(--red);border-color:var(--red)}
 .cw-row .strip .card{width:220px}
 .cw-row .ci{aspect-ratio:16/9}
+.cw-row .brat{right:36px}
 #fgenres{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 4% 14px}
 #fgenres a{color:var(--t3);font-size:11px;text-decoration:none}#fgenres a:hover{color:var(--red)}
 .adtip{display:none;position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:880;max-width:min(640px,92vw);padding:10px 14px;border-radius:10px;background:rgba(20,16,6,.94);border:1px solid rgba(245,197,24,.3);color:var(--t2);font-size:12px;line-height:1.5;box-shadow:0 10px 28px rgba(0,0,0,.45)}
@@ -837,6 +840,33 @@ function saveContinue(item,sn,ep){
   lsSet('fn_continue',list.slice(0,30));
   uapi('/history',{method:'POST',body:row}).catch(function(){});
 }
+function removeContinue(item,btn){
+  if(!item)return;
+  var id=item.tmdbId||item.id;
+  var type=item.type||'movie';
+  var k=listKey(item);
+  // Local cache
+  lsSet('fn_continue',lsGet('fn_continue',[]).filter(function(x){return listKey(x)!==k;}));
+  // Server progress + history
+  if(S.token){
+    var qs='';
+    if(item.season!=null&&item.episode!=null)qs='?season='+(item.season||0)+'&episode='+(item.episode||0);
+    if(window.FlixExtra&&FlixExtra.fapi){
+      FlixExtra.fapi('/progress/'+type+'/'+id+qs,{method:'DELETE'}).catch(function(){});
+    }else{
+      fetch('/api/features/progress/'+type+'/'+id+qs,{
+        method:'DELETE',
+        headers:S.token?{'x-user-token':S.token,'Authorization':'Bearer '+S.token}:{}
+      }).catch(function(){});
+    }
+    uapi('/history/'+type+'/'+id,{method:'DELETE'}).catch(function(){});
+  }
+  // Remove card from Continue Watching row
+  var card=btn&&btn.closest?btn.closest('.card'):null;
+  var row=card&&card.closest?card.closest('.cw-row'):null;
+  if(card)card.remove();
+  if(row&&!row.querySelector('.card'))row.remove();
+}
 
 // ── SOCKET ─────────────────────────────────────────────────
 var sock=null;
@@ -926,7 +956,7 @@ window.cardClick=function(k){
 };
 
 // ── CARD HTML (uses key, no JSON in attributes) ────────────
-function cardHTML(item,wide){
+function cardHTML(item,wide,isContinue){
   var k=storeItem(item);
   var t=item.type||'movie';
   var y=item.year||'';
@@ -943,6 +973,7 @@ function cardHTML(item,wide){
     +'<div class="cpmeta">'+(y?'<span>'+y+'</span>':'')+(rat?'<span>&#9733;'+rat+'</span>':'')+'</div></div>'
     +'<div class="cbadges"><span class="bt">'+(t==='tv'?'TV':'Film')+'</span>'+(isNew?'<span class="bn">NEW</span>':'')+'</div>'
     +(rat?'<span class="brat">&#9733;'+rat+'</span>':'')
+    +(isContinue?'<button class="cw-x" title="Remove from Continue Watching" aria-label="Remove from Continue Watching" onclick="event.stopPropagation();removeContinue(getItem(\''+k+'\'),this)">×</button>':'')
     +'<button class="heart'+(listed?' on':'')+'" onclick="event.stopPropagation();toggleList(getItem(\''+k+'\'),this)">'+(listed?'♥':'♡')+'</button>'
     +(item.progressPct?'<div class="cw-prog"><i style="width:'+Math.min(100,item.progressPct)+'%"></i></div>':'')
     +'</div>'
@@ -951,11 +982,11 @@ function cardHTML(item,wide){
 }
 
 // ── ROWS ───────────────────────────────────────────────────
-function makeRow(title,items,ap){
+function makeRow(title,items,ap,isContinue){
   var id='r'+(S.rc++);
-  var wide=/continue|seguir|reprendre|weiter/i.test(title||'');
+  var wide=!!isContinue||/continue|seguir|reprendre|weiter/i.test(title||'');
   S.rd[id]={title:title,items:items,ap:ap||''};
-  var cards='';for(var i=0;i<items.length;i++)cards+=cardHTML(items[i],wide);
+  var cards='';for(var i=0;i<items.length;i++)cards+=cardHTML(items[i],wide,wide);
   return '<div class="row'+(wide?' cw-row':'')+'">'
     +'<div class="rowhdr"><div class="rowt">'+title+'</div>'
     +(wide?'':'<button class="rowsa" onclick="seeAll(\''+id+'\')">See All &#8250;</button>')+'</div>'
@@ -968,7 +999,7 @@ function makeRow(title,items,ap){
 function sRow(id,dir){var el=$(id);if(!el)return;el.scrollBy({left:dir*el.clientWidth*.85,behavior:'smooth'});setTimeout(function(){uArr(id);},350);}
 function uArr(id){var el=$(id);if(!el)return;var l=$(id+'-l'),r=$(id+'-r');if(l)l.classList.toggle('hid',el.scrollLeft<=10);if(r)r.classList.toggle('hid',el.scrollLeft+el.clientWidth>=el.scrollWidth-10);}
 function initArr(){document.querySelectorAll('.strip').forEach(function(el){uArr(el.id);});}
-function rowsH(secs){S.rc=0;clearStore();return secs.map(function(s){return makeRow(s.title,s.items,s.ap);}).join('');}
+function rowsH(secs){S.rc=0;clearStore();return secs.map(function(s){return makeRow(s.title,s.items,s.ap,!!s.cw);}).join('');}
 
 // ── SEE ALL ────────────────────────────────────────────────
 function seeAllAp(ap){

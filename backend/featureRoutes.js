@@ -179,6 +179,41 @@ router.get('/progress/:type/:tmdbId', authRequired, async (req, res) => {
   }
 });
 
+/** Remove from Continue Watching (progress + matching history entries) */
+router.delete('/progress/:type/:tmdbId', authRequired, async (req, res) => {
+  try {
+    if (!dbReady(res)) return;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, error: 'Not found' });
+    const profileId = String(req.query.profileId || user.activeProfileId || '');
+    const tmdbId = parseInt(req.params.tmdbId, 10);
+    const mediaType = req.params.type === 'tv' ? 'tv' : 'movie';
+    if (!tmdbId) return res.status(400).json({ success: false, error: 'Invalid id' });
+
+    const q = { userId: req.user.id, profileId, tmdbId, mediaType };
+    // Optional: remove one episode only when season+episode provided
+    if (req.query.season != null && req.query.season !== '' && req.query.episode != null && req.query.episode !== '') {
+      q.season = parseInt(req.query.season, 10) || 0;
+      q.episode = parseInt(req.query.episode, 10) || 0;
+    }
+    const del = await Progress.deleteMany(q);
+
+    // Also clear matching history rows so local/server stay in sync
+    user.history = (user.history || []).filter(x => {
+      if (Number(x.tmdbId) !== tmdbId || x.type !== mediaType) return true;
+      if (q.season != null && q.episode != null) {
+        return !((x.season || 0) === q.season && (x.episode || 0) === q.episode);
+      }
+      return false;
+    });
+    await user.save();
+
+    res.json({ success: true, removed: del.deletedCount || 0 });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Title requests ────────────────────────────────────────
 router.post('/requests', authOptional, async (req, res) => {
   try {
