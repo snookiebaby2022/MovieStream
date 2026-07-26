@@ -91,11 +91,21 @@ const PlayEventSchema = new mongoose.Schema({
   at: { type: Date, default: Date.now, index: true }
 });
 
+const ContactMessageSchema = new mongoose.Schema({
+  name: { type: String, required: true, maxlength: 80 },
+  email: { type: String, required: true, maxlength: 120 },
+  subject: { type: String, required: true, maxlength: 120 },
+  message: { type: String, required: true, maxlength: 4000 },
+  status: { type: String, enum: ['open', 'done'], default: 'open', index: true },
+  createdAt: { type: Date, default: Date.now, index: true }
+});
+
 module.exports = {
   User: mongoose.models.User || mongoose.model('User', UserSchema),
   Comment: mongoose.models.Comment || mongoose.model('Comment', CommentSchema),
   Rating: mongoose.models.Rating || mongoose.model('Rating', RatingSchema),
   Progress: mongoose.models.Progress || mongoose.model('Progress', ProgressSchema),
   TitleRequest: mongoose.models.TitleRequest || mongoose.model('TitleRequest', TitleRequestSchema),
-  PlayEvent: mongoose.models.PlayEvent || mongoose.model('PlayEvent', PlayEventSchema)
+  PlayEvent: mongoose.models.PlayEvent || mongoose.model('PlayEvent', PlayEventSchema),
+  ContactMessage: mongoose.models.ContactMessage || mongoose.model('ContactMessage', ContactMessageSchema)
 };

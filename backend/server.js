@@ -1,13 +1,16 @@
+const path = require('path');
+const dotenv = require('dotenv');
+// Load env BEFORE other local modules read process.env
+dotenv.config({ path: path.join(__dirname, '.env') });
+
 const express    = require('express');
 const cors       = require('cors');
 const helmet     = require('helmet');
 const compression= require('compression');
 const rateLimit  = require('express-rate-limit');
-const dotenv     = require('dotenv');
 const axios      = require('axios');
 const crypto     = require('crypto');
 const fs         = require('fs');
-const path       = require('path');
 const os         = require('os');
 const { execSync }    = require('child_process');
 const { createServer }= require('http');
@@ -17,7 +20,7 @@ const { router: authRouter, verifyToken } = require('./authRoutes');
 const debridRouter = require('./debridRoutes');
 const { router: featureRouter } = require('./featureRoutes');
 const { router: payRouter, handleWebhook } = require('./paymentRoutes');
-const { PlayEvent, User } = require('./models');
+const { PlayEvent, User, ContactMessage } = require('./models');
 
 function requireUser(req, res) {
   const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -28,8 +31,6 @@ function requireUser(req, res) {
   }
   return user;
 }
-
-dotenv.config();
 
 const app    = express();
 const server = createServer(app);
@@ -593,6 +594,60 @@ app.get('/api/scrapers', (req, res) => res.status(401).json({ success: false, er
 
 // Public cache flush removed — use DELETE /api/admin/cache/clear
 
+const contactLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: { success: false, error: 'Too many messages. Try again later.' }
+});
+
+app.post('/api/contact', contactLimiter, async (req, res) => {
+  try {
+    const name = String((req.body || {}).name || '').trim().slice(0, 80);
+    const email = String((req.body || {}).email || '').trim().toLowerCase().slice(0, 120);
+    const subject = String((req.body || {}).subject || '').trim().slice(0, 120);
+    const message = String((req.body || {}).message || '').trim().slice(0, 4000);
+    if (!name || !email || !subject || !message || message.length < 10) {
+      return res.status(400).json({ success: false, error: 'Name, email, subject, and message (10+) required' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'Valid email required' });
+    }
+    if (require('mongoose').connection.readyState === 1) {
+      await ContactMessage.create({ name, email, subject, message });
+    } else {
+      console.log('[contact]', name, email, subject, message.slice(0, 200));
+    }
+    // Optional SMTP notify to SMTP_FROM / SMTP_USER
+    if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+      try {
+        const nodemailer = require('nodemailer');
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT || '587', 10),
+          secure: process.env.SMTP_SECURE === '1',
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' }
+        });
+        const to = process.env.CONTACT_TO || process.env.SMTP_FROM || process.env.SMTP_USER;
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || process.env.SMTP_USER,
+          to,
+          replyTo: email,
+          subject: `[FlixNova] ${subject}`,
+          text: `From: ${name} <${email}>\n\n${message}`
+        });
+      } catch (mailErr) {
+        console.error('Contact SMTP:', mailErr.message);
+      }
+    }
+    res.json({ success: true, message: 'Message received. Thank you.' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // User accounts, watchlist, history, comments, ratings
 app.use('/api/auth', authRouter);
 
@@ -656,20 +711,45 @@ function adminAuth(req, res, next) {
 }
 
 app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
+  // Re-read .env so password changes apply without full code redeploy confusion
+  try { dotenv.config({ path: path.join(__dirname, '.env'), override: false }); } catch {}
   const { username, password } = req.body || {};
-  const adminUser = process.env.ADMIN_USER || 'admin';
-  const adminPass = process.env.ADMIN_PASS;
+  const adminUser = String(process.env.ADMIN_USER || 'admin').trim();
+  const adminPass = String(process.env.ADMIN_PASS || '');
   console.log(`Admin login attempt: ${username}`);
   if (!adminPass) {
     return res.status(503).json({ success: false, error: 'Set ADMIN_PASS in backend/.env then restart' });
   }
-  if (username === adminUser && password === adminPass) {
+  if (String(username || '').trim() === adminUser && String(password || '') === adminPass) {
     const t = crypto.randomBytes(32).toString('hex');
-    sess[t] = { user: username, exp: Date.now() + 7*86400000 };
+    sess[t] = { user: adminUser, exp: Date.now() + 7 * 86400000 };
     saveS();
-    return res.json({ success: true, token: t, username });
+    return res.json({ success: true, token: t, username: adminUser });
   }
   res.status(401).json({ success: false, error: 'Invalid credentials' });
+});
+
+app.get('/api/admin/contacts', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const rows = await ContactMessage.find({}).sort({ createdAt: -1 }).limit(200).lean();
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.patch('/api/admin/contacts/:id', adminAuth, async (req, res) => {
+  try {
+    const status = (req.body || {}).status === 'done' ? 'done' : 'open';
+    const row = await ContactMessage.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!row) return res.status(404).json({ success: false, error: 'Not found' });
+    res.json({ success: true, data: row });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 app.post('/api/admin/logout', adminAuth, (req, res) => {

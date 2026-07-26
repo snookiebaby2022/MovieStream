@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contact — FlixNova</title>
+<meta name="description" content="Contact FlixNova support.">
+<link rel="canonical" href="https://snookiebaby.xyz/contact.html">
+<link rel="stylesheet" href="/legal.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand"><div class="mark">F</div><strong>FlixNova</strong><a href="/">← Home</a></div>
+    <div class="navlinks">
+      <a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/dmca.html">DMCA</a><a href="/contact.html">Contact</a>
+    </div>
+    <h1>Contact</h1>
+    <p class="lead">Support, billing, and copyright notices.</p>
+    <div class="card">
+      <form id="cform" onsubmit="return sendContact(event)">
+        <label for="cname">Name</label>
+        <input id="cname" required maxlength="80" autocomplete="name">
+        <label for="cemail">Email</label>
+        <input id="cemail" type="email" required maxlength="120" autocomplete="email">
+        <label for="csubj">Subject</label>
+        <input id="csubj" required maxlength="120" placeholder="Support / Billing / DMCA">
+        <label for="cmsg">Message</label>
+        <textarea id="cmsg" required maxlength="4000" rows="7" placeholder="How can we help?"></textarea>
+        <button type="submit">Send message</button>
+        <p class="note" id="cstatus"></p>
+      </form>
+    </div>
+  </div>
+<script>
+function sendContact(e){
+  e.preventDefault();
+  var st=document.getElementById('cstatus');
+  st.className='note'; st.textContent='Sending…';
+  fetch('/api/contact',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      name:document.getElementById('cname').value.trim(),
+      email:document.getElementById('cemail').value.trim(),
+      subject:document.getElementById('csubj').value.trim(),
+      message:document.getElementById('cmsg').value.trim()
+    })
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      st.className='note ok';
+      st.textContent=d.message||'Sent. We will get back to you if an email was provided.';
+      document.getElementById('cform').reset();
+    }else{
+      st.className='note err';
+      st.textContent=d.error||'Failed to send';
+    }
+  }).catch(function(err){
+    st.className='note err';
+    st.textContent=err.message||'Network error';
+  });
+  return false;
+}
+</script>
+</body>
+</html>

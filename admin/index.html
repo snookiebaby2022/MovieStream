@@ -770,6 +770,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
       <div class="nav-item" data-nav="nginx" onclick="showPage('nginx',this)"><span class="nav-icon">🌐</span><span class="nav-text">Nginx</span></div>
 
       <div class="nav-sec">Config</div>
+      <div class="nav-item" data-nav="contacts" onclick="showPage('contacts',this)"><span class="nav-icon">✉️</span><span class="nav-text">Inbox</span></div>
       <div class="nav-item" data-nav="payments" onclick="showPage('payments',this)"><span class="nav-icon">💳</span><span class="nav-text">Payments &amp; Email</span></div>
       <div class="nav-item" data-nav="config" onclick="showPage('config',this)"><span class="nav-icon">🔧</span><span class="nav-text">Settings</span></div>
       <div class="nav-item" data-nav="activity" onclick="showPage('activity',this)"><span class="nav-icon">📝</span><span class="nav-text">Activity</span></div>
@@ -1275,6 +1276,24 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         </div>
       </div>
 
+      <div class="page" id="page-contacts">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">✉️ Contact inbox</div>
+              <div class="panel-sub">Messages from /contact.html</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadContacts()">⟳ Refresh</button>
+          </div>
+          <div class="panel-body">
+            <table class="tbl">
+              <thead><tr><th>When</th><th>From</th><th>Subject</th><th>Message</th><th></th></tr></thead>
+              <tbody id="contactTable"><tr><td colspan="5" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="page" id="page-payments">
         <div class="panel">
           <div class="panel-head">
@@ -1473,6 +1492,7 @@ function showPage(id,navEl){
     logs:'Application Logs',
     process:'Process Control',
     nginx:'Nginx Control',
+    contacts:'Inbox',
     payments:'Payments & Email',
     config:'Configuration',
     activity:'Activity Log'
@@ -1491,6 +1511,7 @@ function showPage(id,navEl){
     logs:'Review application output and error streams',
     process:'Control the running application process',
     nginx:'Operate the web server layer',
+    contacts:'Contact form messages from the website',
     payments:'Stripe Ad-Free unlock and SMTP password resets',
     config:'Review and adjust runtime configuration',
     activity:'Recent local admin activity'
@@ -1504,6 +1525,7 @@ function showPage(id,navEl){
   if(id==='scrapers')loadScrapers();
   if(id==='cache')loadCacheStats();
   if(id==='process')loadProcStatus();
+  if(id==='contacts')loadContacts();
   if(id==='payments')loadPayments();
   if(id==='config')loadConfig();
   if(id==='activity')loadActivity();
@@ -1886,6 +1908,27 @@ async function testDebrid(){
   box.textContent=JSON.stringify(d,null,2);
   if(d?.success)toast((d.data?.streamCount||0)+' streams found','success');
   else toast(d?.error||'Test failed','error');
+}
+
+async function loadContacts(){
+  const d=await af('/contacts');
+  const tb=document.getElementById('contactTable');
+  if(!d?.success){tb.innerHTML=`<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:20px">${esc(d?.error||'Failed')}</td></tr>`;return;}
+  if(!d.data.length){tb.innerHTML='<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:20px">No messages yet</td></tr>';return;}
+  tb.innerHTML=d.data.map(m=>`
+    <tr>
+      <td style="white-space:nowrap;font-size:12px;color:var(--muted)">${esc(m.createdAt?new Date(m.createdAt).toLocaleString():'')}</td>
+      <td style="font-size:12px"><b>${esc(m.name)}</b><br><a href="mailto:${escAttr(m.email)}" style="color:#9ecbff">${esc(m.email)}</a></td>
+      <td>${esc(m.subject)} ${m.status==='done'?'<span class="badge badge-green">done</span>':'<span class="badge badge-yellow">open</span>'}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:360px;white-space:pre-wrap">${esc(m.message)}</td>
+      <td>${m.status==='open'
+        ?`<button class="btn btn-secondary btn-sm" data-id="${esc(m._id)}" onclick="markContact(this.dataset.id,'done')">Done</button>`
+        :`<button class="btn btn-secondary btn-sm" data-id="${esc(m._id)}" onclick="markContact(this.dataset.id,'open')">Reopen</button>`}</td>
+    </tr>`).join('');
+}
+async function markContact(id,status){
+  const d=await af('/contacts/'+id,{method:'PATCH',body:{status}});
+  if(d?.success)loadContacts(); else toast(d?.error||'Failed','error');
 }
 
 async function loadPayments(){
