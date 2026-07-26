@@ -77,67 +77,6 @@ function isLikelyBrowserPlayable(title, url, name) {
 }
 
 const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?code[_\s-]?35|"error_code"\s*:\s*35|unavailable for legal reasons|file was removed from debrid/i;
-/** Torrentio serves short stub MP4s when RD can't open / blocks a file */
-const FAILED_STUB_RE = /\/videos\/failed_|failed_infringement|failed_opening|failed_unexpected/i;
-
-/** Lightweight redirect check — drop Torrentio failed_* stubs, keep everything else */
-async function resolveLooksPlayable(url) {
-  if (!url || !/^https?:\/\//i.test(url)) return false;
-  try {
-    const r = await axios.request({
-      url,
-      method: 'GET',
-      timeout: 4000,
-      maxRedirects: 0,
-      validateStatus: () => true,
-      responseType: 'stream',
-      headers: { 'User-Agent': ua(), Accept: '*/*', Range: 'bytes=0-0' }
-    });
-    // Abort body immediately — we only need status / Location
-    try { r.data?.destroy?.(); } catch {}
-    const loc = String(r.headers.location || '');
-    if (FAILED_STUB_RE.test(loc)) return false;
-    return true;
-  } catch (e) {
-    // 302 with maxRedirects:0 sometimes throws in follow-redirects — inspect response
-    const loc = String(e.response?.headers?.location || '');
-    if (loc) return !FAILED_STUB_RE.test(loc);
-    return true; // keep on network blip
-  }
-}
-
-async function filterFailedResolves(streams, { need = 12, concurrency = 5, maxCheck = 36 } = {}) {
-  if (!streams.length) return { streams: [], dropped: 0 };
-  // Mix browser-friendly + other cached so we don't only probe broken "friendly" rows
-  const friendly = streams.filter(s => s.browserOk);
-  const rest = streams.filter(s => !s.browserOk);
-  const list = [];
-  for (let i = 0; i < maxCheck; i++) {
-    if (friendly[i]) list.push(friendly[i]);
-    if (rest[i]) list.push(rest[i]);
-    if (list.length >= maxCheck) break;
-  }
-  const kept = [];
-  let dropped = 0;
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, list.length) }, async () => {
-    while (cursor < list.length && kept.length < need) {
-      const idx = cursor++;
-      const s = list[idx];
-      try {
-        const ok = await resolveLooksPlayable(s.url || s.embedUrl);
-        if (ok) kept.push(s);
-        else dropped++;
-      } catch {
-        kept.push(s); // keep on unexpected probe errors
-      }
-    }
-  });
-  await Promise.all(workers);
-  if (!kept.length) return { streams: [], dropped };
-  return { streams: kept, dropped };
-}
-
 async function requireAdFree(req, res) {
   const userTok = verifyToken(
     req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
@@ -417,24 +356,9 @@ router.post('/streams', async (req, res) => {
     const cachedOnly = streams.filter(s => s.cached);
     if (cachedOnly.length >= 6) streams = cachedOnly;
 
-    // Drop Torrentio failed_* stubs (copyright / open errors) before the client sees them
-    let filtered = { streams: streams.slice(0, 20), dropped: 0 };
-    try {
-      filtered = await filterFailedResolves(streams, { need: 12, concurrency: 5, maxCheck: 36 });
-    } catch (e) {
-      console.error('Debrid filter error:', e.message);
-      filtered = { streams: streams.slice(0, 20), dropped: 0 };
-    }
-    streams = filtered.streams;
-    // Re-rank survivors for the player
-    streams.sort((a, b) =>
-      (b.browserScore - a.browserScore) ||
-      (b.seeders || 0) - (a.seeders || 0)
-    );
-    if (filtered.dropped) {
-      console.log('Debrid filtered stubs:', filtered.dropped, 'kept', streams.length, path);
-    }
-
+    // Return quickly — do NOT bulk-probe resolves here (Torrentio rate-limits → 502s).
+    // Client drops failed_* stub videos on play; we prefer cached [RD+] above.
+    streams = streams.slice(0, 40);
     const friendly = streams.filter(s => s.browserOk);
 
     res.json({
@@ -444,7 +368,7 @@ router.post('/streams', async (req, res) => {
         streams,
         totalSources: streams.length,
         browserFriendly: friendly.length,
-        droppedStubs: filtered.dropped || 0,
+        cached: streams.filter(s => s.cached).length,
         provider: 'realdebrid+torrentio'
       }
     });
