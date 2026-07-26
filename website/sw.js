@@ -1,4 +1,4 @@
-const CACHE = 'flixnova-v6';
+const CACHE = 'flixnova-v7';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/player.html', '/flix-extra.js'];
 
 self.addEventListener('install', (e) => {

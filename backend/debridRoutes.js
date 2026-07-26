@@ -49,6 +49,28 @@ function parseSeeders(title) {
   return m ? parseInt(m[1], 10) : 0;
 }
 
+/** Higher = more likely to play in Chrome/Safari <video> */
+function browserScore(title, url) {
+  const t = `${title || ''} ${url || ''}`.toLowerCase();
+  let score = 40;
+  if (/\.mp4(\?|$)|[\s.\-_]mp4[\s.\-_]/i.test(t)) score += 50;
+  if (/x264|h\.?264|avc/.test(t)) score += 35;
+  if (/web-?dl|webrip|hdtv/.test(t)) score += 8;
+  if (/1080p/.test(t)) score += 18;
+  if (/720p/.test(t)) score += 22; // often lighter / more compatible
+  if (/480p|dvdrip|hdrip/.test(t)) score += 6;
+  if (/2160p|4k|uhd/.test(t)) score -= 30;
+  if (/x265|h\.?265|hevc|10bit|hdr10|dolby\s*vision|\bdv\b/.test(t)) score -= 45;
+  if (/\bav1\b/.test(t)) score -= 50;
+  if (/\.mkv(\?|$)|[\s.\-_]mkv[\s.\-_]/i.test(t)) score -= 25;
+  if (/\.m3u8(\?|$)|hls/.test(t)) score += 40;
+  return score;
+}
+
+function isLikelyBrowserPlayable(title, url) {
+  return browserScore(title, url) >= 55;
+}
+
 router.get('/status', async (req, res) => {
   const siteConfigured = !!siteToken();
   const token = tokenFrom(req);
@@ -140,7 +162,7 @@ router.post('/streams', async (req, res) => {
     }
 
     const raw = r.data?.streams || [];
-    const streams = raw
+    let streams = raw
       .map((s, i) => {
         const playUrl = s.url || s.externalUrl || '';
         if (!/^https?:\/\//i.test(playUrl)) return null;
@@ -148,6 +170,7 @@ router.post('/streams', async (req, res) => {
         const title = s.title || s.name || `Stream ${i + 1}`;
         const quality = parseQuality(title + ' ' + (s.name || ''));
         const isHls = /\.m3u8(\?|$)/i.test(playUrl) || /hls/i.test(playUrl);
+        const bScore = browserScore(title, playUrl);
         return {
           source: (s.name || 'RD').replace(/\n/g, ' ').slice(0, 40),
           title: title.split('\n')[0].slice(0, 80),
@@ -158,14 +181,23 @@ router.post('/streams', async (req, res) => {
           url: playUrl,
           embedUrl: playUrl,
           debrid: true,
+          browserOk: isLikelyBrowserPlayable(title, playUrl),
+          browserScore: bScore,
           priority: i + 1
         };
       })
-      .filter(Boolean)
-      .slice(0, 40);
+      .filter(Boolean);
 
-    const rank = q => ({ '4K': 0, '1080p': 1, '720p': 2, HD: 3, '480p': 4, CAM: 9 }[q] ?? 5);
-    streams.sort((a, b) => rank(a.quality) - rank(b.quality) || (b.seeders || 0) - (a.seeders || 0));
+    // Prefer browser-friendly (mp4/x264/720-1080) over 4K HEVC/MKV that <video> can't play
+    streams.sort((a, b) =>
+      (b.browserScore - a.browserScore) ||
+      (b.seeders || 0) - (a.seeders || 0)
+    );
+
+    // Keep playable-looking ones first, then a few heavier backups
+    const friendly = streams.filter(s => s.browserOk);
+    const rest = streams.filter(s => !s.browserOk);
+    streams = [...friendly, ...rest].slice(0, 40);
 
     res.json({
       success: true,
@@ -173,6 +205,7 @@ router.post('/streams', async (req, res) => {
         imdbId: imdb,
         streams,
         totalSources: streams.length,
+        browserFriendly: friendly.length,
         provider: 'realdebrid+torrentio'
       }
     });

@@ -1253,18 +1253,23 @@ function nextSrc(){tryS(S.si+1);}
 function tryS(idx){
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
   if(idx>=S.src.length){
-    // Never auto-load popup embeds after RD — user must opt in via Embed servers
-    if(S.debridMode){
-      showPE('Real-Debrid qualities failed. Tap Embed servers only if you accept possible ads/popups.');
-      var moreBtn=$('moreSrvBtn');if(moreBtn)moreBtn.style.display='inline-flex';
-      return;
-    }
-    showPE('All '+S.src.length+' streams failed. Try another quality or More servers.');
+    // RD often returns MKV/HEVC that browsers can't play — fall back to clean embeds
+    if(S.debridMode&&!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
+    showPE('All streams failed. Tap Embed servers or try another title.');
     return;
   }
   S.si=idx;document.querySelectorAll('#schips .sc').forEach(function(c,i){c.classList.toggle('on',i===idx);});
-  var s=S.src[idx],url=s.embedUrl||s.url||'';setSt('sld','Loading '+(s.debrid?s.quality:s.source)+'...');
+  var s=S.src[idx],url=s.embedUrl||s.url||'';setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
   if(!url){mFail(idx);tryS(idx+1);return;}
+  // Skip RD files browsers usually can't play (4K HEVC/AV1/MKV)
+  if(s.debrid&&s.browserOk===false){
+    var anyOk=S.src.some(function(x){return x.browserOk;});
+    if(!anyOk){
+      if(!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
+    }else if(idx<S.src.length-1){
+      mFail(idx);tryS(idx+1);return;
+    }
+  }
   // Real-Debrid / direct always use native player (no iframe ads)
   if(s.debrid||s.type==='direct'||s.type==='hls'||/\.(m3u8|mp4|mkv|webm)(\?|$)/i.test(url)){
     if(s.type==='hls'||/\.m3u8(\?|$)/i.test(url))pHLS(url,idx);
@@ -1272,6 +1277,17 @@ function tryS(idx){
     return;
   }
   pEmb(url,idx);
+}
+function loadEmbedFallback(){
+  if(!S.item)return;
+  var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
+  setSt('sld','RD file not browser-playable — trying clean embed servers…');
+  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Switching to embed servers...</span></div>';
+  S.cleanMode=true;
+  api(sourcesPath(id,type,S.sn,S.ep)).then(function(d){
+    if(d.success&&d.data&&d.data.sources&&d.data.sources.length)handleSrc(d.data);
+    else showPE('No working streams. Try Embed servers (may show ads) or another title.');
+  }).catch(function(e){showPE(e.message);});
 }
 function withAutoplay(url){
   if(!url)return url;
@@ -1306,24 +1322,47 @@ function openDirectEmbed(){
 }
 function pHLS(url,idx){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline crossorigin="anonymous" style="width:100%;height:100%;background:#000"></video>';
+  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline style="width:100%;height:100%;background:#000"></video>';
   var v=document.getElementById('hv');
+  var failed=false;
+  var fail=function(){if(failed)return;failed=true;mFail(idx);tryS(idx+1);};
+  S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},12000);
   if(window.Hls&&Hls.isSupported()){
     var h=new Hls({enableWorker:true,xhrSetup:function(xhr){xhr.withCredentials=false;}});
     h.loadSource(url);h.attachMedia(v);
-    h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);});
-    h.on(Hls.Events.ERROR,function(_,d){if(d.fatal){mFail(idx);tryS(idx+1);}});
+    h.on(Hls.Events.MANIFEST_PARSED,function(){
+      if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+      v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
+      if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
+    });
+    h.on(Hls.Events.ERROR,function(_,d){if(d.fatal)fail();});
   }else if(v.canPlayType('application/vnd.apple.mpegurl')){
     v.src=url;v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
     if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
-  }else{mFail(idx);tryS(idx+1);}
+  }else{fail();}
 }
 function pDir(url,idx){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline crossorigin="anonymous" style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
+  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
   var v=$('dv');
-  v.oncanplay=function(){setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':''));};
-  v.onerror=function(){mFail(idx);tryS(idx+1);};
+  var settled=false;
+  var ok=function(){
+    if(settled)return;settled=true;
+    if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+    setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':''));
+  };
+  var fail=function(){
+    if(settled)return;settled=true;
+    if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+    mFail(idx);tryS(idx+1);
+  };
+  v.oncanplay=ok;
+  v.onloadeddata=ok;
+  v.onerror=fail;
+  // Browsers hang on unsupported MKV/HEVC — don't wait forever
+  S.failTimer=setTimeout(function(){
+    if(!settled&&v.readyState<2)fail();
+  },10000);
   v.play().catch(function(){});
   if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
 }
