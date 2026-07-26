@@ -336,19 +336,22 @@ app.get('/api/season/:tmdbId/:season', async (req, res) => {
 app.get('/api/sources/:tmdbId/:type', async (req, res) => {
   try {
     const { tmdbId, type } = req.params;
-    const { season, episode, nocache } = req.query;
-    const ck = `src5:${tmdbId}:${type}:${season||0}:${episode||0}`;
+    const { season, episode, nocache, all } = req.query;
+    // Default clean-only (fewer popup-prone hosts). ?all=1 unlocks fallback servers.
+    const clean = all !== '1' && all !== 'true';
+    const ck = `src6:${tmdbId}:${type}:${season||0}:${episode||0}:${clean?'c':'a'}`;
     if (!nocache) {
       const c = await getC(ck);
       if (c) { console.log(`Cache hit: ${ck}`); return res.json({ success: true, data: c, cached: true }); }
     }
     console.log(`Scraping: ${ck}`);
-    const { sources, errors } = await scraper.getSources(
+    const { sources, errors, cleanOnly } = await scraper.getSources(
       tmdbId, type,
       season  ? parseInt(season)  : null,
-      episode ? parseInt(episode) : null
+      episode ? parseInt(episode) : null,
+      { clean }
     );
-    const result = { sources, errors, totalSources: sources.length, scrapedAt: Date.now() };
+    const result = { sources, errors, totalSources: sources.length, cleanOnly, scrapedAt: Date.now() };
     if (sources.length > 0) await setC(ck, result, 1800);
     res.json({ success: true, data: result });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }

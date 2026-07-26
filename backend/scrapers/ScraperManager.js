@@ -367,53 +367,58 @@ class Hopcloud extends S {
 
 class ScraperManager {
   constructor() {
+    // clean:true = fewer ads / better player UX. Others stay as fallback only.
     this.scrapers = [
-      { instance: new VidLinkPro(),     priority: 1,  enabled: true },
-      { instance: new VidSrcWiki(),     priority: 2,  enabled: true },
-      { instance: new VidSrcCC(),       priority: 3,  enabled: true },
-      { instance: new VidFast(),        priority: 4,  enabled: true },
-      { instance: new VidSrcEmbedRu(),  priority: 5,  enabled: true },
-      { instance: new VidSrcCC2(),      priority: 6,  enabled: true },
-      { instance: new VidSrcMe(),       priority: 7,  enabled: true },
-      { instance: new VidSrcIn(),       priority: 8,  enabled: true },
-      { instance: new Videasy(),        priority: 9,  enabled: true },
-      { instance: new Vidify(),         priority: 10, enabled: true },
-      { instance: new AutoEmbed(),      priority: 11, enabled: true },
-      { instance: new VidSrcPro(),      priority: 12, enabled: true },
-      { instance: new VidSrcNL(),       priority: 13, enabled: true },
-      { instance: new VidSrcXyz(),      priority: 14, enabled: true },
-      { instance: new VidSrcICU(),      priority: 15, enabled: true },
-      { instance: new VidSrcVip(),      priority: 16, enabled: true },
-      { instance: new VidSrcRip(),      priority: 17, enabled: true },
-      { instance: new VidSrcTo(),       priority: 18, enabled: true },
-      { instance: new VidSrcNet(),      priority: 19, enabled: true },
-      { instance: new VidSrcPmux(),     priority: 20, enabled: true },
-      { instance: new VidsrcSx(),       priority: 21, enabled: true },
-      { instance: new EmbedSu(),        priority: 22, enabled: true },
-      { instance: new EmbedRs(),        priority: 23, enabled: true },
-      { instance: new TwoEmbed(),       priority: 24, enabled: true },
-      { instance: new TwoEmbedOrg(),    priority: 25, enabled: true },
-      { instance: new TwoEmbedSkin(),   priority: 26, enabled: true },
-      { instance: new MultiEmbed(),     priority: 27, enabled: true },
-      { instance: new MoviesApi(),      priority: 28, enabled: true },
-      { instance: new SmashyStream(),   priority: 29, enabled: true },
-      { instance: new SuperEmbed(),     priority: 30, enabled: true },
-      { instance: new BlackVid(),       priority: 31, enabled: true },
-      { instance: new Moviee(),         priority: 32, enabled: true },
-      { instance: new RgShows(),        priority: 33, enabled: true },
-      { instance: new Embed123(),       priority: 34, enabled: true },
-      { instance: new Hopcloud(),       priority: 35, enabled: true },
-      { instance: new NontonGo(),       priority: 36, enabled: true },
-      { instance: new FilmsToWatch(),   priority: 37, enabled: true },
+      { instance: new VidLinkPro(),     priority: 1,  enabled: true,  clean: true },
+      { instance: new VidSrcWiki(),     priority: 2,  enabled: true,  clean: true },
+      { instance: new VidSrcCC(),       priority: 3,  enabled: true,  clean: true },
+      { instance: new VidFast(),        priority: 4,  enabled: true,  clean: true },
+      { instance: new VidSrcEmbedRu(),  priority: 5,  enabled: true,  clean: true },
+      { instance: new VidSrcCC2(),      priority: 6,  enabled: true,  clean: true },
+      { instance: new Videasy(),        priority: 7,  enabled: true,  clean: true },
+      { instance: new Vidify(),         priority: 8,  enabled: true,  clean: true },
+      { instance: new AutoEmbed(),      priority: 9,  enabled: true,  clean: true },
+      { instance: new VidSrcMe(),       priority: 10, enabled: true,  clean: true },
+      { instance: new VidSrcIn(),       priority: 11, enabled: true,  clean: false },
+      { instance: new VidSrcPro(),      priority: 12, enabled: true,  clean: false },
+      { instance: new VidSrcNL(),       priority: 13, enabled: true,  clean: false },
+      { instance: new VidSrcXyz(),      priority: 14, enabled: true,  clean: false },
+      { instance: new VidSrcICU(),      priority: 15, enabled: false, clean: false },
+      { instance: new VidSrcVip(),      priority: 16, enabled: false, clean: false },
+      { instance: new VidSrcRip(),      priority: 17, enabled: false, clean: false },
+      { instance: new VidSrcTo(),       priority: 18, enabled: false, clean: false },
+      { instance: new VidSrcNet(),      priority: 19, enabled: false, clean: false },
+      { instance: new VidSrcPmux(),     priority: 20, enabled: false, clean: false },
+      { instance: new VidsrcSx(),       priority: 21, enabled: false, clean: false },
+      { instance: new EmbedSu(),        priority: 22, enabled: true,  clean: false },
+      { instance: new EmbedRs(),        priority: 23, enabled: false, clean: false },
+      { instance: new TwoEmbed(),       priority: 24, enabled: false, clean: false }, // heavy ads
+      { instance: new TwoEmbedOrg(),    priority: 25, enabled: false, clean: false },
+      { instance: new TwoEmbedSkin(),   priority: 26, enabled: false, clean: false },
+      { instance: new MultiEmbed(),     priority: 27, enabled: false, clean: false }, // heavy ads
+      { instance: new MoviesApi(),      priority: 28, enabled: true,  clean: false },
+      { instance: new SmashyStream(),   priority: 29, enabled: false, clean: false },
+      { instance: new SuperEmbed(),     priority: 30, enabled: false, clean: false },
+      { instance: new BlackVid(),       priority: 31, enabled: false, clean: false },
+      { instance: new Moviee(),         priority: 32, enabled: false, clean: false },
+      { instance: new RgShows(),        priority: 33, enabled: false, clean: false },
+      { instance: new Embed123(),       priority: 34, enabled: false, clean: false },
+      { instance: new Hopcloud(),       priority: 35, enabled: false, clean: false },
+      { instance: new NontonGo(),       priority: 36, enabled: false, clean: false },
+      { instance: new FilmsToWatch(),   priority: 37, enabled: false, clean: false },
     ];
     this.scrapers.sort((a, b) => a.priority - b.priority);
   }
 
-  async getSources(tmdbId, type, season, episode) {
+  async getSources(tmdbId, type, season, episode, opts = {}) {
+    const cleanOnly = opts.clean !== false; // default: clean servers only
     const results = [];
     const errors = [];
-    const enabled = this.scrapers.filter(s => s.enabled);
-    console.log(`Scraping ${enabled.length} sources for ${type}:${tmdbId}`);
+    let enabled = this.scrapers.filter(s => s.enabled);
+    if (cleanOnly) enabled = enabled.filter(s => s.clean);
+    // If clean list empty, fall back to any enabled
+    if (!enabled.length) enabled = this.scrapers.filter(s => s.enabled);
+    console.log(`Scraping ${enabled.length} sources for ${type}:${tmdbId} (clean=${cleanOnly})`);
 
     await Promise.allSettled(enabled.map(async scraper => {
       const t = Date.now();
@@ -424,8 +429,14 @@ class ScraperManager {
         ]);
         if (source && source.embedUrl) {
           const p = scraper.priority;
-          const quality = source.quality || (p <= 10 ? 'HD' : p <= 22 ? 'Auto' : 'CAM');
-          results.push({ ...source, quality, priority: p, elapsed: Date.now() - t });
+          const quality = scraper.clean ? 'HD' : (p <= 22 ? 'Auto' : 'CAM');
+          results.push({
+            ...source,
+            quality,
+            clean: !!scraper.clean,
+            priority: p,
+            elapsed: Date.now() - t
+          });
         }
       } catch (e) {
         errors.push({ source: scraper.instance.name, error: e.message });
@@ -434,7 +445,7 @@ class ScraperManager {
 
     results.sort((a, b) => a.priority - b.priority);
     console.log(`  Found ${results.length}/${enabled.length}`);
-    return { sources: results, errors };
+    return { sources: results, errors, cleanOnly };
   }
 
   getScraperStatus() {
@@ -442,7 +453,8 @@ class ScraperManager {
       name: s.instance.name,
       baseUrl: s.instance.baseUrl,
       priority: s.priority,
-      enabled: s.enabled
+      enabled: s.enabled,
+      clean: !!s.clean
     }));
   }
 

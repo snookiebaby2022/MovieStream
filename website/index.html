@@ -189,7 +189,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
   <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
 </header>
 <div class="adtip on" id="adtip">
-  <b>Tip:</b> Some servers show ads. Use <b>Next Server</b> for a cleaner player, or install uBlock Origin. We never host ads ourselves.
+  <b>Clean mode is on</b> — we use quieter players by default. If a title won’t play, tap <b>More servers</b>. For zero popups long-term, a debrid key (Real-Debrid) is the real fix.
   <button type="button" onclick="dismissAdTip()">Dismiss</button>
 </div>
 <div id="hero">
@@ -235,6 +235,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
       <span class="srclbl">Servers:</span>
       <div id="schips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
       <button class="sc" id="nextSrcBtn" onclick="nextSrc()" title="Try next server">Next &#8250;</button>
+      <button class="sc" id="moreSrvBtn" onclick="loadAllServers()" title="Include backup servers (may have more ads)">More servers</button>
       <button class="list-btn" id="mListBtn" onclick="toggleListModal()">+ My List</button>
       <span class="srcst" id="srcst"></span>
     </div>
@@ -271,7 +272,7 @@ function getItem(k){return STORE[k]||null;}
 function clearStore(){STORE={};STOREKEY=0;}
 
 // ── STATE ──────────────────────────────────────────────────
-var S={section:'home',hl:[],hi:0,ht:null,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||''};
+var S={section:'home',hl:[],hi:0,ht:null,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0'};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
 if(localStorage.getItem('fn_adtip')==='1'){var _at=$('adtip');if(_at)_at.classList.remove('on');}
 
@@ -784,7 +785,8 @@ function openModal(item){
   sockEmit('watching',{title:item.title,tmdbId:id,type:type,season:S.sn,episode:S.ep});
   saveContinue(item,S.sn,S.ep);
   document.title=(item.title||'')+' - FlixNova';
-  var sp=type==='tv'?'/sources/'+id+'/tv?season='+S.sn+'&episode='+S.ep:'/sources/'+id+'/movie';
+  S.cleanMode=localStorage.getItem('fn_clean')!=='0';
+  var sp=sourcesPath(id,type,S.sn,S.ep);
   Promise.all([api('/details/'+id+'/'+type),api(sp)]).then(function(res){
     if(res[0]&&res[0].success)fillDet(res[0].data,id,type);
     if(res[1]&&res[1].success)handleSrc(res[1].data);
@@ -915,8 +917,25 @@ function pEp(tid,sn,ep,el){
   try{history.replaceState(null,'','/watch/tv/'+tid+'/'+sn+'/'+ep);}catch(ex){}
   sockEmit('watching',{title:S.item&&S.item.title,tmdbId:tid,type:'tv',season:sn,episode:ep});
   if(S.item)saveContinue(S.item,sn,ep);
-  api('/sources/'+tid+'/tv?season='+sn+'&episode='+ep).then(function(d){
+  api(sourcesPath(tid,'tv',sn,ep)).then(function(d){
     if(d.success)handleSrc(d.data);else showPE('No sources for this episode.');
+  }).catch(function(e){showPE(e.message);});
+}
+function sourcesPath(id,type,sn,ep){
+  var qs=[];
+  if(type==='tv'){qs.push('season='+(sn||1));qs.push('episode='+(ep||1));}
+  if(!S.cleanMode)qs.push('all=1');
+  return '/sources/'+id+'/'+type+(qs.length?'?'+qs.join('&'):'');
+}
+function loadAllServers(){
+  if(!S.item)return;
+  S.cleanMode=false; // this title only — next title uses clean again
+  var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
+  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading backup servers...</span></div>';
+  var p=sourcesPath(id,type,S.sn,S.ep);
+  p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1';
+  api(p).then(function(d){
+    if(d.success)handleSrc(d.data);else showPE('Still no sources.');
   }).catch(function(e){showPE(e.message);});
 }
 function nextEp(){
@@ -1037,7 +1056,8 @@ function retryAll(){
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
   $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Retrying servers...</span></div>';
   $('srcbar').style.display='none';
-  var p=type==='tv'?'/sources/'+id+'/tv?season='+S.sn+'&episode='+S.ep+'&nocache=1':'/sources/'+id+'/movie?nocache=1';
+  var p=sourcesPath(id,type,S.sn,S.ep);
+  p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1';
   api(p).then(function(d){if(d.success)handleSrc(d.data);else showPE('Still no sources.');}).catch(function(e){showPE(e.message);});
 }
 function closeModal(){
