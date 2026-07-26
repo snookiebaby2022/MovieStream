@@ -1710,16 +1710,18 @@ function pEp(tid,sn,ep,el){
       else showPE('No sources for this episode.');
     });
   };
-  if(!isAdFreeUser()){loadEmb().catch(function(e){showPE(e.message);});return;}
-  var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
-  imdbP.then(function(idb){
-    return fetchDebridStreams(idb,'tv',sn,ep,tid).then(function(rd){
-      if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
-        handleSrc({sources:rd.data.streams,debrid:true});
-        setSt('sok','▶ Real-Debrid · Ad-Free');
-        return;
-      }
-      return loadEmb();
+  ensureAdFreeReady().then(function(premium){
+    if(!premium)return loadEmb();
+    var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
+    return imdbP.then(function(idb){
+      return fetchDebridStreams(idb,'tv',sn,ep,tid).then(function(rd){
+        if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+          handleSrc({sources:rd.data.streams,debrid:true});
+          setSt('sok','▶ Real-Debrid · Ad-Free');
+          return;
+        }
+        return loadEmb();
+      });
     });
   }).catch(function(e){showPE(e.message);});
 }
