@@ -18,8 +18,7 @@ function stripeClient() {
 }
 
 function siteUrl() {
-  // Prefer full public URL including port if the site is not on 443
-  return (process.env.SITE_URL || 'https://snookiebaby.xyz:8443').replace(/\/$/, '');
+  return (process.env.SITE_URL || 'https://snookiebaby.xyz').replace(/\/$/, '');
 }
 
 function dbReady(res) {

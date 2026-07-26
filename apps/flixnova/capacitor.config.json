@@ -3,7 +3,7 @@
   "appName": "FlixNova",
   "webDir": "www",
   "server": {
-    "url": "https://snookiebaby.xyz:8443",
+    "url": "https://snookiebaby.xyz",
     "cleartext": false,
     "androidScheme": "https",
     "allowNavigation": [

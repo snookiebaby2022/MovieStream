@@ -124,7 +124,7 @@ try {
 const KEY  = process.env.TMDB_API_KEY || '';
 const TMDB = 'https://api.themoviedb.org/3';
 const IMG  = 'https://image.tmdb.org/t/p';
-const SITE = (process.env.SITE_URL || 'https://snookiebaby.xyz:8443').replace(/\/$/, '');
+const SITE = (process.env.SITE_URL || 'https://snookiebaby.xyz').replace(/\/$/, '');
 
 async function tmdb(path, params = {}) {
   if (!KEY) return null;

@@ -1294,7 +1294,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
             <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.5">Dashboard → <b>Developers → API keys</b> → Secret key. Use <code>sk_test_…</code> first, then <code>sk_live_…</code>. After save, click <b>Restart App</b>.</p>
             <div class="form-row" style="margin-bottom:10px"><input class="form-input" id="payStripeKey" placeholder="STRIPE_SECRET_KEY (sk_live_… or sk_test_…)" autocomplete="off"></div>
             <div class="form-row" style="margin-bottom:10px"><input class="form-input" id="payStripeWh" placeholder="STRIPE_WEBHOOK_SECRET (optional, whsec_…)" autocomplete="off"></div>
-            <div class="form-row" style="margin-bottom:18px"><input class="form-input" id="paySiteUrl" placeholder="SITE_URL e.g. https://snookiebaby.xyz:8443"></div>
+            <div class="form-row" style="margin-bottom:18px"><input class="form-input" id="paySiteUrl" placeholder="SITE_URL e.g. https://snookiebaby.xyz"></div>
             <h3 style="margin:0 0 10px;font-size:14px">SMTP (password reset emails)</h3>
             <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.5">Gmail: enable 2FA → App passwords → use that as SMTP_PASS. Host <code>smtp.gmail.com</code>, port <code>587</code>, secure <code>0</code>.</p>
             <div class="form-row" style="margin-bottom:10px;gap:8px;display:flex;flex-wrap:wrap">
@@ -1898,7 +1898,7 @@ async function loadPayments(){
     (d.smtpConfigured?'<span class="badge badge-green">SMTP ready</span>':'<span class="badge badge-yellow">SMTP missing</span>')+
     ` · SITE_URL: <code>${esc(d.siteUrl||'')}</code>`;
   const site=document.getElementById('paySiteUrl');
-  if(site && !site.value) site.value=d.siteUrl||d.data?.SITE_URL||'https://snookiebaby.xyz:8443';
+  if(site && !site.value) site.value=d.siteUrl||d.data?.SITE_URL||'https://snookiebaby.xyz';
   const host=document.getElementById('paySmtpHost');
   if(host && !host.value && d.data?.SMTP_HOST && d.data.SMTP_HOST!=='***') host.value=d.data.SMTP_HOST;
   const port=document.getElementById('paySmtpPort');
