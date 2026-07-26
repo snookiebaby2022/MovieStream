@@ -13,6 +13,7 @@ const { execSync }    = require('child_process');
 const { createServer }= require('http');
 const { Server }      = require('socket.io');
 const ScraperManager  = require('./scrapers/ScraperManager');
+const { router: authRouter } = require('./authRoutes');
 
 dotenv.config();
 
@@ -336,8 +337,7 @@ app.get('/api/sources/:tmdbId/:type', async (req, res) => {
   try {
     const { tmdbId, type } = req.params;
     const { season, episode, nocache } = req.query;
-    // v4 cache key — expanded scraper list + autoplay URLs
-    const ck = `src4:${tmdbId}:${type}:${season||0}:${episode||0}`;
+    const ck = `src5:${tmdbId}:${type}:${season||0}:${episode||0}`;
     if (!nocache) {
       const c = await getC(ck);
       if (c) { console.log(`Cache hit: ${ck}`); return res.json({ success: true, data: c, cached: true }); }
@@ -374,6 +374,9 @@ app.post('/api/cache/clear', async (req, res) => {
   catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// User accounts, watchlist, history, comments, ratings
+app.use('/api/auth', authRouter);
+
 // SEO
 app.get('/sitemap.xml', async (req, res) => {
   let xml = `<?xml version="1.0"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n<url><loc>${SITE}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>\n`;
@@ -402,8 +405,13 @@ function adminAuth(req, res, next) {
 
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body || {};
+  const adminUser = process.env.ADMIN_USER || 'admin';
+  const adminPass = process.env.ADMIN_PASS;
   console.log(`Admin login attempt: ${username}`);
-  if (username === (process.env.ADMIN_USER||'admin') && password === (process.env.ADMIN_PASS||'MovieStream2024!')) {
+  if (!adminPass) {
+    return res.status(503).json({ success: false, error: 'Set ADMIN_PASS in backend/.env then restart' });
+  }
+  if (username === adminUser && password === adminPass) {
     const t = crypto.randomBytes(32).toString('hex');
     sess[t] = { user: username, exp: Date.now() + 7*86400000 };
     saveS();
@@ -537,14 +545,30 @@ app.post('/api/admin/test/sources', adminAuth, async (req, res) => {
   res.json({ success: true, data: result, elapsed: `${Date.now()-t}ms` });
 });
 
-// ─── 404 ─────────────────────────────────────────────────
-app.use('/api/*', (req, res) => res.status(404).json({ success: false, error: 'Not found' }));
+// ─── 404 for API ─────────────────────────────────────────
+app.use('/api', (req, res) => res.status(404).json({ success: false, error: 'Not found' }));
+
+// ─── Static site + SPA watch routes ──────────────────────
+const WEB = path.join(__dirname, '..', 'website');
+const ADMIN_DIR = path.join(__dirname, '..', 'admin');
+app.use('/admin', express.static(ADMIN_DIR, { index: 'index.html' }));
+app.use(express.static(WEB, { index: 'index.html', maxAge: '1h' }));
+
+// Shareable watch URLs → SPA (nginx should also try_files to index.html)
+app.get('/watch/:type/:id/:season?/:episode?', (req, res) => {
+  res.sendFile(path.join(WEB, 'index.html'));
+});
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next();
+  res.sendFile(path.join(WEB, 'index.html'), err => { if (err) next(); });
+});
 
 // ─── Start ────────────────────────────────────────────────
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  ✅ FlixNova API running on port ${PORT}`);
   console.log(`  TMDB: ${KEY ? '✅ configured' : '❌ NOT SET - add TMDB_API_KEY to .env'}`);
-  console.log(`  Scrapers: ${scraper.getScraperStatus().length}\n`);
+  console.log(`  Scrapers: ${scraper.getScraperStatus().length}`);
+  console.log(`  Auth/DB: MongoDB user accounts enabled when connected\n`);
 });
 
 process.on('SIGTERM', async () => { if (rc) await rc.quit().catch(()=>{}); process.exit(0); });

@@ -1,0 +1,14 @@
+{
+  "name": "moviestream",
+  "version": "3.0.0",
+  "private": true,
+  "description": "FlixNova — movies & TV streaming front + API",
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "install:all": "npm --prefix backend ci --omit=dev",
+    "deploy:hint": "echo Run on server: cd /var/www/moviestream && git pull && cd backend && npm ci --omit=dev && pm2 restart moviestream --update-env && redis-cli FLUSHDB"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

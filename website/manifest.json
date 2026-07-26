@@ -1,10 +1,20 @@
 {
   "name": "FlixNova",
   "short_name": "FlixNova",
-  "description": "Watch free movies and TV shows online",
+  "description": "Watch free movies and TV shows online in HD",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0a0a0a",
   "theme_color": "#e50914",
-  "icons": []
+  "categories": ["entertainment", "video"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%23e50914' width='512' height='512' rx='96'/%3E%3Ctext x='256' y='360' text-anchor='middle' font-size='320' font-family='Arial Black,sans-serif' fill='white'%3EF%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

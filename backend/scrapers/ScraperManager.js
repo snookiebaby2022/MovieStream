@@ -19,7 +19,7 @@ class S {
   async getSource(id, type, s, e) {
     const url = this.buildUrl(id, type, s, e);
     if (!url) return null;
-    return { source: this.name, type: 'embed', url, quality: 'Auto', embedUrl: url };
+    return { source: this.name, type: 'embed', url, quality: this.quality || 'HD', embedUrl: url };
   }
 }
 
@@ -423,7 +423,9 @@ class ScraperManager {
           new Promise((_, r) => setTimeout(() => r(new Error('Timeout')), 4000))
         ]);
         if (source && source.embedUrl) {
-          results.push({ ...source, priority: scraper.priority, elapsed: Date.now() - t });
+          const p = scraper.priority;
+          const quality = source.quality || (p <= 10 ? 'HD' : p <= 22 ? 'Auto' : 'CAM');
+          results.push({ ...source, quality, priority: p, elapsed: Date.now() - t });
         }
       } catch (e) {
         errors.push({ source: scraper.instance.name, error: e.message });

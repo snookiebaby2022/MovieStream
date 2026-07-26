@@ -25,8 +25,8 @@ jobs:
           cd /var/www/moviestream
           git pull origin main
           cd backend
-          npm ci --omit=dev
+          npm install --omit=dev
           pm2 restart moviestream --update-env || pm2 start ecosystem.config.js
-          # Bust stale source cache after scraper upgrades
           redis-cli FLUSHDB || true
           echo "✅ FlixNova deployment complete"
+          echo "Ensure .env has ADMIN_PASS, JWT_SECRET, TMDB_API_KEY"
