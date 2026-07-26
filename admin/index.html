@@ -1710,11 +1710,11 @@ async function loadUsers(){
       <td style="font-size:12px">${u.watchlistCount||0} · hist ${u.historyCount||0}</td>
       <td>${u.adFree?'<span class="badge badge-green">Ad-Free</span>':'<span class="badge badge-blue">Free</span>'}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-blue btn-sm" onclick="editUser('${u.id}','${esc(u.username)}','${esc(u.email||'')}')">Edit</button>
+        <button class="btn btn-blue btn-sm" data-id="${esc(u.id)}" data-user="${esc(u.username)}" data-email="${esc(u.email||'')}" onclick="editUser(this.dataset.id,this.dataset.user,this.dataset.email)">Edit</button>
         ${u.adFree
-          ?`<button class="btn btn-secondary btn-sm" onclick="setUserAdFree('${u.id}',false)">Revoke</button>`
-          :`<button class="btn btn-green btn-sm" onclick="setUserAdFree('${u.id}',true)">Grant Ad-Free</button>`}
-        <button class="btn btn-secondary btn-sm" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
+          ?`<button class="btn btn-secondary btn-sm" data-id="${esc(u.id)}" onclick="setUserAdFree(this.dataset.id,false)">Revoke</button>`
+          :`<button class="btn btn-green btn-sm" data-id="${esc(u.id)}" onclick="setUserAdFree(this.dataset.id,true)">Grant Ad-Free</button>`}
+        <button class="btn btn-secondary btn-sm" data-id="${esc(u.id)}" data-user="${esc(u.username)}" onclick="deleteUser(this.dataset.id,this.dataset.user)">Delete</button>
       </td>
     </tr>`).join('');
 }

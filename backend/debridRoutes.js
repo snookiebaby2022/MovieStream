@@ -75,13 +75,19 @@ function isLikelyBrowserPlayable(title, url) {
 
 router.get('/status', async (req, res) => {
   const siteConfigured = !!siteToken();
-  const token = tokenFrom(req);
-  if (!token) {
+  // Never use the site-wide RD token for unauthenticated status (leaks account email)
+  const userTok = (
+    req.headers['x-rd-token'] ||
+    req.body?.token ||
+    req.query?.token ||
+    ''
+  ).toString().trim();
+  if (!userTok) {
     return res.json({ success: true, configured: false, siteConfigured });
   }
   try {
     const r = await axios.get(`${RD_API}/user`, {
-      headers: { Authorization: `Bearer ${token}`, 'User-Agent': ua() },
+      headers: { Authorization: `Bearer ${userTok}`, 'User-Agent': ua() },
       timeout: 10000
     });
     res.json({
@@ -90,11 +96,10 @@ router.get('/status', async (req, res) => {
       siteConfigured,
       data: {
         username: r.data.username,
-        email: r.data.email,
         premium: r.data.type === 'premium',
         expiration: r.data.expiration,
         points: r.data.points,
-        source: req.headers['x-rd-token'] ? 'user' : (siteConfigured ? 'site' : 'user')
+        source: 'user'
       }
     });
   } catch (e) {

@@ -267,14 +267,27 @@ router.get('/subtitles', async (req, res) => {
   }
 });
 
-/** Proxy subtitle file (CORS) */
+/** Proxy subtitle file (CORS) — host allowlist only */
 router.get('/subtitles/proxy', async (req, res) => {
   try {
     const target = String(req.query.url || '');
-    if (!/^https?:\/\//i.test(target)) return res.status(400).json({ success: false, error: 'Invalid url' });
-    const r = await axios.get(target, {
-      timeout: 20000,
+    let u;
+    try { u = new URL(target); } catch { return res.status(400).json({ success: false, error: 'Invalid url' }); }
+    if (u.protocol !== 'https:') return res.status(400).json({ success: false, error: 'HTTPS required' });
+    const host = u.hostname.toLowerCase();
+    const allowed =
+      host === 'opensubtitles.org' || host.endsWith('.opensubtitles.org') ||
+      host === 'opensubtitles.com' || host.endsWith('.opensubtitles.com') ||
+      host === 'dl.opensubtitles.org' ||
+      host.endsWith('.googleapis.com');
+    if (!allowed) return res.status(400).json({ success: false, error: 'Host not allowed' });
+    if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.|localhost)/i.test(host)) {
+      return res.status(400).json({ success: false, error: 'Host not allowed' });
+    }
+    const r = await axios.get(u.toString(), {
+      timeout: 15000,
       responseType: 'arraybuffer',
+      maxContentLength: 2 * 1024 * 1024,
       headers: { 'User-Agent': 'FlixNova/1.0' }
     });
     const ct = r.headers['content-type'] || 'text/vtt';

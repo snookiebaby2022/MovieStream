@@ -67,13 +67,21 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(compression());
 app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '256kb' }));
 app.use(rateLimit({
   windowMs: 60000,
   max: 400,
-  skip: req => req.path.startsWith('/api/admin'),
+  skip: req => req.path.startsWith('/api/admin') && req.path !== '/api/admin/login',
   validate: { xForwardedForHeader: false }
 }));
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: { success: false, error: 'Too many admin login attempts. Try again later.' }
+});
 
 // ─── Redis ────────────────────────────────────────────────
 const redis = require('redis');
@@ -116,7 +124,7 @@ try {
 const KEY  = process.env.TMDB_API_KEY || '';
 const TMDB = 'https://api.themoviedb.org/3';
 const IMG  = 'https://image.tmdb.org/t/p';
-const SITE = process.env.SITE_URL || 'https://snookiebaby.xyz';
+const SITE = (process.env.SITE_URL || 'https://snookiebaby.xyz:8443').replace(/\/$/, '');
 
 async function tmdb(path, params = {}) {
   if (!KEY) return null;
@@ -201,68 +209,72 @@ app.get('/api/online', (req, res) => res.json({ success: true, count: online.siz
 app.get('/api/trending', async (req, res) => {
   try {
     const adult = await allowAdult(req);
-    const ck = `trending:week:v3:a${adult ? 1 : 0}`;
+    const page = Math.max(1, Math.min(parseInt(req.query.page) || 1, 500));
+    const ck = `trending:week:v4:a${adult ? 1 : 0}:p${page}`;
     const c = await getC(ck);
-    if (c) return res.json({ success: true, data: c });
-    const d = await tmdb('/trending/all/week');
-    if (!d) return res.json({ success: true, data: [] });
+    if (c) return res.json({ success: true, data: c.r, totalPages: c.tp, page });
+    const d = await tmdb('/trending/all/week', { page });
+    if (!d) return res.json({ success: true, data: [], totalPages: 1, page });
     const r = filterAdult(
       d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem),
       adult
     );
-    await setC(ck, r, 900);
-    res.json({ success: true, data: r });
+    const tp = d.total_pages || 1;
+    await setC(ck, { r, tp }, 900);
+    res.json({ success: true, data: r, totalPages: tp, page });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.get('/api/trending/day', async (req, res) => {
   try {
     const adult = await allowAdult(req);
-    const ck = `trending:day:v3:a${adult ? 1 : 0}`;
+    const page = Math.max(1, Math.min(parseInt(req.query.page) || 1, 500));
+    const ck = `trending:day:v4:a${adult ? 1 : 0}:p${page}`;
     const c = await getC(ck);
-    if (c) return res.json({ success: true, data: c });
-    const d = await tmdb('/trending/all/day');
-    if (!d) return res.json({ success: true, data: [] });
+    if (c) return res.json({ success: true, data: c.r, totalPages: c.tp, page });
+    const d = await tmdb('/trending/all/day', { page });
+    if (!d) return res.json({ success: true, data: [], totalPages: 1, page });
     const r = filterAdult(
       d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem),
       adult
     );
-    await setC(ck, r, 600);
-    res.json({ success: true, data: r });
+    const tp = d.total_pages || 1;
+    await setC(ck, { r, tp }, 600);
+    res.json({ success: true, data: r, totalPages: tp, page });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.get('/api/trending/browse', async (req, res) => {
   try {
     const adult = await allowAdult(req);
-    const ck = `trending:browse:v3:a${adult ? 1 : 0}`;
+    const page = Math.max(1, Math.min(parseInt(req.query.page) || 1, 500));
+    const ck = `trending:browse:v4:a${adult ? 1 : 0}:p${page}`;
     const c = await getC(ck);
-    if (c) return res.json({ success: true, data: c });
-    const all = [];
-    for (let p = 1; p <= 3; p++) {
-      const d = await tmdb('/trending/all/week', { page: p });
-      if (d?.results) all.push(...d.results.filter(x=>x.media_type==='movie'||x.media_type==='tv').map(mapItem));
-    }
-    const seen = new Set();
-    const u = filterAdult(
-      all.filter(x => { if(seen.has(x.id))return false; seen.add(x.id); return true; }),
+    if (c) return res.json({ success: true, data: c.r, totalPages: c.tp, page });
+    const d = await tmdb('/trending/all/week', { page });
+    if (!d) return res.json({ success: true, data: [], totalPages: 1, page });
+    const r = filterAdult(
+      (d.results || []).filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem),
       adult
     );
-    await setC(ck, u, 900);
-    res.json({ success: true, data: u });
+    const tp = d.total_pages || 1;
+    await setC(ck, { r, tp }, 900);
+    res.json({ success: true, data: r, totalPages: tp, page });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-/** Cinema hero: trending titles that have YouTube trailers */
+/** Cinema hero: trending → in cinemas trailers (up to 20) */
 app.get('/api/hero', async (req, res) => {
   try {
     const adult = await allowAdult(req);
-    const c = await getC(`hero:trailers:v2:a${adult ? 1 : 0}`);
+    const c = await getC(`hero:trailers:v3:a${adult ? 1 : 0}`);
     if (c) return res.json({ success: true, data: c });
-    const [day, week, now] = await Promise.all([
+    const [day, week, now1, now2, pop] = await Promise.all([
       tmdb('/trending/all/day'),
       tmdb('/trending/all/week'),
-      tmdb('/movie/now_playing')
+      tmdb('/movie/now_playing', { page: 1 }),
+      tmdb('/movie/now_playing', { page: 2 }),
+      tmdb('/movie/popular', { page: 1 })
     ]);
     const pool = [];
     const seen = new Set();
@@ -276,31 +288,36 @@ app.get('/api/hero', async (req, res) => {
         pool.push({ ...r, media_type: type });
       });
     };
-    push(day); push(week); push(now, 'movie');
+    push(day); push(week); push(now1, 'movie'); push(now2, 'movie'); push(pop, 'movie');
     if (!adult) pool.splice(0, pool.length, ...pool.filter(r => !r.adult));
     pool.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    const candidates = pool.slice(0, 14);
+    const candidates = pool.slice(0, 40);
     const out = [];
-    await Promise.all(candidates.map(async (r) => {
-      try {
-        const vids = await tmdb(`/${r.media_type}/${r.id}/videos`);
-        const trailer = (vids?.results || []).find(v =>
-          v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
-        );
-        if (!trailer?.key) return;
-        out.push({ ...mapItem(r), trailerKey: trailer.key, trailerName: trailer.name || 'Trailer' });
-      } catch {}
-    }));
+    // Batched video lookups (avoid stampeding TMDB)
+    for (let i = 0; i < candidates.length && out.length < 20; i += 6) {
+      const batch = candidates.slice(i, i + 6);
+      await Promise.all(batch.map(async (r) => {
+        if (out.length >= 20) return;
+        try {
+          const vids = await tmdb(`/${r.media_type}/${r.id}/videos`);
+          const trailer = (vids?.results || []).find(v =>
+            v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
+          );
+          if (!trailer?.key) return;
+          out.push({ ...mapItem(r), trailerKey: trailer.key, trailerName: trailer.name || 'Trailer' });
+        } catch {}
+      }));
+    }
     out.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    const data = out.slice(0, 8);
-    await setC(`hero:trailers:v2:a${adult ? 1 : 0}`, data, 1200);
+    const data = out.slice(0, 20);
+    await setC(`hero:trailers:v3:a${adult ? 1 : 0}`, data, 1800);
     res.json({ success: true, data });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-/** Adult / XXX catalog — Ad-Free accounts only */
+/** Adult / XXX catalog — Ad-Free accounts only (bounded TMDB fan-out) */
 app.get('/api/discover/adult', async (req, res) => {
   try {
     if (!(await allowAdult(req))) {
@@ -311,48 +328,34 @@ app.get('/api/discover/adult', async (req, res) => {
       });
     }
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const ck = `adult:cat:v3:${page}`;
+    const ck = `adult:cat:v4:${page}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.r, totalPages: c.tp });
     const all = [];
-    // Broad query set — TMDB buries adult=true in normal discover
     const queries = [
-      'adult', 'erotic', 'xxx', 'porn', 'pornographic', 'softcore', 'hardcore',
-      'nude', 'sex', 'sexy', 'lesbian', 'gay porn', 'milf', 'teen adult',
-      'hentai', 'uncensored', 'explicit', 'fetish', 'bdsm', 'orgy',
-      'playboy', 'penthouse', 'blue movie', 'adult film', 'xxx movie',
-      'pornstar', 'amateur adult', 'japanese adult', 'european adult'
+      'xxx', 'adult', 'erotic', 'pornographic', 'softcore',
+      'hentai', 'explicit', 'adult film', 'japanese adult', 'playboy'
     ];
-    const searchPages = [page, page + 1, page + 2].filter(p => p >= 1);
-    await Promise.all(queries.flatMap((q) => searchPages.map(async (p) => {
-      const d = await tmdb('/search/movie', { query: q, page: p, include_adult: true });
-      if (d?.results) {
-        all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-      }
-      const tv = await tmdb('/search/tv', { query: q, page: p, include_adult: true });
-      if (tv?.results) {
-        all.push(...tv.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'tv' })));
-      }
-    })));
-    for (let p = page; p < page + 12; p++) {
-      const [dm, dt] = await Promise.all([
-        tmdb('/discover/movie', { page: p, include_adult: true, sort_by: 'popularity.desc' }),
-        tmdb('/discover/tv', { page: p, include_adult: true, sort_by: 'popularity.desc' })
-      ]);
+    // Rotate query slice by page so Load More finds more titles without 200 TMDB calls
+    const qSlice = queries.slice((page - 1) % queries.length).concat(queries).slice(0, 6);
+    for (const q of qSlice) {
+      const d = await tmdb('/search/movie', { query: q, page, include_adult: true });
+      if (d?.results) all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
+    }
+    for (let p = page; p < page + 3; p++) {
+      const dm = await tmdb('/discover/movie', { page: p, include_adult: true, sort_by: 'popularity.desc' });
       if (dm?.results) all.push(...dm.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-      if (dt?.results) all.push(...dt.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'tv' })));
     }
     const seen = new Set();
     const r = all
       .filter(x => {
-        const k = (x.type || 'movie') + ':' + x.id;
-        if (seen.has(k)) return false;
-        seen.add(k);
+        if (seen.has(x.id)) return false;
+        seen.add(x.id);
         return true;
       })
       .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    await setC(ck, { r, tp: Math.max(40, page + 10) }, 1800);
-    res.json({ success: true, data: r, totalPages: Math.max(40, page + 10) });
+    await setC(ck, { r, tp: 50 }, 1800);
+    res.json({ success: true, data: r, totalPages: 50, page });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -378,10 +381,13 @@ app.get('/api/browse/:type', async (req, res) => {
     const { type } = req.params;
     const { genre, sort, pages, year, page, country, decade, anime, kids } = req.query;
     const adult = (await allowAdult(req)) && kids !== '1' && kids !== 'true';
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const n = Math.min(parseInt(pages) || (page ? 1 : 3), 10);
+    const pageNum = Math.max(1, Math.min(parseInt(page) || 1, 500));
+    // When paginating with `page`, always fetch exactly that TMDB page (ignore `pages` bootstrap)
+    const n = page
+      ? 1
+      : Math.min(parseInt(pages) || 3, 10);
     const s = sort || 'popularity.desc';
-    const ck = `browse5:${type}:${genre||'all'}:${s}:${year||'any'}:${decade||''}:${country||''}:${anime||''}:${kids||''}:a${adult?1:0}:${page||'m'}:${n}`;
+    const ck = `browse6:${type}:${genre||'all'}:${s}:${year||'any'}:${decade||''}:${country||''}:${anime||''}:${kids||''}:a${adult?1:0}:p${page?pageNum:'m'}:n${n}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.data, totalPages: c.tp, page: pageNum });
     const all = [];
@@ -479,11 +485,18 @@ app.get('/api/details/:tmdbId/:type', async (req, res) => {
   try {
     const { tmdbId, type } = req.params;
     const adult = await allowAdult(req);
-    const ck = `det:v2:${tmdbId}:${type}`;
+    const ck = `det:v3:${tmdbId}:${type}`;
+    const scrub = (data) => {
+      if (!data) return data;
+      return {
+        ...data,
+        similar: filterAdult(data.similar || [], adult)
+      };
+    };
     const c = await getC(ck);
     if (c) {
       if (c.adult && !adult) return res.status(404).json({ success: false, error: 'Adult content hidden' });
-      return res.json({ success: true, data: c });
+      return res.json({ success: true, data: scrub(c) });
     }
     const d = await tmdb(`/${type}/${tmdbId}`, { append_to_response: 'credits,videos,external_ids,similar,recommendations' });
     if (!d) return res.status(404).json({ success: false, error: 'Not found' });
@@ -502,14 +515,14 @@ app.get('/api/details/:tmdbId/:type', async (req, res) => {
       cast: (d.credits?.cast || []).slice(0,20).map(c => ({ name: c.name, character: c.character||'', photo: c.profile_path?`${IMG}/w185${c.profile_path}`:null })),
       crew: (d.credits?.crew || []).filter(c => ['Director','Creator','Executive Producer','Writer'].includes(c.job)).slice(0,5).map(c => ({ name: c.name, job: c.job })),
       videos: (d.videos?.results || []).filter(v => v.site==='YouTube').slice(0,3).map(v => ({ key: v.key, name: v.name, type: v.type })),
-      similar: (d.similar?.results || d.recommendations?.results || []).slice(0,12).map(x => mapItem({ ...x, media_type: type })),
+      similar: (d.similar?.results || d.recommendations?.results || []).slice(0,24).map(x => mapItem({ ...x, media_type: type })),
       imdbId: d.imdb_id || d.external_ids?.imdb_id || null,
       language: d.original_language || 'en',
       countries: (d.production_countries || []).map(c => c.name),
       budget: d.budget || null, revenue: d.revenue || null
     };
     await setC(ck, result, 86400);
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: scrub(result) });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
@@ -576,12 +589,9 @@ app.get('/api/genres/:type', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.get('/api/scrapers', (req, res) => res.json({ success: true, data: scraper.getScraperStatus() }));
+app.get('/api/scrapers', (req, res) => res.status(401).json({ success: false, error: 'Admin only' }));
 
-app.post('/api/cache/clear', async (req, res) => {
-  try { if (rok) await rc.flushAll(); mem.clear(); res.json({ success: true }); }
-  catch(e) { res.status(500).json({ success: false, error: e.message }); }
-});
+// Public cache flush removed — use DELETE /api/admin/cache/clear
 
 // User accounts, watchlist, history, comments, ratings
 app.use('/api/auth', authRouter);
@@ -597,15 +607,39 @@ app.use('/api/pay', payRouter);
 
 // SEO
 app.get('/sitemap.xml', async (req, res) => {
-  let xml = `<?xml version="1.0"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n<url><loc>${SITE}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>\n`;
-  try { const d = await tmdb('/trending/all/week'); if(d) d.results.forEach(r => { xml += `<url><loc>${SITE}/watch/${r.media_type}/${r.id}</loc><changefreq>weekly</changefreq></url>\n`; }); } catch {}
+  const urls = new Set([`${SITE}/`, `${SITE}/get-app.html`]);
+  const add = (type, id) => { if (id && (type === 'movie' || type === 'tv')) urls.add(`${SITE}/watch/${type}/${id}`); };
+  try {
+    const packs = await Promise.all([
+      tmdb('/trending/all/week', { page: 1 }),
+      tmdb('/trending/all/week', { page: 2 }),
+      tmdb('/trending/all/day', { page: 1 }),
+      tmdb('/movie/now_playing', { page: 1 }),
+      tmdb('/movie/popular', { page: 1 }),
+      tmdb('/movie/top_rated', { page: 1 }),
+      tmdb('/tv/popular', { page: 1 }),
+      tmdb('/tv/top_rated', { page: 1 })
+    ]);
+    packs.forEach((d) => {
+      (d?.results || []).forEach((r) => {
+        const type = r.media_type || (r.first_air_date ? 'tv' : 'movie');
+        if (!r.adult) add(type, r.id);
+      });
+    });
+  } catch {}
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+  [...urls].forEach((loc, i) => {
+    const pri = loc === `${SITE}/` ? '1.0' : (loc.includes('/watch/') ? '0.7' : '0.5');
+    xml += `<url><loc>${loc}</loc><changefreq>${i < 3 ? 'daily' : 'weekly'}</changefreq><priority>${pri}</priority></url>\n`;
+  });
   xml += '</urlset>';
-  res.set('Content-Type', 'application/xml'); res.send(xml);
+  res.set('Content-Type', 'application/xml');
+  res.send(xml);
 });
 
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain');
-  res.send(`User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
+  res.send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${SITE}/sitemap.xml\n`);
 });
 
 // ─── ADMIN ────────────────────────────────────────────────
@@ -616,12 +650,12 @@ try { sess = JSON.parse(fs.readFileSync(TF, 'utf8')); } catch {}
 function saveS() { try { fs.writeFileSync(TF, JSON.stringify(sess)); } catch {} }
 
 function adminAuth(req, res, next) {
-  const t = req.headers['x-admin-token'] || req.query.token;
+  const t = req.headers['x-admin-token'];
   if (!t || !sess[t] || sess[t].exp < Date.now()) return res.status(401).json({ success: false, error: 'Unauthorized' });
   req.adminUser = sess[t].user; next();
 }
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
   const { username, password } = req.body || {};
   const adminUser = process.env.ADMIN_USER || 'admin';
   const adminPass = process.env.ADMIN_PASS;

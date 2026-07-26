@@ -313,13 +313,15 @@ router.post('/forgot', async (req, res) => {
         console.error('SMTP forgot-password:', mailErr.message);
       }
     }
+    if (!emailed) {
+      // Never return reset tokens to clients — log for admin ops only
+      console.log('[password-reset] token created for', user.username, resetUrl);
+    }
     res.json({
       success: true,
       message: emailed
         ? 'Reset email sent if the account has an email on file.'
-        : 'Reset token created. Use the link to set a new password.',
-      // Only expose link when SMTP not configured (self-host convenience)
-      resetUrl: emailed ? undefined : resetUrl,
+        : 'If an account exists, a reset was created. Contact support or check server logs if SMTP is not configured.',
       emailed
     });
   } catch (e) {

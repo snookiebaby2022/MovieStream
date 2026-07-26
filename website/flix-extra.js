@@ -478,7 +478,8 @@
   }
 
   function isAdFree() {
-    return !!(F.adFree || (global.S && S.user && S.user.adFree) || localStorage.getItem('fn_adfree') === '1');
+    if (typeof F.adFree === 'boolean') return F.adFree;
+    return !!(global.S && S.user && S.user.adFree);
   }
 
   function setAdFree(on) {
@@ -496,7 +497,8 @@
       if (!d || !d.success) return;
       F.payConfigured = !!d.configured;
       F.payLabel = d.label || '£1.00';
-      if (d.adFree) setAdFree(true);
+      // Always sync from server (clears forged localStorage)
+      setAdFree(!!d.adFree);
       var btn = $('adfreeBtn');
       if (btn) {
         btn.style.display = isAdFree() ? 'none' : 'inline-flex';

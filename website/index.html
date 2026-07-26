@@ -4,13 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FlixNova - Watch Free Movies &amp; TV Shows Online</title>
-<meta name="description" content="Watch free movies and TV shows online in HD. Stream the latest films on FlixNova.">
+<meta name="description" content="Stream free movies and TV shows in HD on FlixNova. Trending titles, cinema releases, and more — watch instantly in your browser or Android app.">
+<meta name="keywords" content="watch movies online, free TV shows, stream HD, FlixNova, trending movies">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://snookiebaby.xyz:8443/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="FlixNova">
+<meta property="og:title" content="FlixNova — Watch Movies &amp; TV Shows">
+<meta property="og:description" content="Stream trending movies and TV shows in HD. Free embeds, optional Ad-Free with Real-Debrid.">
+<meta property="og:url" content="https://snookiebaby.xyz:8443/">
+<meta property="og:image" content="https://snookiebaby.xyz:8443/icons/icon-512.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="FlixNova — Watch Movies &amp; TV Shows">
+<meta name="twitter:description" content="Stream trending movies and TV shows in HD on FlixNova.">
+<meta name="twitter:image" content="https://snookiebaby.xyz:8443/icons/icon-512.png">
 <meta name="theme-color" content="#e50914">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FlixNova">
 <link rel="manifest" href="/manifest.json">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"FlixNova","url":"https://snookiebaby.xyz:8443/","potentialAction":{"@type":"SearchAction","target":"https://snookiebaby.xyz:8443/?q={search_term_string}","query-input":"required name=search_term_string"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -472,7 +488,9 @@ function clearStore(){STORE={};STOREKEY=0;}
 var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
 function isAdFreeUser(){
-  return !!(window.FlixExtra&&FlixExtra.isAdFree&&FlixExtra.isAdFree())||!!(S.user&&S.user.adFree)||localStorage.getItem('fn_adfree')==='1';
+  // Prefer server-backed flags; localStorage is cache only (cleared when /me or pay/status says false)
+  if(window.FlixExtra&&typeof FlixExtra.isAdFree==='function')return !!FlixExtra.isAdFree();
+  return !!(S.user&&S.user.adFree);
 }
 function openWatchGate(item){
   if(item)S._pendingWatch=item;
@@ -856,34 +874,74 @@ function initArr(){document.querySelectorAll('.strip').forEach(function(el){uArr
 function rowsH(secs){S.rc=0;clearStore();return secs.map(function(s){return makeRow(s.title,s.items,s.ap);}).join('');}
 
 // ── SEE ALL ────────────────────────────────────────────────
+function seeAllAp(ap){
+  // Normalize row APIs for real pagination (drop bootstrap pages=N)
+  if(!ap)return '';
+  return String(ap).replace(/([?&])pages=\d+/g,'$1').replace(/[?&]$/,'').replace(/\?&/,'?');
+}
+function updateSeeAllCount(n){
+  var el=document.querySelector('.gvcount');
+  if(el)el.textContent=n+'+ titles';
+}
 function seeAll(id){
   var d=S.rd[id];if(!d)return;
   clearInterval(S.ht);$('hero').style.display='none';$('gbar').style.display='none';
   window.scrollTo({top:0,behavior:'smooth'});
   ld('Loading '+d.title+'...');
   var all=d.items.slice();
+  var seen={};all.forEach(function(i){seen[i.id]=1;});
   S.browsePage=1;
-  S.browseMoreAp=d.ap||'';
-  var doRender=function(){
+  S.browseTotalPages=1;
+  S.browseMoreAp=seeAllAp(d.ap||'');
+  S.browseSeen=seen;
+  var doRender=function(hasMore){
     clearStore();
     var cards=all.map(cardHTML).join('');
-    setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">'+d.title+'</div><div class="gvcount">'+all.length+'+ titles</div></div><button class="gvback" onclick="goBack()">&#8592; Back</button></div><div class="fgrid" id="browseGrid">'+cards+'</div>'+(d.ap?'<button class="loadmore" onclick="loadMoreSeeAll()">Load More</button>':'')+'</div>');
+    setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">'+he(d.title)+'</div><div class="gvcount">'+all.length+'+ titles</div></div><button class="gvback" onclick="goBack()">&#8592; Back</button></div><div class="fgrid" id="browseGrid">'+cards+'</div>'+(hasMore?'<button class="loadmore" id="seeAllMore" onclick="loadMoreSeeAll()">Load More</button>':'')+'</div>');
   };
-  if(d.ap){
-    api(d.ap).then(function(r){
-      if(r.success&&r.data&&r.data.length){var seen={};all.forEach(function(i){seen[i.id]=1;});r.data.forEach(function(item){if(!seen[item.id]){seen[item.id]=1;all.push(item);}});}
-      doRender();
-    }).catch(doRender);
-  }else{doRender();}
+  if(S.browseMoreAp){
+    api(S.browseMoreAp+(S.browseMoreAp.indexOf('?')>=0?'&':'?')+'page=1').then(function(r){
+      if(r.success&&r.data&&r.data.length){
+        r.data.forEach(function(item){if(!seen[item.id]){seen[item.id]=1;all.push(item);}});
+      }
+      S.browseTotalPages=Math.max(1, parseInt(r.totalPages,10)||1);
+      S.browsePage=1;
+      doRender(S.browsePage<S.browseTotalPages);
+    }).catch(function(){doRender(false);});
+  }else{doRender(false);}
 }
 function loadMoreSeeAll(){
   if(!S.browseMoreAp)return;
+  if(S.browsePage>=(S.browseTotalPages||1)){
+    var b=$('seeAllMore');if(b)b.remove();
+    return;
+  }
+  var btn=$('seeAllMore');
+  if(btn){btn.disabled=true;btn.textContent='Loading...';}
   S.browsePage=(S.browsePage||1)+1;
   var base=S.browseMoreAp;
   var q=base+(base.indexOf('?')>=0?'&':'?')+'page='+S.browsePage;
   api(q).then(function(d){
-    var g=$('browseGrid');if(!g||!d.data)return;
-    g.insertAdjacentHTML('beforeend',d.data.map(cardHTML).join(''));
+    var g=$('browseGrid');if(!g)return;
+    var seen=S.browseSeen||{};
+    var added=0;
+    (d.data||[]).forEach(function(item){
+      if(seen[item.id])return;
+      seen[item.id]=1;added++;
+      g.insertAdjacentHTML('beforeend',cardHTML(item));
+    });
+    S.browseSeen=seen;
+    if(d.totalPages)S.browseTotalPages=Math.max(S.browseTotalPages||1, parseInt(d.totalPages,10)||1);
+    updateSeeAllCount(g.children.length);
+    if(btn){
+      if(S.browsePage>=S.browseTotalPages||!(d.data&&d.data.length)||!added&&S.browsePage>2){
+        btn.remove();
+      }else{
+        btn.disabled=false;btn.textContent='Load More';
+      }
+    }
+  }).catch(function(){
+    if(btn){btn.disabled=false;btn.textContent='Load More';}
   });
 }
 function goBack(){go(S.section,null);}
@@ -913,7 +971,7 @@ function byG(id,type){
 
 // ── HERO (cinema trailers) ─────────────────────────────────
 function initH(items){
-  S.hl=(items||[]).filter(function(i){return!!i.backdrop;}).slice(0,8);
+  S.hl=(items||[]).filter(function(i){return!!i.backdrop;}).slice(0,20);
   S.hPaused=false;
   if(!S.hl.length){$('hero').style.display='none';return;}
   $('hero').style.display='flex';
@@ -1141,7 +1199,7 @@ function loadHome(){
     var hero=g(rs[0]);
     var day=g(rs[1]), week=g(rs[2]), now=g(rs[3]);
     if(hero.length)initH(hero);
-    else if(day.length||week.length)initH((day.length?day:week).slice(0,8));
+    else if(day.length||week.length)initH((day.length?day:week).slice(0,20));
     else $('hero').style.display='none';
     var cont=S.token?(Array.isArray(rs[10])?rs[10]:[]).filter(isValidContinueItem):[];
     if(S.token&&!cont.length)cont=cleanContinueLocal();
@@ -1151,13 +1209,13 @@ function loadHome(){
       {title:(window.FlixExtra?FlixExtra.t('trendingToday'):'Trending Today'),items:day.slice(0,24),ap:'/trending/day'},
       {title:'Trending This Week',items:week.slice(0,24),ap:'/trending/browse'},
       {title:'XXX · Adult',items:adult.slice(0,24),ap:'/discover/adult'},
-      {title:'Now in Cinemas',items:now.slice(0,24),ap:'/browse/movie?pages=3'},
-      {title:'Popular Movies',items:g(rs[4]).slice(0,24),ap:'/browse/movie?pages=5'},
-      {title:'Popular TV Shows',items:g(rs[5]).slice(0,24),ap:'/browse/tv?pages=5'},
-      {title:'Top Rated Movies',items:g(rs[6]).slice(0,24),ap:'/browse/movie?sort=vote_average.desc&pages=5'},
-      {title:'Top Rated TV',items:g(rs[7]).slice(0,24),ap:'/browse/tv?sort=vote_average.desc&pages=5'},
-      {title:'Airing Today',items:g(rs[8]).slice(0,24),ap:'/browse/tv?pages=3'},
-      {title:'Coming Soon',items:g(rs[9]).slice(0,24),ap:''},
+      {title:'Now in Cinemas',items:now.slice(0,24),ap:'/browse/movie'},
+      {title:'Popular Movies',items:g(rs[4]).slice(0,24),ap:'/browse/movie'},
+      {title:'Popular TV Shows',items:g(rs[5]).slice(0,24),ap:'/browse/tv'},
+      {title:'Top Rated Movies',items:g(rs[6]).slice(0,24),ap:'/browse/movie?sort=vote_average.desc'},
+      {title:'Top Rated TV',items:g(rs[7]).slice(0,24),ap:'/browse/tv?sort=vote_average.desc'},
+      {title:'Airing Today',items:g(rs[8]).slice(0,24),ap:'/browse/tv'},
+      {title:'Coming Soon',items:g(rs[9]).slice(0,24),ap:'/discover/movie/upcoming'},
     ].filter(function(s){return s.items.length>0;});
     if(!secs.length){setR('<div class="notice"><h3>Setup Required</h3><p>Add TMDB_API_KEY to .env then restart</p></div>');return;}
     setR(rowsH(secs));initArr();
@@ -1167,29 +1225,29 @@ function loadHome(){
 function loadMovies(){
   S.animeMode=false;loadGenres('movie');renderYearBar('movie');
   var calls=[
-    ['/discover/movie','🎬 Popular / Featured','/browse/movie?pages=5'],
-    ['/discover/movie/top','⭐ Top Rated (IMDb-style)','/browse/movie?sort=vote_average.desc&pages=5'],
-    ['/discover/movie/nowplaying','🎥 Now Playing','/browse/movie?pages=3'],
-    ['/discover/movie/upcoming','📅 Upcoming','/browse/movie?pages=3'],
-    ['/discover/genre/28/movie','💥 Action','/browse/movie?genre=28&pages=4'],
-    ['/discover/genre/12/movie','🧭 Adventure','/browse/movie?genre=12&pages=4'],
-    ['/discover/genre/16/movie','🎨 Animation','/browse/movie?genre=16&pages=4'],
-    ['/discover/genre/35/movie','😂 Comedy','/browse/movie?genre=35&pages=4'],
-    ['/discover/genre/80/movie','🕵️ Crime','/browse/movie?genre=80&pages=3'],
-    ['/discover/genre/99/movie','🎥 Documentary','/browse/movie?genre=99&pages=3'],
-    ['/discover/genre/18/movie','🎭 Drama','/browse/movie?genre=18&pages=4'],
-    ['/discover/genre/10751/movie','👨‍👩‍👧 Family','/browse/movie?genre=10751&pages=3'],
-    ['/discover/genre/14/movie','🧙 Fantasy','/browse/movie?genre=14&pages=4'],
-    ['/discover/genre/36/movie','📜 History','/browse/movie?genre=36&pages=3'],
-    ['/discover/genre/27/movie','👻 Horror','/browse/movie?genre=27&pages=4'],
-    ['/discover/genre/10402/movie','🎵 Music','/browse/movie?genre=10402&pages=3'],
-    ['/discover/genre/9648/movie','🧩 Mystery','/browse/movie?genre=9648&pages=3'],
-    ['/discover/genre/10749/movie','❤️ Romance','/browse/movie?genre=10749&pages=4'],
-    ['/discover/genre/878/movie','🚀 Science Fiction','/browse/movie?genre=878&pages=4'],
-    ['/discover/genre/10770/movie','📺 TV Movie','/browse/movie?genre=10770&pages=3'],
-    ['/discover/genre/53/movie','🔫 Thriller','/browse/movie?genre=53&pages=4'],
-    ['/discover/genre/10752/movie','⚔️ War','/browse/movie?genre=10752&pages=3'],
-    ['/discover/genre/37/movie','🤠 Western','/browse/movie?genre=37&pages=3']
+    ['/discover/movie','🎬 Popular / Featured','/browse/movie'],
+    ['/discover/movie/top','⭐ Top Rated (IMDb-style)','/browse/movie?sort=vote_average.desc'],
+    ['/discover/movie/nowplaying','🎥 Now Playing','/browse/movie'],
+    ['/discover/movie/upcoming','📅 Upcoming','/discover/movie/upcoming'],
+    ['/discover/genre/28/movie','💥 Action','/browse/movie?genre=28'],
+    ['/discover/genre/12/movie','🧭 Adventure','/browse/movie?genre=12'],
+    ['/discover/genre/16/movie','🎨 Animation','/browse/movie?genre=16'],
+    ['/discover/genre/35/movie','😂 Comedy','/browse/movie?genre=35'],
+    ['/discover/genre/80/movie','🕵️ Crime','/browse/movie?genre=80'],
+    ['/discover/genre/99/movie','🎥 Documentary','/browse/movie?genre=99'],
+    ['/discover/genre/18/movie','🎭 Drama','/browse/movie?genre=18'],
+    ['/discover/genre/10751/movie','👨‍👩‍👧 Family','/browse/movie?genre=10751'],
+    ['/discover/genre/14/movie','🧙 Fantasy','/browse/movie?genre=14'],
+    ['/discover/genre/36/movie','📜 History','/browse/movie?genre=36'],
+    ['/discover/genre/27/movie','👻 Horror','/browse/movie?genre=27'],
+    ['/discover/genre/10402/movie','🎵 Music','/browse/movie?genre=10402'],
+    ['/discover/genre/9648/movie','🧩 Mystery','/browse/movie?genre=9648'],
+    ['/discover/genre/10749/movie','❤️ Romance','/browse/movie?genre=10749'],
+    ['/discover/genre/878/movie','🚀 Science Fiction','/browse/movie?genre=878'],
+    ['/discover/genre/10770/movie','📺 TV Movie','/browse/movie?genre=10770'],
+    ['/discover/genre/53/movie','🔫 Thriller','/browse/movie?genre=53'],
+    ['/discover/genre/10752/movie','⚔️ War','/browse/movie?genre=10752'],
+    ['/discover/genre/37/movie','🤠 Western','/browse/movie?genre=37']
   ];
   return Promise.all(calls.map(function(c){return api(c[0]);})).then(function(rs){
     var secs=calls.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,24):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
@@ -1201,26 +1259,26 @@ function loadMovies(){
 function loadTV(){
   S.animeMode=false;loadGenres('tv');renderYearBar('tv');
   var calls=[
-    ['/discover/tv','📺 Popular TV Shows','/browse/tv?pages=5'],
-    ['/discover/tv/top','⭐ Top Rated TV','/browse/tv?sort=vote_average.desc&pages=5'],
-    ['/discover/tv/airing','📡 Airing Today','/browse/tv?pages=3'],
-    ['/discover/tv/ontheair','📻 On The Air','/browse/tv?pages=3'],
-    ['/discover/genre/10759/tv','💥 Action & Adventure','/browse/tv?genre=10759&pages=4'],
-    ['/discover/genre/16/tv','🎨 Animation','/browse/tv?genre=16&pages=4'],
-    ['/discover/genre/35/tv','😂 Comedy','/browse/tv?genre=35&pages=4'],
-    ['/discover/genre/80/tv','🕵️ Crime','/browse/tv?genre=80&pages=4'],
-    ['/discover/genre/99/tv','🎥 Documentary','/browse/tv?genre=99&pages=3'],
-    ['/discover/genre/18/tv','🎭 Drama','/browse/tv?genre=18&pages=4'],
-    ['/discover/genre/10751/tv','👨‍👩‍👧 Family','/browse/tv?genre=10751&pages=3'],
-    ['/discover/genre/10762/tv','🧒 Kids','/browse/tv?genre=10762&pages=3'],
-    ['/discover/genre/9648/tv','🧩 Mystery','/browse/tv?genre=9648&pages=4'],
-    ['/discover/genre/10763/tv','📰 News','/browse/tv?genre=10763&pages=2'],
-    ['/discover/genre/10764/tv','🎤 Reality','/browse/tv?genre=10764&pages=3'],
-    ['/discover/genre/10765/tv','🚀 Sci-Fi & Fantasy','/browse/tv?genre=10765&pages=4'],
-    ['/discover/genre/10766/tv','💗 Soap','/browse/tv?genre=10766&pages=3'],
-    ['/discover/genre/10767/tv','🎙️ Talk','/browse/tv?genre=10767&pages=2'],
-    ['/discover/genre/10768/tv','⚔️ War & Politics','/browse/tv?genre=10768&pages=3'],
-    ['/discover/genre/37/tv','🤠 Western','/browse/tv?genre=37&pages=2']
+    ['/discover/tv','📺 Popular TV Shows','/browse/tv'],
+    ['/discover/tv/top','⭐ Top Rated TV','/browse/tv?sort=vote_average.desc'],
+    ['/discover/tv/airing','📡 Airing Today','/browse/tv'],
+    ['/discover/tv/ontheair','📻 On The Air','/browse/tv'],
+    ['/discover/genre/10759/tv','💥 Action & Adventure','/browse/tv?genre=10759'],
+    ['/discover/genre/16/tv','🎨 Animation','/browse/tv?genre=16'],
+    ['/discover/genre/35/tv','😂 Comedy','/browse/tv?genre=35'],
+    ['/discover/genre/80/tv','🕵️ Crime','/browse/tv?genre=80'],
+    ['/discover/genre/99/tv','🎥 Documentary','/browse/tv?genre=99'],
+    ['/discover/genre/18/tv','🎭 Drama','/browse/tv?genre=18'],
+    ['/discover/genre/10751/tv','👨‍👩‍👧 Family','/browse/tv?genre=10751'],
+    ['/discover/genre/10762/tv','🧒 Kids','/browse/tv?genre=10762'],
+    ['/discover/genre/9648/tv','🧩 Mystery','/browse/tv?genre=9648'],
+    ['/discover/genre/10763/tv','📰 News','/browse/tv?genre=10763'],
+    ['/discover/genre/10764/tv','🎤 Reality','/browse/tv?genre=10764'],
+    ['/discover/genre/10765/tv','🚀 Sci-Fi & Fantasy','/browse/tv?genre=10765'],
+    ['/discover/genre/10766/tv','💗 Soap','/browse/tv?genre=10766'],
+    ['/discover/genre/10767/tv','🎙️ Talk','/browse/tv?genre=10767'],
+    ['/discover/genre/10768/tv','⚔️ War & Politics','/browse/tv?genre=10768'],
+    ['/discover/genre/37/tv','🤠 Western','/browse/tv?genre=37']
   ];
   return Promise.all(calls.map(function(c){return api(c[0]);})).then(function(rs){
     var secs=calls.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,24):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
@@ -1233,16 +1291,16 @@ function loadAnime(){
   S.animeMode=true;S.country='JP';
   renderYearBar('tv');
   return Promise.all([
-    api('/browse/tv?anime=1&pages=4'),
+    api('/browse/tv?anime=1&pages=3'),
     api('/browse/movie?anime=1&pages=3'),
     api('/browse/tv?anime=1&sort=vote_average.desc&pages=3'),
     api('/browse/tv?genre=16&country=JP&pages=3')
   ]).then(function(rs){
     var secs=[
-      {title:'🌸 Popular Anime',items:rs[0].data||[],ap:'/browse/tv?anime=1&pages=5'},
-      {title:'🎬 Anime Movies',items:rs[1].data||[],ap:'/browse/movie?anime=1&pages=4'},
-      {title:'⭐ Top Rated Anime',items:rs[2].data||[],ap:'/browse/tv?anime=1&sort=vote_average.desc&pages=4'},
-      {title:'🇯🇵 Japanese Animation',items:rs[3].data||[],ap:'/browse/tv?genre=16&country=JP&pages=4'}
+      {title:'🌸 Popular Anime',items:rs[0].data||[],ap:'/browse/tv?anime=1'},
+      {title:'🎬 Anime Movies',items:rs[1].data||[],ap:'/browse/movie?anime=1'},
+      {title:'⭐ Top Rated Anime',items:rs[2].data||[],ap:'/browse/tv?anime=1&sort=vote_average.desc'},
+      {title:'🇯🇵 Japanese Animation',items:rs[3].data||[],ap:'/browse/tv?genre=16&country=JP'}
     ].filter(function(s){return s.items.length>0;});
     if(secs[0]&&secs[0].items.length)initH(secs[0].items.filter(function(i){return!!i.backdrop;}));
     setR(secs.length?rowsH(secs):'<div class="empty">No anime found</div>');initArr();
@@ -1264,7 +1322,7 @@ function loadGenresPage(){
 }
 
 function loadNew(){
-  var calls=[['/discover/movie/nowplaying','🎬 New in Cinemas','/browse/movie?pages=3'],['/discover/movie/upcoming','📅 Coming Soon',''],['/discover/tv/airing','📡 Airing Today','/browse/tv?pages=3'],['/discover/tv/ontheair','📻 On Air','/browse/tv?pages=3'],['/trending','🔥 Trending Now','/trending/browse']];
+  var calls=[['/discover/movie/nowplaying','🎬 New in Cinemas','/browse/movie'],['/discover/movie/upcoming','📅 Coming Soon','/discover/movie/upcoming'],['/discover/tv/airing','📡 Airing Today','/browse/tv'],['/discover/tv/ontheair','📻 On Air','/browse/tv'],['/trending','🔥 Trending Now','/trending/browse']];
   return Promise.all(calls.map(function(c){return api(c[0]);})).then(function(rs){
     var secs=calls.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,24):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
     if(secs[0]&&secs[0].items.length)initH(secs[0].items.filter(function(i){return!!i.backdrop;}));
@@ -1716,7 +1774,7 @@ function pDir(url,idx){
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 function mFail(idx){S.failed[idx]=1;var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');}
-function showPE(msg){setSt('sfl','Failed');$('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p>'+msg+'</p><button class="pbtn" onclick="retryAll()">Try Again</button><button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button></div>';}
+function showPE(msg){setSt('sfl','Failed');$('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p></p><button class="pbtn" onclick="retryAll()">Try Again</button><button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button></div>';var p=$('pw').querySelector('p');if(p)p.textContent=String(msg||'Playback failed');}
 function retryAll(){
   if(!S.item)return;
   if(!requireWatchAuth(S.item))return;

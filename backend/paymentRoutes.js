@@ -107,22 +107,28 @@ router.get('/confirm', authOptional, async (req, res) => {
     if (session.metadata?.product !== 'adfree' && session.mode !== 'payment') {
       return res.status(400).json({ success: false, error: 'Invalid session' });
     }
-    let userId = session.client_reference_id || session.metadata?.userId || req.user?.id || '';
-    if (userId) {
-      if (!dbReady(res)) return;
-      await User.findByIdAndUpdate(userId, {
-        adFree: true,
-        adFreeAt: new Date(),
-        stripeSessionId: sessionId
+    // Only unlock the account that started checkout — never attach a guest session to a later login
+    const userId = session.client_reference_id || session.metadata?.userId || '';
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'This payment is not linked to an account. Sign in before checkout next time.'
       });
     }
+    if (req.user?.id && String(req.user.id) !== String(userId)) {
+      return res.status(403).json({ success: false, error: 'Payment belongs to a different account' });
+    }
+    if (!dbReady(res)) return;
+    await User.findByIdAndUpdate(userId, {
+      adFree: true,
+      adFreeAt: new Date(),
+      stripeSessionId: sessionId
+    });
     res.json({
       success: true,
       adFree: true,
-      linkedAccount: !!userId,
-      message: userId
-        ? 'Ad-free unlocked on your account'
-        : 'Ad-free unlocked on this browser. Sign in before paying next time to sync across devices.'
+      linkedAccount: true,
+      message: 'Ad-free unlocked on your account'
     });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -133,14 +139,14 @@ async function handleWebhook(req, res) {
   const stripe = stripeClient();
   const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
   if (!stripe) return res.status(503).send('Stripe not configured');
-  let event = req.body;
+  if (!secret) {
+    console.error('Stripe webhook rejected: STRIPE_WEBHOOK_SECRET not set');
+    return res.status(503).send('Webhook secret not configured');
+  }
+  let event;
   try {
-    if (secret) {
-      const sig = req.headers['stripe-signature'];
-      event = stripe.webhooks.constructEvent(req.body, sig, secret);
-    } else if (Buffer.isBuffer(req.body)) {
-      event = JSON.parse(req.body.toString('utf8'));
-    }
+    const sig = req.headers['stripe-signature'];
+    event = stripe.webhooks.constructEvent(req.body, sig, secret);
   } catch (err) {
     console.error('Stripe webhook signature:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);

@@ -1,7 +1,6 @@
-const CACHE = 'flixnova-v17';
+const CACHE = 'flixnova-v18';
 
 self.addEventListener('install', (e) => {
-  // Don't precache HTML — always take fresh UI after deploys
   e.waitUntil(self.skipWaiting());
 });
 
@@ -18,9 +17,12 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io')) return;
   if (e.request.method !== 'GET') return;
 
-  // Network-first for app shell so updates aren't stuck on "Loading..."
+  // Network-first for navigations + app shell (avoids stale /watch/... SPA shells)
+  const isNav = e.request.mode === 'navigate';
   const isShell =
+    isNav ||
     url.pathname === '/' ||
+    url.pathname.startsWith('/watch/') ||
     url.pathname.endsWith('.html') ||
     url.pathname.endsWith('.js') ||
     url.pathname.endsWith('.css') ||
@@ -33,7 +35,7 @@ self.addEventListener('fetch', (e) => {
         .then((res) => res)
         .catch(async () => {
           const cached = await caches.match(e.request);
-          return cached || Response.error();
+          return cached || caches.match('/index.html') || Response.error();
         })
     );
     return;
