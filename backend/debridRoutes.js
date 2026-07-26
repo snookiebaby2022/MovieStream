@@ -408,10 +408,15 @@ router.post('/streams', async (req, res) => {
     const cachedOnly = streams.filter(s => s.cached);
     if (cachedOnly.length >= 6) streams = cachedOnly;
 
-    // Prefer probing cached links first
-    const candidates = streams.slice(0, 48);
-    const filtered = await filterFailedResolves(candidates, { need: 16, concurrency: 8, maxCheck: 28 });
+    // Probe widely — browser-score order often puts broken "friendly" releases first while
+    // working 4K [RD+] links sit lower. Keep checking until we have enough real redirects.
+    const filtered = await filterFailedResolves(streams, { need: 16, concurrency: 10, maxCheck: 64 });
     streams = filtered.streams;
+    // Re-rank survivors for the player
+    streams.sort((a, b) =>
+      (b.browserScore - a.browserScore) ||
+      (b.seeders || 0) - (a.seeders || 0)
+    );
     if (filtered.dropped) {
       console.log('Debrid filtered stubs:', filtered.dropped, 'kept', streams.length, path);
     }
