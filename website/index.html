@@ -712,10 +712,16 @@ function he(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 function api(path){
   var headers={};
   if(S.token)headers['x-user-token']=S.token;
-  return fetch(API+path,{headers:headers}).then(function(r){
+  var ctrl=typeof AbortController!=='undefined'?new AbortController():null;
+  var timer=ctrl?setTimeout(function(){try{ctrl.abort();}catch(e){}},20000):null;
+  return fetch(API+path,{headers:headers,signal:ctrl?ctrl.signal:undefined,cache:'no-store'}).then(function(r){
+    if(timer)clearTimeout(timer);
     if(r.status===401)throw new Error('Login required to watch');
     if(!r.ok)throw new Error('HTTP '+r.status);
     return r.json();
+  }).catch(function(e){
+    if(timer)clearTimeout(timer);
+    throw e;
   });
 }
 function setR(h){$('rows').innerHTML=h;}
@@ -995,20 +1001,21 @@ function loadMoreBrowse(){
 
 function loadHome(){
   var contP=(window.FlixExtra&&S.token)?FlixExtra.loadContinueFromServer():Promise.resolve(lsGet('fn_continue',[]));
-  return Promise.all([
-    api('/hero'),
-    api('/trending/day'),
-    api('/trending'),
-    api('/discover/movie/nowplaying'),
-    api('/discover/movie'),
-    api('/discover/tv'),
-    api('/discover/movie/top'),
-    api('/discover/tv/top'),
-    api('/discover/tv/airing'),
-    api('/discover/movie/upcoming'),
-    contP
-  ]).then(function(rs){
-    var g=function(r){try{return r.data&&r.data.length?r.data:[];}catch(e){return[];}};
+  var calls=[
+    api('/hero').catch(function(){return {success:false,data:[]};}),
+    api('/trending/day').catch(function(){return {success:false,data:[]};}),
+    api('/trending').catch(function(){return {success:false,data:[]};}),
+    api('/discover/movie/nowplaying').catch(function(){return {success:false,data:[]};}),
+    api('/discover/movie').catch(function(){return {success:false,data:[]};}),
+    api('/discover/tv').catch(function(){return {success:false,data:[]};}),
+    api('/discover/movie/top').catch(function(){return {success:false,data:[]};}),
+    api('/discover/tv/top').catch(function(){return {success:false,data:[]};}),
+    api('/discover/tv/airing').catch(function(){return {success:false,data:[]};}),
+    api('/discover/movie/upcoming').catch(function(){return {success:false,data:[]};}),
+    contP.catch(function(){return [];})
+  ];
+  return Promise.all(calls).then(function(rs){
+    var g=function(r){try{return r&&r.data&&r.data.length?r.data:[];}catch(e){return[];}};
     var hero=g(rs[0]);
     var day=g(rs[1]), week=g(rs[2]), now=g(rs[3]);
     if(hero.length)initH(hero);

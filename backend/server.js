@@ -62,11 +62,18 @@ io.on('connection', sock => {
 });
 
 // ─── Middleware ───────────────────────────────────────────
+// Behind nginx/Cloudflare — required so express-rate-limit doesn't throw on X-Forwarded-For
+app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(compression());
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
-app.use(rateLimit({ windowMs: 60000, max: 400, skip: req => req.path.startsWith('/api/admin') }));
+app.use(rateLimit({
+  windowMs: 60000,
+  max: 400,
+  skip: req => req.path.startsWith('/api/admin'),
+  validate: { xForwardedForHeader: false }
+}));
 
 // ─── Redis ────────────────────────────────────────────────
 const redis = require('redis');
