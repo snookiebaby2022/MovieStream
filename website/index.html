@@ -605,7 +605,15 @@ function refreshAuthBtn(){
   if(S.user){
     b.textContent=S.user.username+' ▾';
     b.classList.add('primary');
-    b.onclick=function(){if(confirm('Sign out?')){S.token='';S.user=null;localStorage.removeItem('fn_token');localStorage.removeItem('fn_welcome_dismiss');if(window.FlixExtra){FlixExtra.F.profile=null;FlixExtra.F.profiles=[];FlixExtra.setAdFree(false);}refreshAuthBtn();refreshRdBtn();var pb=$('profBtn');if(pb)pb.style.display='none';maybeShowWelcome();}}};
+    b.onclick=function(){
+      if(confirm('Sign out?')){
+        S.token='';S.user=null;localStorage.removeItem('fn_token');localStorage.removeItem('fn_welcome_dismiss');
+        if(window.FlixExtra){FlixExtra.F.profile=null;FlixExtra.F.profiles=[];FlixExtra.setAdFree(false);}
+        refreshAuthBtn();refreshRdBtn();
+        var pb=$('profBtn');if(pb)pb.style.display='none';
+        maybeShowWelcome();
+      }
+    };
     if(reg)reg.style.display='none';
   }else{
     b.textContent='Log In';
