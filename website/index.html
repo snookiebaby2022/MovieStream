@@ -1933,6 +1933,25 @@ function checkAndDropRd(url,idx){
     return false;
   }).catch(function(){return false;});
 }
+/** RD copyright blocks often play as a ~30s orange stub video — not an HTML error */
+function isRdCopyrightStub(video, source){
+  if(!S.debridMode||!video)return false;
+  var d=video.duration;
+  if(!isFinite(d)||d<=0)return false;
+  var sizeStr=String((source&&source.size)||'');
+  var bigLabel=/GB/i.test(sizeStr)||(/\d+(?:\.\d+)?\s*MB/i.test(sizeStr)&&parseFloat(sizeStr)>80);
+  // Known stub length from RD is ~30s; also reject tiny clips labeled as multi‑GB rips
+  if(d>0&&d<=45)return true;
+  if(bigLabel&&d<120)return true;
+  return false;
+}
+function dropCopyrightStub(url,idx,gen){
+  if(gen&&gen!==S.playGen)return;
+  destroyPlayer();
+  setSt('sld','Blocked RD link (copyright) — removing…');
+  if(url)dropSrcUrls([url],'copyright');
+  else{mFail(idx);tryS(idx+1);}
+}
 function handleSrc(data){
   destroyPlayer();
   S.src=(data&&data.sources)?data.sources:[];
@@ -2002,8 +2021,23 @@ function tryS(idx){
     pEmb(url,idx,gen);return;
   }
   if(engine==='embed'){pEmb(url,idx,gen);return;}
-  if(engine==='hls'||isHlsUrl(url,s)){pHls(url,idx,gen);return;}
-  pDir(url,idx,gen);
+
+  var startEngine=function(){
+    if(gen!==S.playGen)return;
+    if(engine==='hls'||isHlsUrl(url,s))pHls(url,idx,gen);
+    else pDir(url,idx,gen);
+  };
+  // Pre-check RD links so the orange copyright stub never appears in the player
+  if(s.debrid&&S.token){
+    setSt('sld','Checking RD link for copyright blocks…');
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Checking Real-Debrid link...</span></div>';
+    checkAndDropRd(url,idx).then(function(dropped){
+      if(dropped||gen!==S.playGen)return;
+      startEngine();
+    });
+    return;
+  }
+  startEngine();
 }
 function loadEmbedFallback(){
   if(!S.item)return;
@@ -2105,6 +2139,12 @@ function pHls(url,idx,gen){
         checkAndDropRd(url,idx).then(function(dropped){if(!dropped)goNext();});
       }else goNext();
     };
+    var watchStub=function(){
+      if(failed||(gen&&gen!==S.playGen))return;
+      if(isRdCopyrightStub(v,S.src[idx])){failed=true;dropCopyrightStub(url,idx,gen);}
+    };
+    v.addEventListener('loadedmetadata',watchStub);
+    v.addEventListener('durationchange',watchStub);
     S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},isNativeApp()?16000:12000);
     var useWorker=!isNativeApp();
     if(window.Hls&&Hls.isSupported()){
@@ -2120,6 +2160,8 @@ function pHls(url,idx,gen){
       h.on(Hls.Events.MANIFEST_PARSED,function(){
         if(gen&&gen!==S.playGen)return;
         if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+        watchStub();
+        if(failed)return;
         v.play().catch(function(){});
         setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':'')+' · HLS');
         if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
@@ -2148,7 +2190,10 @@ function pDir(url,idx,gen){
     if(!v){mFail(idx);tryS(idx+1);return;}
     var settled=false;
     var ok=function(){
-      if(settled||(gen&&gen!==S.playGen))return;settled=true;
+      if(settled||(gen&&gen!==S.playGen))return;
+      // Catch RD's ~30s copyright stub before treating as success
+      if(isRdCopyrightStub(v,S.src[idx])){settled=true;dropCopyrightStub(url,idx,gen);return;}
+      settled=true;
       if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
       setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':'')+' · HTML5');
     };
@@ -2161,6 +2206,7 @@ function pDir(url,idx,gen){
         checkAndDropRd(url,idx).then(function(dropped){if(!dropped)goNext();});
       }else goNext();
     };
+    v.addEventListener('loadedmetadata',ok);
     v.oncanplay=ok;
     v.onloadeddata=ok;
     v.onerror=fail;

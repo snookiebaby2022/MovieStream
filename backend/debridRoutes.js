@@ -123,6 +123,12 @@ async function probeStreamUrl(url) {
     const buf = Buffer.from(r.data || []);
     const text = buf.toString('utf8', 0, Math.min(buf.length, 4000));
 
+    // Content-Range: bytes 0-4095/TOTAL — copyright stubs are tiny videos (~100KB–5MB)
+    let totalBytes = parseInt(r.headers['content-length'] || '0', 10) || 0;
+    const cr = String(r.headers['content-range'] || '');
+    const crm = cr.match(/\/(\d+)\s*$/);
+    if (crm) totalBytes = parseInt(crm[1], 10) || totalBytes;
+
     if (status === 451 || INFRINGE_RE.test(text)) {
       return { url, ok: false, reason: 'copyright' };
     }
@@ -138,12 +144,17 @@ async function probeStreamUrl(url) {
       }
     } catch {}
 
+    // RD serves a short orange "copyright infringement" MP4 stub — usually under ~8MB
+    if (totalBytes > 0 && totalBytes < 8 * 1024 * 1024 && /video|octet-stream|mp4/i.test(ct)) {
+      return { url, ok: false, reason: 'copyright_stub' };
+    }
+
     // Working media usually redirects to video/octet-stream (even with Range)
     if (status >= 200 && status < 400 && /video|audio|mpegurl|octet-stream|mp2t|mp4/i.test(ct)) {
-      return { url, ok: true, reason: 'media' };
+      return { url, ok: true, reason: 'media', bytes: totalBytes || undefined };
     }
     if (status >= 200 && status < 400 && !/text\/html/i.test(ct) && buf.length > 0) {
-      return { url, ok: true, reason: 'ok' };
+      return { url, ok: true, reason: 'ok', bytes: totalBytes || undefined };
     }
     if (/text\/html/i.test(ct) && /real-?debrid|error|removed/i.test(text)) {
       return { url, ok: false, reason: 'rd_error' };
