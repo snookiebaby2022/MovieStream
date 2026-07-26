@@ -1,4 +1,4 @@
-const CACHE = 'flixnova-v16';
+const CACHE = 'flixnova-v17';
 
 self.addEventListener('install', (e) => {
   // Don't precache HTML — always take fresh UI after deploys

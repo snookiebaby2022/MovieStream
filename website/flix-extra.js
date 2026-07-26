@@ -13,7 +13,7 @@
   };
 
   var HOUSE_ADS = [
-    { t: 'Go Ad-Free forever', d: 'One-time £1 — Real-Debrid streams + no FlixNova ads.', cta: 'Unlock £1', action: 'pay' },
+    { t: 'Go Ad-Free forever', d: 'One-time £1 — Real-Debrid, no ads, and Adult/XXX catalog.', cta: 'Unlock £1', action: 'pay' },
     { t: 'Real-Debrid for members', d: 'Paying members get direct RD links. Free accounts use embeds.', cta: 'Unlock £1', action: 'pay' },
     { t: 'Request missing titles', d: 'Can’t find something? Send a request and we’ll check it.', cta: 'Request', action: 'request' }
   ];
@@ -622,6 +622,7 @@
     if (isAdFree()) closePayPromo(false);
     injectRowAds();
     if (typeof refreshRdBtn === 'function') refreshRdBtn();
+    if (typeof syncAdultUi === 'function') syncAdultUi();
   }
 
   function init() {

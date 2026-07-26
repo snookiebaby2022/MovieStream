@@ -146,9 +146,24 @@ function mapItem(r) {
   };
 }
 
-function wantAdult(req) {
+function wantAdultQuery(req) {
   const v = req?.query?.adult;
   return v === '1' || v === 'true' || v === 'yes';
+}
+
+/** Adult/XXX is Ad-Free only — query flag alone is not enough */
+async function allowAdult(req) {
+  if (!wantAdultQuery(req)) return false;
+  const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const payload = verifyToken(tok);
+  if (!payload?.id) return false;
+  try {
+    if (require('mongoose').connection.readyState !== 1) return false;
+    const u = await User.findById(payload.id).select('adFree');
+    return !!u?.adFree;
+  } catch {
+    return false;
+  }
 }
 
 function filterAdult(list, allow) {
@@ -160,7 +175,7 @@ function filterAdult(list, allow) {
 async function discRoute(req, res, path, type, ck, ttl = 3600, extra = {}) {
   try {
     const page = req.query.page || 1;
-    const adult = wantAdult(req);
+    const adult = await allowAdult(req);
     const k = `${ck}:${page}:a${adult ? 1 : 0}`;
     const c = await getC(k);
     if (c) return res.json({ success: true, data: c.r, totalPages: c.tp });
@@ -185,7 +200,7 @@ app.get('/api/online', (req, res) => res.json({ success: true, count: online.siz
 
 app.get('/api/trending', async (req, res) => {
   try {
-    const adult = wantAdult(req);
+    const adult = await allowAdult(req);
     const ck = `trending:week:v3:a${adult ? 1 : 0}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
@@ -202,7 +217,7 @@ app.get('/api/trending', async (req, res) => {
 
 app.get('/api/trending/day', async (req, res) => {
   try {
-    const adult = wantAdult(req);
+    const adult = await allowAdult(req);
     const ck = `trending:day:v3:a${adult ? 1 : 0}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
@@ -219,7 +234,7 @@ app.get('/api/trending/day', async (req, res) => {
 
 app.get('/api/trending/browse', async (req, res) => {
   try {
-    const adult = wantAdult(req);
+    const adult = await allowAdult(req);
     const ck = `trending:browse:v3:a${adult ? 1 : 0}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
@@ -241,7 +256,7 @@ app.get('/api/trending/browse', async (req, res) => {
 /** Cinema hero: trending titles that have YouTube trailers */
 app.get('/api/hero', async (req, res) => {
   try {
-    const adult = wantAdult(req);
+    const adult = await allowAdult(req);
     const c = await getC(`hero:trailers:v2:a${adult ? 1 : 0}`);
     if (c) return res.json({ success: true, data: c });
     const [day, week, now] = await Promise.all([
@@ -285,40 +300,59 @@ app.get('/api/hero', async (req, res) => {
   }
 });
 
-/** Adult / XXX catalog (only returned when adult=1) */
+/** Adult / XXX catalog — Ad-Free accounts only */
 app.get('/api/discover/adult', async (req, res) => {
   try {
-    if (!wantAdult(req)) {
-      return res.json({ success: true, data: [], note: 'Adult mode is off' });
+    if (!(await allowAdult(req))) {
+      return res.status(403).json({
+        success: false,
+        error: 'Adult / XXX is included with Ad-Free £1. Unlock then turn XXX On.',
+        code: 'ADFREE_REQUIRED'
+      });
     }
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const ck = `adult:cat:v2:${page}`;
+    const ck = `adult:cat:v3:${page}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.r, totalPages: c.tp });
     const all = [];
-    // TMDB buries adult=true titles in normal discover; mix discover pages + targeted searches
-    const queries = ['adult', 'erotic', 'xxx', 'pornographic', 'softcore'];
-    await Promise.all(queries.map(async (q) => {
-      const d = await tmdb('/search/movie', { query: q, page, include_adult: true });
+    // Broad query set — TMDB buries adult=true in normal discover
+    const queries = [
+      'adult', 'erotic', 'xxx', 'porn', 'pornographic', 'softcore', 'hardcore',
+      'nude', 'sex', 'sexy', 'lesbian', 'gay porn', 'milf', 'teen adult',
+      'hentai', 'uncensored', 'explicit', 'fetish', 'bdsm', 'orgy',
+      'playboy', 'penthouse', 'blue movie', 'adult film', 'xxx movie',
+      'pornstar', 'amateur adult', 'japanese adult', 'european adult'
+    ];
+    const searchPages = [page, page + 1, page + 2].filter(p => p >= 1);
+    await Promise.all(queries.flatMap((q) => searchPages.map(async (p) => {
+      const d = await tmdb('/search/movie', { query: q, page: p, include_adult: true });
       if (d?.results) {
         all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
       }
-    }));
-    for (let p = page; p < page + 6; p++) {
-      const d = await tmdb('/discover/movie', {
-        page: p,
-        include_adult: true,
-        sort_by: 'popularity.desc'
-      });
-      if (!d?.results) break;
-      all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
+      const tv = await tmdb('/search/tv', { query: q, page: p, include_adult: true });
+      if (tv?.results) {
+        all.push(...tv.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'tv' })));
+      }
+    })));
+    for (let p = page; p < page + 12; p++) {
+      const [dm, dt] = await Promise.all([
+        tmdb('/discover/movie', { page: p, include_adult: true, sort_by: 'popularity.desc' }),
+        tmdb('/discover/tv', { page: p, include_adult: true, sort_by: 'popularity.desc' })
+      ]);
+      if (dm?.results) all.push(...dm.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
+      if (dt?.results) all.push(...dt.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'tv' })));
     }
     const seen = new Set();
     const r = all
-      .filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; })
+      .filter(x => {
+        const k = (x.type || 'movie') + ':' + x.id;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
       .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    await setC(ck, { r, tp: Math.max(20, page + 5) }, 1800);
-    res.json({ success: true, data: r, totalPages: Math.max(20, page + 5) });
+    await setC(ck, { r, tp: Math.max(40, page + 10) }, 1800);
+    res.json({ success: true, data: r, totalPages: Math.max(40, page + 10) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -343,7 +377,7 @@ app.get('/api/browse/:type', async (req, res) => {
   try {
     const { type } = req.params;
     const { genre, sort, pages, year, page, country, decade, anime, kids } = req.query;
-    const adult = wantAdult(req) && kids !== '1' && kids !== 'true';
+    const adult = (await allowAdult(req)) && kids !== '1' && kids !== 'true';
     const pageNum = Math.max(1, parseInt(page) || 1);
     const n = Math.min(parseInt(pages) || (page ? 1 : 3), 10);
     const s = sort || 'popularity.desc';
@@ -425,7 +459,7 @@ app.get('/api/search/:query', async (req, res) => {
   try {
     const q = req.params.query.trim();
     const page = req.query.page || 1;
-    const adult = wantAdult(req);
+    const adult = await allowAdult(req);
     const ck = `search:v2:${q.toLowerCase()}:${page}:a${adult ? 1 : 0}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
@@ -444,7 +478,7 @@ app.get('/api/search/:query', async (req, res) => {
 app.get('/api/details/:tmdbId/:type', async (req, res) => {
   try {
     const { tmdbId, type } = req.params;
-    const adult = wantAdult(req);
+    const adult = await allowAdult(req);
     const ck = `det:v2:${tmdbId}:${type}`;
     const c = await getC(ck);
     if (c) {

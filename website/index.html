@@ -377,13 +377,13 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
   <div class="promo-box" role="dialog" aria-labelledby="promoTitle">
     <button type="button" class="promo-x" onclick="FlixExtra.closePayPromo()" aria-label="Close">✕</button>
     <div class="promo-kicker">One-time unlock</div>
-    <h2 id="promoTitle">Watch with Real-Debrid — Ad-Free</h2>
+    <h2 id="promoTitle">Ad-Free + Real-Debrid + XXX</h2>
     <p class="promo-price">£1 <span>forever · no subscription</span></p>
-    <p>Skip embed ads and play Direct Real-Debrid streams on every title you watch.</p>
+    <p>One payment unlocks premium streams, no FlixNova ads, and the Adult/XXX catalog.</p>
     <ul class="promo-perks">
       <li><span>▶</span><span><b>Real-Debrid links</b> — direct HD streams, not iframe embeds</span></li>
       <li><span>✕</span><span><b>Ad-Free player</b> — no FlixNova ads while you watch</span></li>
-      <li><span>✓</span><span><b>Everything unlocked</b> — RD + embed backups when needed</span></li>
+      <li><span>✕</span><span><b>Adult / XXX catalog</b> — toggle in the header (off by default)</span></li>
     </ul>
     <div class="promo-actions">
       <button type="button" class="pbtn" id="promoPayBtn" onclick="FlixExtra.startCheckout()">Unlock Ad-Free for £1</button>
@@ -739,6 +739,7 @@ function nm(n){return n?String(Math.round(Number(n)*10)/10):'';}
 function he(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function adultModeOn(){
   if(window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive())return false;
+  if(!isAdFreeUser())return false;
   return localStorage.getItem('fn_adult')==='1';
 }
 function withAdult(path){
@@ -747,13 +748,19 @@ function withAdult(path){
 }
 function syncAdultUi(){
   var on=adultModeOn();
+  var paid=isAdFreeUser();
   var btn=$('xxxBtn');
   if(btn){
     var kids=window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive();
     btn.style.display=kids?'none':'';
     btn.classList.toggle('on',on);
-    btn.textContent=on?'XXX On':'XXX Off';
-    btn.title=on?'Adult content visible — click to hide':'Adult / XXX content (off by default)';
+    if(!paid){
+      btn.textContent='XXX £1';
+      btn.title='Adult / XXX is included with Ad-Free £1';
+    }else{
+      btn.textContent=on?'XXX On':'XXX Off';
+      btn.title=on?'Adult content visible — click to hide':'Adult / XXX (Ad-Free perk · off by default)';
+    }
   }
   var nav=$('nb-adult');
   if(nav)nav.style.display=on?'':'none';
@@ -761,6 +768,11 @@ function syncAdultUi(){
 function toggleAdultMode(){
   if(window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive()){
     alert('Adult mode is disabled on Kids profiles.');
+    return;
+  }
+  if(!isAdFreeUser()){
+    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+    else alert('Adult / XXX is included with Ad-Free £1.');
     return;
   }
   if(!adultModeOn()){
@@ -982,6 +994,11 @@ function stopHeroMedia(){
 // ── NAV ────────────────────────────────────────────────────
 function goHome(){go('home',$('nb-home'));}
 function loadAdult(){
+  if(!isAdFreeUser()){
+    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+    go('home',$('nb-home'));
+    return Promise.resolve();
+  }
   if(!adultModeOn()){go('home',$('nb-home'));return Promise.resolve();}
   clearInterval(S.ht);$('hero').style.display='none';ld('Loading XXX...');
   return api('/discover/adult').then(function(d){

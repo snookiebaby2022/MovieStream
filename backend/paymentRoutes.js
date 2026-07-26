@@ -18,6 +18,7 @@ function stripeClient() {
 }
 
 function siteUrl() {
+  // Prefer full public URL including port if the site is not on 443
   return (process.env.SITE_URL || 'https://snookiebaby.xyz:8443').replace(/\/$/, '');
 }
 
@@ -74,8 +75,8 @@ router.post('/checkout', authOptional, async (req, res) => {
           currency: CURRENCY,
           unit_amount: PRICE_PENCE,
           product_data: {
-            name: 'FlixNova Ad-Free (lifetime)',
-            description: 'One-time unlock — remove FlixNova site ads forever on this account/browser.'
+            name: 'FlixNova Ad-Free + XXX (lifetime)',
+            description: 'One-time unlock — Real-Debrid streams, no FlixNova ads, and Adult/XXX catalog on this account.'
           }
         }
       }],
