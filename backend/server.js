@@ -150,19 +150,31 @@ app.get('/api/online', (req, res) => res.json({ success: true, count: online.siz
 
 app.get('/api/trending', async (req, res) => {
   try {
-    const c = await getC('trending');
+    const c = await getC('trending:week:v2');
     if (c) return res.json({ success: true, data: c });
     const d = await tmdb('/trending/all/week');
     if (!d) return res.json({ success: true, data: [] });
     const r = d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem);
-    await setC('trending', r, 3600);
+    await setC('trending:week:v2', r, 900);
+    res.json({ success: true, data: r });
+  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.get('/api/trending/day', async (req, res) => {
+  try {
+    const c = await getC('trending:day:v2');
+    if (c) return res.json({ success: true, data: c });
+    const d = await tmdb('/trending/all/day');
+    if (!d) return res.json({ success: true, data: [] });
+    const r = d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem);
+    await setC('trending:day:v2', r, 600);
     res.json({ success: true, data: r });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.get('/api/trending/browse', async (req, res) => {
   try {
-    const c = await getC('trending:browse');
+    const c = await getC('trending:browse:v2');
     if (c) return res.json({ success: true, data: c });
     const all = [];
     for (let p = 1; p <= 3; p++) {
@@ -170,19 +182,64 @@ app.get('/api/trending/browse', async (req, res) => {
       if (d?.results) all.push(...d.results.filter(x=>x.media_type==='movie'||x.media_type==='tv').map(mapItem));
     }
     const seen = new Set(); const u = all.filter(x => { if(seen.has(x.id))return false; seen.add(x.id); return true; });
-    await setC('trending:browse', u, 3600);
+    await setC('trending:browse:v2', u, 900);
     res.json({ success: true, data: u });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.get('/api/discover/movie',            (q,s) => discRoute(q,s,'/movie/popular',    'movie','pop:movie'));
-app.get('/api/discover/movie/top',        (q,s) => discRoute(q,s,'/movie/top_rated',  'movie','top:movie'));
-app.get('/api/discover/movie/nowplaying', (q,s) => discRoute(q,s,'/movie/now_playing','movie','now:movie'));
-app.get('/api/discover/movie/upcoming',   (q,s) => discRoute(q,s,'/movie/upcoming',   'movie','up:movie'));
-app.get('/api/discover/tv',               (q,s) => discRoute(q,s,'/tv/popular',       'tv',  'pop:tv'));
-app.get('/api/discover/tv/top',           (q,s) => discRoute(q,s,'/tv/top_rated',     'tv',  'top:tv'));
-app.get('/api/discover/tv/airing',        (q,s) => discRoute(q,s,'/tv/airing_today',  'tv',  'air:tv'));
-app.get('/api/discover/tv/ontheair',      (q,s) => discRoute(q,s,'/tv/on_the_air',    'tv',  'onair:tv'));
+/** Cinema hero: trending titles that have YouTube trailers */
+app.get('/api/hero', async (req, res) => {
+  try {
+    const c = await getC('hero:trailers:v1');
+    if (c) return res.json({ success: true, data: c });
+    const [day, week, now] = await Promise.all([
+      tmdb('/trending/all/day'),
+      tmdb('/trending/all/week'),
+      tmdb('/movie/now_playing')
+    ]);
+    const pool = [];
+    const seen = new Set();
+    const push = (list, forceType) => {
+      (list?.results || []).forEach(r => {
+        const type = forceType || r.media_type;
+        if (type !== 'movie' && type !== 'tv') return;
+        const key = type + ':' + r.id;
+        if (seen.has(key) || !r.backdrop_path) return;
+        seen.add(key);
+        pool.push({ ...r, media_type: type });
+      });
+    };
+    push(day); push(week); push(now, 'movie');
+    pool.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    const candidates = pool.slice(0, 14);
+    const out = [];
+    await Promise.all(candidates.map(async (r) => {
+      try {
+        const vids = await tmdb(`/${r.media_type}/${r.id}/videos`);
+        const trailer = (vids?.results || []).find(v =>
+          v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
+        );
+        if (!trailer?.key) return;
+        out.push({ ...mapItem(r), trailerKey: trailer.key, trailerName: trailer.name || 'Trailer' });
+      } catch {}
+    }));
+    out.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    const data = out.slice(0, 8);
+    await setC('hero:trailers:v1', data, 1200);
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.get('/api/discover/movie',            (q,s) => discRoute(q,s,'/movie/popular',    'movie','pop:movie', 1800));
+app.get('/api/discover/movie/top',        (q,s) => discRoute(q,s,'/movie/top_rated',  'movie','top:movie', 3600));
+app.get('/api/discover/movie/nowplaying', (q,s) => discRoute(q,s,'/movie/now_playing','movie','now:movie', 900));
+app.get('/api/discover/movie/upcoming',   (q,s) => discRoute(q,s,'/movie/upcoming',   'movie','up:movie', 1800));
+app.get('/api/discover/tv',               (q,s) => discRoute(q,s,'/tv/popular',       'tv',  'pop:tv', 1800));
+app.get('/api/discover/tv/top',           (q,s) => discRoute(q,s,'/tv/top_rated',     'tv',  'top:tv', 3600));
+app.get('/api/discover/tv/airing',        (q,s) => discRoute(q,s,'/tv/airing_today',  'tv',  'air:tv', 900));
+app.get('/api/discover/tv/ontheair',      (q,s) => discRoute(q,s,'/tv/on_the_air',    'tv',  'onair:tv', 900));
 
 app.get('/api/discover/genre/:genreId/:type', (req, res) => {
   const { genreId, type } = req.params;

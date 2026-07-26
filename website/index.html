@@ -9,39 +9,49 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23e50914' width='100' height='100' rx='20'/><text x='50' y='72' text-anchor='middle' font-size='60' font-family='Arial' fill='white'>F</text></svg>">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23e50914' width='100' height='100' rx='20'/><text x='50' y='72' text-anchor='middle' font-size='60' font-family='Arial' fill='white'>F</text></svg>">
 <style>
 :root{--bg:#0a0a0a;--s1:#0f0f0f;--s2:#141414;--s3:#1a1a1a;--s4:#222;--s5:#2e2e2e;--red:#e50914;--red2:#b20710;--gold:#f5c518;--green:#46d369;--text:#fff;--t2:#b3b3b3;--t3:#808080;--t4:#4d4d4d;--r:6px;--r2:8px;--r3:14px}
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--s5);border-radius:4px}
-#hdr{position:fixed;top:0;left:0;right:0;z-index:900;height:62px;display:flex;align-items:center;gap:14px;padding:0 4%;background:linear-gradient(180deg,rgba(0,0,0,.9),transparent);transition:background .4s}
-#hdr.bg{background:rgba(10,10,10,.97);border-bottom:1px solid rgba(255,255,255,.04)}
-.logo{display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0}
-.logo-i{width:30px;height:30px;background:var(--red);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff}
-.logo-t{font-size:18px;font-weight:800;letter-spacing:-.5px}.logo-t b{color:var(--red)}
-.nav{display:flex;gap:1px}.nb{padding:6px 11px;border-radius:var(--r);font-size:13px;font-weight:500;color:var(--t2);cursor:pointer;background:none;border:none;transition:all .2s}.nb:hover{color:#fff;background:rgba(255,255,255,.07)}.nb.on{color:#fff;font-weight:600}
-.sbar{flex:1;max-width:380px;margin:0 auto;display:flex;align-items:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:20px;overflow:hidden;transition:all .2s}
-.sbar:focus-within{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);box-shadow:0 0 0 3px rgba(229,9,20,.12)}
-.sbar input{flex:1;padding:8px 14px;background:0;border:0;outline:0;color:#fff;font-size:13px}.sbar input::placeholder{color:rgba(255,255,255,.28)}
-.sbar button{padding:8px 13px;background:0;border:0;color:var(--t3);cursor:pointer;font-size:14px;transition:color .2s}.sbar button:hover{color:#fff}
-.opill{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:14px;background:rgba(70,211,105,.1);border:1px solid rgba(70,211,105,.2);font-size:10px;color:var(--green);font-weight:600;white-space:nowrap;flex-shrink:0}
+#hdr{position:fixed;top:0;left:0;right:0;z-index:900;height:64px;display:flex;align-items:center;gap:12px;padding:0 3.5%;background:linear-gradient(180deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.55) 70%,transparent);transition:background .35s,box-shadow .35s}
+#hdr.bg{background:rgba(8,8,8,.97);border-bottom:1px solid rgba(255,255,255,.06);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.logo{display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;margin-right:4px}
+.logo-i{width:32px;height:32px;background:var(--red);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;box-shadow:0 2px 10px rgba(229,9,20,.35)}
+.logo-t{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;line-height:1}.logo-t b{color:var(--red)}
+.nav{display:flex;align-items:center;gap:2px;flex-shrink:0}.nb{padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--t2);cursor:pointer;background:none;border:none;transition:all .2s;white-space:nowrap}.nb:hover{color:#fff;background:rgba(255,255,255,.07)}.nb.on{color:#fff;background:rgba(255,255,255,.1)}
+.nav-more{position:relative}.nav-drop{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:160px;padding:6px;background:rgba(18,18,18,.98);border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.55);z-index:950}
+.nav-more.open .nav-drop{display:flex;flex-direction:column;gap:2px}.nav-drop .nb{text-align:left;width:100%}
+.sbar{flex:1;min-width:120px;max-width:420px;margin-left:auto;display:flex;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:22px;overflow:hidden;transition:all .2s}
+.sbar:focus-within{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.28);box-shadow:0 0 0 3px rgba(229,9,20,.14)}
+.sbar input{flex:1;min-width:0;padding:9px 14px;background:0;border:0;outline:0;color:#fff;font-size:13px;font-family:inherit}.sbar input::placeholder{color:rgba(255,255,255,.32)}
+.sbar button{padding:8px 13px;background:0;border:0;color:var(--t3);cursor:pointer;font-size:14px;transition:color .2s;flex-shrink:0}.sbar button:hover{color:#fff}
+.hdr-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.opill{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:14px;background:rgba(70,211,105,.1);border:1px solid rgba(70,211,105,.22);font-size:10px;color:var(--green);font-weight:600;white-space:nowrap}
 .odot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-#hero{position:relative;height:88vh;min-height:460px;max-height:800px;display:flex;align-items:flex-end;overflow:hidden}
-.hbg{position:absolute;inset:0;background-size:cover;background-position:center 18%;transition:opacity .65s}
-.hg{position:absolute;inset:0;background:linear-gradient(77deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,.25) 55%,transparent 80%),linear-gradient(180deg,transparent 30%,rgba(10,10,10,.88) 65%,var(--bg) 100%)}
-.hc{position:relative;z-index:2;padding:0 4% 68px;max-width:620px;animation:su .5s ease both}
+#hero{position:relative;height:92vh;min-height:520px;max-height:860px;display:flex;align-items:flex-end;overflow:hidden;background:#050505}
+.hbg{position:absolute;inset:0;background-size:cover;background-position:center 18%;transition:opacity .7s;z-index:0}
+.hvid{position:absolute;inset:0;overflow:hidden;pointer-events:none;opacity:0;transition:opacity 1s ease;z-index:1}
+.hvid.on{opacity:1}
+.hvid iframe{position:absolute;top:50%;left:50%;width:177.78vh;height:56.25vw;min-width:100%;min-height:100%;transform:translate(-50%,-50%);border:0;pointer-events:none}
+.hg{position:absolute;inset:0;z-index:2;background:linear-gradient(90deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.55) 42%,rgba(0,0,0,.15) 70%,transparent 100%),linear-gradient(180deg,rgba(0,0,0,.45) 0%,transparent 28%,rgba(10,10,10,.55) 62%,var(--bg) 100%)}
+.hc{position:relative;z-index:3;padding:0 4% 72px;max-width:640px;animation:su .55s ease both}
 @keyframes su{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
-.hbadge{display:inline-flex;padding:3px 10px;border-radius:14px;margin-bottom:12px;background:var(--red);font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}
-.htt{font-size:clamp(24px,5vw,54px);font-weight:800;line-height:1.05;margin-bottom:10px;letter-spacing:-.5px;text-shadow:0 2px 14px rgba(0,0,0,.5)}
+.hbadge{display:inline-flex;padding:4px 11px;border-radius:4px;margin-bottom:14px;background:var(--red);font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase}
+.htt{font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,7vw,78px);font-weight:400;line-height:.95;margin-bottom:12px;letter-spacing:1px;text-shadow:0 4px 28px rgba(0,0,0,.65)}
 .hmm{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--t2);margin-bottom:12px}.hstar{color:var(--gold);font-weight:700}
-.hoo{color:rgba(255,255,255,.7);font-size:14px;line-height:1.6;margin-bottom:20px;max-width:460px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.hoo{color:rgba(255,255,255,.78);font-size:15px;line-height:1.55;margin-bottom:22px;max-width:480px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .hbtns{display:flex;gap:10px;flex-wrap:wrap}
-.bplay{display:flex;align-items:center;gap:8px;padding:11px 24px;border:0;border-radius:var(--r);background:#fff;color:#000;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s}.bplay:hover{background:rgba(255,255,255,.8);transform:scale(1.02)}
-.binfo{display:flex;align-items:center;gap:8px;padding:11px 20px;border-radius:var(--r);background:rgba(109,109,110,.55);border:0;color:#fff;font-size:14px;font-weight:600;cursor:pointer;backdrop-filter:blur(6px);transition:all .2s}.binfo:hover{background:rgba(109,109,110,.8)}
-.hdots{position:absolute;bottom:22px;right:4%;z-index:3;display:flex;gap:4px}.hdot{height:3px;border-radius:2px;background:rgba(255,255,255,.25);cursor:pointer;transition:all .4s}.hdot.on{background:#fff}
+.bplay{display:flex;align-items:center;gap:8px;padding:12px 26px;border:0;border-radius:6px;background:#fff;color:#000;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit}.bplay:hover{background:rgba(255,255,255,.88);transform:scale(1.03)}
+.binfo{display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:6px;background:rgba(109,109,110,.55);border:0;color:#fff;font-size:14px;font-weight:600;cursor:pointer;backdrop-filter:blur(6px);transition:all .2s;font-family:inherit}.binfo:hover{background:rgba(109,109,110,.8)}
+.bmute{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.35);color:#fff;cursor:pointer;font-size:14px;backdrop-filter:blur(6px)}
+.hdots{position:absolute;bottom:22px;right:4%;z-index:3;display:flex;gap:5px}.hdot{height:4px;border-radius:2px;background:rgba(255,255,255,.28);cursor:pointer;transition:all .4s}.hdot.on{background:#fff}
 #gbar{display:none;gap:6px;padding:8px 4%;overflow-x:auto;scrollbar-width:none;background:linear-gradient(180deg,rgba(10,10,10,.4),transparent)}#gbar::-webkit-scrollbar{display:none}
 .gp{padding:5px 14px;border-radius:14px;font-size:11px;font-weight:600;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .2s}.gp:hover{background:rgba(255,255,255,.12);color:#fff}.gp.on{background:var(--red);border-color:var(--red);color:#fff}
 #rows{padding:0 0 20px}
@@ -126,7 +136,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .ccn{font-size:9px;font-weight:600;line-height:1.2;color:var(--t2)}.ccc{font-size:8px;color:var(--t3);margin-top:1px}
 .sg{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(95px,1fr))}
 .tb{border-radius:var(--r);overflow:hidden}.tb iframe{width:100%;aspect-ratio:16/9;border:none;display:block}
-@media(max-width:680px){#hdr{padding:0 12px;height:54px;gap:8px}.nav{display:none}.hc{padding:0 14px 36px}.htt{font-size:22px}.strip .card{width:120px}.ar{display:none}#modal{margin:0;border-radius:0;min-height:100vh}.mb{flex-direction:column}.mp{width:85px}.fgrid{grid-template-columns:repeat(auto-fill,minmax(115px,1fr))}}
+@media(max-width:900px){.nav .nb-hide{display:none}.sbar{max-width:220px}}
+@media(max-width:680px){#hdr{padding:0 10px;height:56px;gap:6px}.nav{display:none}.hdr-actions .opill{display:none}.sbar{max-width:none;flex:1}.hc{padding:0 14px 40px}.htt{font-size:42px}.strip .card{width:120px}.ar{display:none}#modal{margin:0;border-radius:0;min-height:100vh}.mb{flex-direction:column}.mp{width:85px}.fgrid{grid-template-columns:repeat(auto-fill,minmax(115px,1fr))}#hero{min-height:420px;height:78vh}.adtip{top:64px}}
 
 
 .ad-overlay,.popup-overlay,.ad-container,[class*="popunder"],
@@ -149,9 +160,9 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .cw-row .ci{aspect-ratio:16/9}
 #fgenres{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 4% 14px}
 #fgenres a{color:var(--t3);font-size:11px;text-decoration:none}#fgenres a:hover{color:var(--red)}
-.adtip{display:none;margin:0 4% 10px;padding:10px 14px;border-radius:10px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.25);color:var(--t2);font-size:12px;line-height:1.5}
+.adtip{display:none;position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:880;max-width:min(640px,92vw);padding:10px 14px;border-radius:10px;background:rgba(20,16,6,.94);border:1px solid rgba(245,197,24,.3);color:var(--t2);font-size:12px;line-height:1.5;box-shadow:0 10px 28px rgba(0,0,0,.45)}
 .adtip.on{display:block}.adtip b{color:var(--gold)}.adtip button{margin-left:8px;background:none;border:0;color:var(--t3);cursor:pointer;font-size:12px}
-.auth-btn{padding:6px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0}
+.auth-btn{padding:7px 12px;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0;font-family:inherit}
 .auth-btn:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
 #authOv,#rdOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px}
 #authOv.on,#rdOv.on{display:flex}
@@ -177,33 +188,44 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 <header id="hdr">
   <div class="logo" onclick="goHome()"><div class="logo-i">F</div><div class="logo-t">Flix<b>Nova</b></div></div>
   <nav class="nav">
-    <button class="nb on" id="nb-home"   onclick="go('home',this)">Home</button>
-    <button class="nb"    id="nb-movies" onclick="go('movies',this)">Movies</button>
-    <button class="nb"    id="nb-tv"     onclick="go('tv',this)">TV Shows</button>
-    <button class="nb"    id="nb-anime"  onclick="go('anime',this)">Anime</button>
-    <button class="nb"    id="nb-genres" onclick="go('genres',this)">Genres</button>
-    <button class="nb"    id="nb-new"    onclick="go('new',this)">New &amp; Hot</button>
-    <button class="nb"    id="nb-list"   onclick="go('list',this)">My List</button>
+    <button class="nb on" id="nb-home" onclick="go('home',this)">Home</button>
+    <button class="nb" id="nb-movies" onclick="go('movies',this)">Movies</button>
+    <button class="nb" id="nb-tv" onclick="go('tv',this)">TV Shows</button>
+    <button class="nb nb-hide" id="nb-new" onclick="go('new',this)">New &amp; Hot</button>
+    <div class="nav-more" id="navMore">
+      <button class="nb" type="button" onclick="toggleMoreNav(event)">More ▾</button>
+      <div class="nav-drop" id="navDrop">
+        <button class="nb" id="nb-new2" onclick="go('new',this);closeMoreNav()">New &amp; Hot</button>
+        <button class="nb" id="nb-anime" onclick="go('anime',this);closeMoreNav()">Anime</button>
+        <button class="nb" id="nb-genres" onclick="go('genres',this);closeMoreNav()">Genres</button>
+        <button class="nb" id="nb-list" onclick="go('list',this);closeMoreNav()">My List</button>
+      </div>
+    </div>
   </nav>
-  <div class="sbar"><input id="q" type="text" placeholder="Search movies, shows..." autocomplete="off"><button onclick="doSearch()">&#128269;</button></div>
-  <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid">RD</button>
-  <button class="auth-btn" id="authBtn" onclick="openAuth()">Sign In</button>
-  <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
+  <div class="sbar"><input id="q" type="text" placeholder="Search movies, shows..." autocomplete="off"><button type="button" onclick="doSearch()" aria-label="Search">&#128269;</button></div>
+  <div class="hdr-actions">
+    <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid">RD</button>
+    <button class="auth-btn" id="authBtn" onclick="openAuth()">Sign In</button>
+    <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
+  </div>
 </header>
-<div class="adtip on" id="adtip">
-  <b>Want no popups?</b> Tap <b>RD</b>, paste your Real-Debrid API key — we play direct streams in our player. Without RD, clean embed servers are used.
+<div class="adtip" id="adtip">
+  <b>No popups:</b> Add your Real-Debrid key (RD) — or ask the host to set <b>REALDEBRID_API_TOKEN</b> on the server. We then play direct streams, not ad iframes.
   <button type="button" onclick="dismissAdTip()">Dismiss</button>
 </div>
 <div id="hero">
-  <div class="hbg" id="hbg"></div><div class="hg"></div>
+  <div class="hbg" id="hbg"></div>
+  <div class="hvid" id="hvid"></div>
+  <div class="hg"></div>
   <div class="hc">
-    <div class="hbadge" id="htb">TRENDING</div>
+    <div class="hbadge" id="htb">NOW IN CINEMAS</div>
     <div class="htt" id="htt">Loading...</div>
     <div class="hmm" id="hmm"></div>
     <div class="hoo" id="hoo"></div>
     <div class="hbtns">
       <button class="bplay" onclick="heroPlay()">&#9654; Watch Now</button>
       <button class="binfo" onclick="heroInfo()">&#9432; More Info</button>
+      <button class="bmute" id="bmute" type="button" onclick="toggleHeroMute()" title="Unmute trailer">🔇</button>
     </div>
   </div>
   <div class="hdots" id="hdd"></div>
@@ -264,7 +286,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 <div id="rdOv">
   <div class="auth-box">
     <h2>Real-Debrid</h2>
-    <p>Paste your API token for ad-free direct playback. Get it from <a href="https://real-debrid.com/apitoken" target="_blank" rel="noopener" style="color:var(--gold)">real-debrid.com/apitoken</a></p>
+    <p>Paste your API token for ad-free direct playback (no iframe popups). Get it from <a href="https://real-debrid.com/apitoken" target="_blank" rel="noopener" style="color:var(--gold)">real-debrid.com/apitoken</a>. The host can also set <code>REALDEBRID_API_TOKEN</code> for everyone.</p>
     <div id="rdErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
     <div id="rdOk" style="display:none;color:var(--green);font-size:12px;margin-bottom:8px"></div>
     <input id="rdToken" type="password" placeholder="RD API token" autocomplete="off">
@@ -286,24 +308,39 @@ function getItem(k){return STORE[k]||null;}
 function clearStore(){STORE={};STOREKEY=0;}
 
 // ── STATE ──────────────────────────────────────────────────
-var S={section:'home',hl:[],hi:0,ht:null,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0'};
+var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
-if(localStorage.getItem('fn_adtip')==='1'){var _at=$('adtip');if(_at)_at.classList.remove('on');}
+function updateAdTip(){
+  var e=$('adtip');if(!e)return;
+  if(localStorage.getItem('fn_adtip')==='1'||hasRd())e.classList.remove('on');
+  else e.classList.add('on');
+}
 function getRdToken(){return (localStorage.getItem('fn_rd')||'').trim();}
+function hasRd(){return !!(getRdToken()||S.siteRd);}
 function refreshRdBtn(){
   var b=$('rdBtn');if(!b)return;
-  var on=!!getRdToken();
+  var on=hasRd();
   b.classList.toggle('on',on);
-  b.textContent=on?'RD ✓':'RD';
+  b.textContent=getRdToken()?'RD ✓':(S.siteRd?'RD ●':'RD');
+  b.title=getRdToken()?'Your Real-Debrid key':(S.siteRd?'Site Real-Debrid active':'Add Real-Debrid');
+  updateAdTip();
+}
+function checkSiteRd(){
+  return fetch('/api/debrid/status').then(function(r){return r.json();}).then(function(d){
+    S.siteRd=!!(d&&d.siteConfigured);
+    refreshRdBtn();
+    return d;
+  }).catch(function(){S.siteRd=false;refreshRdBtn();});
 }
 function openRd(){
   $('rdErr').style.display='none';$('rdOk').style.display='none';
   $('rdToken').value=getRdToken();
   $('rdOv').classList.add('on');
   if(getRdToken())verifyRd();
+  else if(S.siteRd)$('rdOk').textContent='Site Real-Debrid is already active for everyone. You can still paste your own key.',$('rdOk').style.display='block';
 }
 function closeRd(){$('rdOv').classList.remove('on');}
-function clearRd(){localStorage.removeItem('fn_rd');refreshRdBtn();$('rdToken').value='';$('rdOk').style.display='none';$('rdErr').style.display='none';}
+function clearRd(){localStorage.removeItem('fn_rd');refreshRdBtn();$('rdToken').value='';$('rdOk').style.display='none';$('rdErr').style.display='none';checkSiteRd();}
 function saveRd(){
   var t=$('rdToken').value.trim();
   if(!t){clearRd();return;}
@@ -318,6 +355,7 @@ function verifyRd(){
     if(d.success&&d.configured){
       $('rdOk').textContent='Connected as '+d.data.username+(d.data.premium?' (Premium)':'')+' — ad-free streams enabled';
       $('rdOk').style.display='block';$('rdErr').style.display='none';
+      updateAdTip();
     }else{
       $('rdOk').style.display='none';
       $('rdErr').textContent=d.error||'Invalid token';$('rdErr').style.display='block';
@@ -325,14 +363,20 @@ function verifyRd(){
   }).catch(function(e){$('rdOk').style.display='none';$('rdErr').textContent=e.message;$('rdErr').style.display='block';});
 }
 function fetchDebridStreams(imdbId,type,sn,ep,tmdbId){
+  if(!hasRd()&&!getRdToken()){
+    // Still try — server may have REALDEBRID_API_TOKEN
+  }
+  var headers={'Content-Type':'application/json'};
   var token=getRdToken();
-  if(!token)return Promise.resolve(null);
+  if(token)headers['x-rd-token']=token;
   return fetch('/api/debrid/streams',{
     method:'POST',
-    headers:{'Content-Type':'application/json','x-rd-token':token},
+    headers:headers,
     body:JSON.stringify({imdbId:imdbId||'',type:type==='tv'?'tv':'movie',season:sn||1,episode:ep||1,tmdbId:tmdbId})
   }).then(function(r){return r.json();}).catch(function(){return null;});
 }
+function toggleMoreNav(e){if(e)e.stopPropagation();$('navMore').classList.toggle('open');}
+function closeMoreNav(){var n=$('navMore');if(n)n.classList.remove('open');}
 
 // ── AD / POPUP BLOCKER ─────────────────────────────────────
 (function(){
@@ -550,34 +594,71 @@ function byG(id,type){
   }).catch(function(e){setR('<div class="empty">'+e.message+'</div>');});
 }
 
-// ── HERO ───────────────────────────────────────────────────
+// ── HERO (cinema trailers) ─────────────────────────────────
 function initH(items){
-  S.hl=items.filter(function(i){return!!i.backdrop;}).slice(0,7);
+  S.hl=(items||[]).filter(function(i){return!!i.backdrop;}).slice(0,8);
   if(!S.hl.length){$('hero').style.display='none';return;}
   $('hero').style.display='flex';
-  var dots='';S.hl.forEach(function(_,i){dots+='<div class="hdot'+(i===0?' on':'')+'" style="'+(i===0?'width:18px':'width:6px')+'" onclick="sH('+i+')"></div>';});
+  var dots='';S.hl.forEach(function(_,i){dots+='<div class="hdot'+(i===0?' on':'')+'" style="'+(i===0?'width:20px':'width:7px')+'" onclick="sH('+i+')"></div>';});
   $('hdd').innerHTML=dots;
   rH(0);clearInterval(S.ht);
-  S.ht=setInterval(function(){sH((S.hi+1)%S.hl.length);},7000);
+  S.ht=setInterval(function(){if(document.hidden)return;sH((S.hi+1)%S.hl.length);},12000);
 }
-function sH(idx){S.hi=idx;var bg=$('hbg');bg.style.opacity='0';setTimeout(function(){rH(idx);bg.style.opacity='1';},250);document.querySelectorAll('.hdot').forEach(function(d,i){d.classList.toggle('on',i===idx);d.style.width=i===idx?'18px':'6px';});}
-function rH(idx){var it=S.hl[idx];$('hbg').style.backgroundImage='url('+imgp(it.backdrop,'original')+')';$('htb').textContent=it.type==='tv'?'TV SHOW':'MOVIE';$('htt').textContent=it.title;$('hoo').textContent=it.overview||'';var m=[];if(it.rating)m.push('<span class="hstar">&#9733; '+nm(it.rating)+'</span>');if(it.year)m.push('<span>'+it.year+'</span>');m.push('<span>'+(it.type==='tv'?'Series':'Movie')+'</span>');$('hmm').innerHTML=m.join('');}
+function sH(idx){
+  S.hi=idx;
+  var bg=$('hbg'),vid=$('hvid');
+  bg.style.opacity='0';if(vid)vid.classList.remove('on');
+  setTimeout(function(){rH(idx);bg.style.opacity='1';},280);
+  document.querySelectorAll('.hdot').forEach(function(d,i){d.classList.toggle('on',i===idx);d.style.width=i===idx?'20px':'7px';});
+}
+function rH(idx){
+  var it=S.hl[idx];if(!it)return;
+  $('hbg').style.backgroundImage='url('+imgp(it.backdrop,'original')+')';
+  $('htb').textContent=it.trailerKey?'OFFICIAL TRAILER':(it.type==='tv'?'TV SHOW':'NOW TRENDING');
+  $('htt').textContent=it.title;
+  $('hoo').textContent=it.overview||'';
+  var m=[];
+  if(it.rating)m.push('<span class="hstar">&#9733; '+nm(it.rating)+'</span>');
+  if(it.year)m.push('<span>'+it.year+'</span>');
+  m.push('<span>'+(it.type==='tv'?'Series':'Movie')+'</span>');
+  if(it.trailerKey)m.push('<span>Cinema trailer</span>');
+  $('hmm').innerHTML=m.join('');
+  setHeroTrailer(it.trailerKey);
+}
+function setHeroTrailer(key){
+  var wrap=$('hvid');if(!wrap)return;
+  if(!key){wrap.classList.remove('on');wrap.innerHTML='';return;}
+  var mute=S.hMute!==false;
+  var src=YTN+encodeURIComponent(key)+'?autoplay=1&mute='+(mute?1:0)+'&controls=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist='+encodeURIComponent(key)+'&enablejsapi=1&iv_load_policy=3';
+  wrap.innerHTML='<iframe src="'+src+'" allow="autoplay;encrypted-media" tabindex="-1" title="Trailer"></iframe>';
+  setTimeout(function(){wrap.classList.add('on');},700);
+  var btn=$('bmute');if(btn)btn.textContent=mute?'🔇':'🔊';
+}
+function toggleHeroMute(){
+  S.hMute=!S.hMute;
+  var it=S.hl[S.hi];
+  if(it&&it.trailerKey)setHeroTrailer(it.trailerKey);
+}
 function heroPlay(){if(S.hl[S.hi])openModal(S.hl[S.hi]);}
 function heroInfo(){heroPlay();}
+function stopHeroMedia(){
+  clearInterval(S.ht);S.ht=null;
+  var vid=$('hvid');if(vid){vid.classList.remove('on');vid.innerHTML='';}
+}
 
 // ── NAV ────────────────────────────────────────────────────
 function goHome(){go('home',$('nb-home'));}
 function go(section,btn){
-  S.section=section;S.year='';S.decade='';S.country='';S.animeMode=false;clearInterval(S.ht);
+  S.section=section;S.year='';S.decade='';S.country='';S.animeMode=false;
+  stopHeroMedia();
   $('hero').style.display='none';$('gbar').style.display='none';
   var yb=$('ybar');if(yb)yb.remove();
   var cb=$('cbar');if(cb)cb.remove();
-  if(btn){document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');}
-  else{
-    var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',anime:'nb-anime',genres:'nb-genres',new:'nb-new',list:'nb-list'};
-    document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});
-    var el=$(map[section]);if(el)el.classList.add('on');
-  }
+  closeMoreNav();
+  document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});
+  var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',anime:'nb-anime',genres:'nb-genres',new:'nb-new',list:'nb-list'};
+  if(btn&&btn.id)btn.classList.add('on');
+  else{var el=$(map[section]);if(el)el.classList.add('on');if(section==='new'){var n2=$('nb-new2');if(n2)n2.classList.add('on');}}
   sockEmit('page-view',{page:section});ld();S.rc=0;
   var loader=section==='home'?loadHome:section==='movies'?loadMovies:section==='tv'?loadTV:section==='anime'?loadAnime:section==='genres'?loadGenresPage:section==='list'?loadList:loadNew;
   loader().catch(function(e){setR('<div class="empty">Failed: '+e.message+'</div>');});
@@ -677,19 +758,36 @@ function loadMoreBrowse(){
 }
 
 function loadHome(){
-  return Promise.all([api('/trending'),api('/discover/movie'),api('/discover/tv'),api('/discover/movie/top'),api('/discover/movie/nowplaying'),api('/discover/tv/top'),api('/discover/tv/airing')]).then(function(rs){
+  return Promise.all([
+    api('/hero'),
+    api('/trending/day'),
+    api('/trending'),
+    api('/discover/movie/nowplaying'),
+    api('/discover/movie'),
+    api('/discover/tv'),
+    api('/discover/movie/top'),
+    api('/discover/tv/top'),
+    api('/discover/tv/airing'),
+    api('/discover/movie/upcoming')
+  ]).then(function(rs){
     var g=function(r){try{return r.data&&r.data.length?r.data:[];}catch(e){return[];}};
-    var t=g(rs[0]);if(t.length)initH(t);else $('hero').style.display='none';
+    var hero=g(rs[0]);
+    var day=g(rs[1]), week=g(rs[2]), now=g(rs[3]);
+    if(hero.length)initH(hero);
+    else if(day.length||week.length)initH((day.length?day:week).slice(0,8));
+    else $('hero').style.display='none';
     var cont=lsGet('fn_continue',[]);
     var secs=[
       {title:'Continue Watching',items:cont.slice(0,12),ap:''},
-      {title:'🔥 Trending This Week',items:t.slice(0,24),ap:'/trending/browse'},
-      {title:'🎬 Popular Movies',items:g(rs[1]).slice(0,24),ap:'/browse/movie?pages=5'},
-      {title:'📺 Popular TV Shows',items:g(rs[2]).slice(0,24),ap:'/browse/tv?pages=5'},
-      {title:'⭐ Top Rated Movies',items:g(rs[3]).slice(0,24),ap:'/browse/movie?sort=vote_average.desc&pages=5'},
-      {title:'🎥 Now Playing',items:g(rs[4]).slice(0,24),ap:'/browse/movie?pages=3'},
-      {title:'🏆 Top Rated TV',items:g(rs[5]).slice(0,24),ap:'/browse/tv?sort=vote_average.desc&pages=5'},
-      {title:'📡 Airing Today',items:g(rs[6]).slice(0,24),ap:'/browse/tv?pages=3'},
+      {title:'Trending Today',items:day.slice(0,24),ap:'/trending/day'},
+      {title:'Trending This Week',items:week.slice(0,24),ap:'/trending/browse'},
+      {title:'Now in Cinemas',items:now.slice(0,24),ap:'/browse/movie?pages=3'},
+      {title:'Popular Movies',items:g(rs[4]).slice(0,24),ap:'/browse/movie?pages=5'},
+      {title:'Popular TV Shows',items:g(rs[5]).slice(0,24),ap:'/browse/tv?pages=5'},
+      {title:'Top Rated Movies',items:g(rs[6]).slice(0,24),ap:'/browse/movie?sort=vote_average.desc&pages=5'},
+      {title:'Top Rated TV',items:g(rs[7]).slice(0,24),ap:'/browse/tv?sort=vote_average.desc&pages=5'},
+      {title:'Airing Today',items:g(rs[8]).slice(0,24),ap:'/browse/tv?pages=3'},
+      {title:'Coming Soon',items:g(rs[9]).slice(0,24),ap:''},
     ].filter(function(s){return s.items.length>0;});
     if(!secs.length){setR('<div class="notice"><h3>Setup Required</h3><p>Add TMDB_API_KEY to .env then restart</p></div>');return;}
     setR(rowsH(secs));initArr();
@@ -844,27 +942,27 @@ function openModal(item){
   saveContinue(item,S.sn,S.ep);
   document.title=(item.title||'')+' - FlixNova';
   S.cleanMode=localStorage.getItem('fn_clean')!=='0';
-  var sp=sourcesPath(id,type,S.sn,S.ep);
+  S._triedEmbeds=0;
   api('/details/'+id+'/'+type).then(function(det){
     var imdb=null;
     if(det&&det.success){
-    fillDet(det.data,id,type);
-    imdb=det.data.imdbId||null;
-    if(S.item)S.item.imdbId=imdb;
-  }
-    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>'+(getRdToken()?'Finding Real-Debrid streams...':'Finding servers...')+'</span></div>';
-    return Promise.all([
-      fetchDebridStreams(imdb,type,S.sn,S.ep,id),
-      api(sp)
-    ]).then(function(res){
-      var rd=res[0],emb=res[1];
+      fillDet(det.data,id,type);
+      imdb=det.data.imdbId||null;
+      if(S.item)S.item.imdbId=imdb;
+    }
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>'+(hasRd()?'Finding Real-Debrid streams...':'Finding clean servers...')+'</span></div>';
+    return fetchDebridStreams(imdb,type,S.sn,S.ep,id).then(function(rd){
       if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+        S.siteRd=true;refreshRdBtn();
         handleSrc({sources:rd.data.streams,debrid:true});
-        setSt('sok','▶ Real-Debrid · no iframe ads');
+        setSt('sok','▶ Real-Debrid · no popups');
         return;
       }
-      if(emb&&emb.success)handleSrc(emb.data);
-      else showPE('No sources available. '+(getRdToken()?'RD found nothing — try More servers or another title.':'Add Real-Debrid (RD) for best results, or try again.'));
+      // No RD streams — use clean embed scrapers only (opt-in for backup via More servers)
+      return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
+        if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length)handleSrc(emb.data);
+        else showPE('No streams yet. '+(hasRd()?'Try another title or Embed servers.':'Add Real-Debrid (RD) for ad-free playback.'));
+      });
     });
   }).catch(function(e){showPE('Error: '+e.message);});
 }
@@ -998,18 +1096,17 @@ function pEp(tid,sn,ep,el){
       if(d.success)handleSrc(d.data);else showPE('No sources for this episode.');
     });
   };
-  if(getRdToken()){
-    var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
-    imdbP.then(function(idb){
-      return fetchDebridStreams(idb,'tv',sn,ep,tid).then(function(rd){
-        if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
-          handleSrc({sources:rd.data.streams,debrid:true});
-          return;
-        }
-        return loadEmb();
-      });
-    }).catch(function(e){showPE(e.message);});
-  }else loadEmb().catch(function(e){showPE(e.message);});
+  var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
+  imdbP.then(function(idb){
+    return fetchDebridStreams(idb,'tv',sn,ep,tid).then(function(rd){
+      if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+        handleSrc({sources:rd.data.streams,debrid:true});
+        setSt('sok','▶ Real-Debrid · no popups');
+        return;
+      }
+      return loadEmb();
+    });
+  }).catch(function(e){showPE(e.message);});
 }
 function sourcesPath(id,type,sn,ep){
   var qs=[];
@@ -1019,11 +1116,12 @@ function sourcesPath(id,type,sn,ep){
 }
 function loadAllServers(){
   if(!S.item)return;
-  S.cleanMode=false; // this title only — next title uses clean again
+  S.cleanMode=false; // this title only — may include ad-heavy embeds
+  S._triedEmbeds=1;
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
-  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading backup servers...</span></div>';
+  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading embed servers (may show ads)...</span></div>';
   var p=sourcesPath(id,type,S.sn,S.ep);
-  p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1';
+  p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1&all=1';
   api(p).then(function(d){
     if(d.success)handleSrc(d.data);else showPE('Still no sources.');
   }).catch(function(e){showPE(e.message);});
@@ -1071,7 +1169,12 @@ function handleSrc(data){
   S.src=(data&&data.sources)?data.sources:[];
   S.debridMode=!!(data&&data.debrid);
   if(!S.src.length){showPE('No sources found. External providers may be down.');return;}
-  var moreBtn=$('moreSrvBtn');if(moreBtn)moreBtn.style.display=S.debridMode?'none':'inline-flex';
+  var moreBtn=$('moreSrvBtn');
+  if(moreBtn){
+    moreBtn.style.display='inline-flex';
+    moreBtn.textContent=S.debridMode?'Embed servers':'More servers';
+    moreBtn.title=S.debridMode?'Fallback embeds may show ads/popups':'Include backup servers';
+  }
   $('schips').innerHTML=S.src.map(function(s,i){
     var q=s.quality||'Auto';
     var label=s.debrid?(he(s.quality||'HD')+(s.size?' · '+he(s.size):'')):he(s.source);
@@ -1092,7 +1195,12 @@ function nextSrc(){tryS(S.si+1);}
 function tryS(idx){
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
   if(idx>=S.src.length){
-    if(S.debridMode&&!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
+    // Never auto-load popup embeds after RD — user must opt in via Embed servers
+    if(S.debridMode){
+      showPE('Real-Debrid qualities failed. Tap Embed servers only if you accept possible ads/popups.');
+      var moreBtn=$('moreSrvBtn');if(moreBtn)moreBtn.style.display='inline-flex';
+      return;
+    }
     showPE('All '+S.src.length+' streams failed. Try another quality or More servers.');
     return;
   }
@@ -1106,15 +1214,6 @@ function tryS(idx){
     return;
   }
   pEmb(url,idx);
-}
-function loadEmbedFallback(){
-  if(!S.item)return;
-  var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
-  setSt('sld','Trying embed servers…');
-  api(sourcesPath(id,type,S.sn,S.ep)).then(function(d){
-    if(d.success&&d.data&&d.data.sources&&d.data.sources.length)handleSrc(d.data);
-    else showPE('No working streams for this title.');
-  });
 }
 function withAutoplay(url){
   if(!url)return url;
@@ -1202,12 +1301,15 @@ function routeFromLocation(){
   openModal(item);
   return true;
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeMoreNav();}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
+document.addEventListener('click',function(e){var m=$('navMore');if(m&&!m.contains(e.target))closeMoreNav();});
 $('ov').addEventListener('click',function(e){if(e.target===e.currentTarget)closeModal();});
 $('authOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeAuth();});
 $('rdOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeRd();});
 $('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
 window.addEventListener('popstate',function(){if(!routeFromLocation())closeModal();});
+window.addEventListener('scroll',function(){$('hdr').classList.toggle('bg',window.scrollY>40);},{passive:true});
+document.addEventListener('visibilitychange',function(){if(document.hidden){var v=$('hvid');if(v)v.classList.remove('on');}});
 var hs=document.createElement('script');hs.src='https://cdn.jsdelivr.net/npm/hls.js@latest';document.head.appendChild(hs);
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
 api('/genres/movie').then(function(d){
@@ -1218,7 +1320,7 @@ if(S.token){
   uapi('/me').then(function(d){if(d.success){S.user={username:d.data.username};refreshAuthBtn();}else{S.token='';localStorage.removeItem('fn_token');}}).catch(function(){});
 }
 refreshAuthBtn();
-refreshRdBtn();
+checkSiteRd();
 if(!routeFromLocation())go('home',$('nb-home'));
 </script>
 </body>

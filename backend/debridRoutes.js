@@ -1,6 +1,8 @@
 /**
  * Real-Debrid via Torrentio (Stremio addon).
- * Client sends RD API token per request — we do not require storing it server-side.
+ * Token resolution order:
+ *  1) Client header/body (per-user key)
+ *  2) REALDEBRID_API_TOKEN in server .env (site-wide)
  */
 const express = require('express');
 const axios = require('axios');
@@ -13,13 +15,18 @@ function ua() {
   return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 }
 
+function siteToken() {
+  return (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').toString().trim();
+}
+
 function tokenFrom(req) {
-  return (
+  const client = (
     req.headers['x-rd-token'] ||
     req.body?.token ||
     req.query?.token ||
     ''
   ).toString().trim();
+  return client || siteToken();
 }
 
 function parseQuality(title) {
@@ -43,8 +50,11 @@ function parseSeeders(title) {
 }
 
 router.get('/status', async (req, res) => {
+  const siteConfigured = !!siteToken();
   const token = tokenFrom(req);
-  if (!token) return res.json({ success: true, configured: false });
+  if (!token) {
+    return res.json({ success: true, configured: false, siteConfigured });
+  }
   try {
     const r = await axios.get(`${RD_API}/user`, {
       headers: { Authorization: `Bearer ${token}`, 'User-Agent': ua() },
@@ -53,12 +63,14 @@ router.get('/status', async (req, res) => {
     res.json({
       success: true,
       configured: true,
+      siteConfigured,
       data: {
         username: r.data.username,
         email: r.data.email,
         premium: r.data.type === 'premium',
         expiration: r.data.expiration,
-        points: r.data.points
+        points: r.data.points,
+        source: req.headers['x-rd-token'] ? 'user' : (siteConfigured ? 'site' : 'user')
       }
     });
   } catch (e) {
@@ -66,6 +78,7 @@ router.get('/status', async (req, res) => {
     res.status(status === 401 ? 401 : 502).json({
       success: false,
       configured: false,
+      siteConfigured,
       error: status === 401 ? 'Invalid Real-Debrid token' : (e.message || 'RD check failed')
     });
   }
@@ -75,12 +88,16 @@ router.post('/streams', async (req, res) => {
   try {
     const token = tokenFrom(req);
     const { imdbId, type, season, episode, tmdbId } = req.body || {};
-    if (!token) return res.status(400).json({ success: false, error: 'Real-Debrid token required' });
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Real-Debrid token required (paste in RD button or set REALDEBRID_API_TOKEN on server)'
+      });
+    }
 
     let imdb = (imdbId || '').toString().trim();
     if (imdb && !imdb.startsWith('tt')) imdb = 'tt' + imdb.replace(/\D/g, '');
 
-    // Resolve IMDB from TMDB if needed
     if (!imdb && tmdbId) {
       const KEY = process.env.TMDB_API_KEY || '';
       const media = type === 'tv' ? 'tv' : 'movie';
@@ -99,7 +116,6 @@ router.post('/streams', async (req, res) => {
       return res.status(400).json({ success: false, error: 'IMDB id required for debrid streams' });
     }
 
-    // Skip junk qualities by default
     const cfg = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
     let path;
     if (type === 'tv' || type === 'series') {
@@ -148,7 +164,6 @@ router.post('/streams', async (req, res) => {
       .filter(Boolean)
       .slice(0, 40);
 
-    // Prefer higher quality
     const rank = q => ({ '4K': 0, '1080p': 1, '720p': 2, HD: 3, '480p': 4, CAM: 9 }[q] ?? 5);
     streams.sort((a, b) => rank(a.quality) - rank(b.quality) || (b.seeders || 0) - (a.seeders || 0));
 
