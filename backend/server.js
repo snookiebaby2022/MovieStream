@@ -768,6 +768,23 @@ function isSecretEnvKey(k) {
   return /SECRET|PASS|KEY|TOKEN|URI|URL/i.test(k) && !/^SITE_URL$/i.test(k);
 }
 
+/** Secrets that admins may set from the Payments & Email / Settings UI */
+const ADMIN_WRITABLE_SECRETS = new Set([
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'SMTP_FROM',
+  'SMTP_SECURE',
+  'SITE_URL',
+  'ADFREE_PRICE_PENCE',
+  'ADFREE_CURRENCY',
+  'REALDEBRID_API_TOKEN',
+  'RD_API_TOKEN'
+]);
+
 function upsertEnvKey(key, value) {
   let raw = '';
   try { raw = fs.readFileSync(ENV_FILE, 'utf8'); } catch { raw = ''; }
@@ -777,32 +794,77 @@ function upsertEnvKey(key, value) {
   fs.writeFileSync(ENV_FILE, raw);
 }
 
-app.get('/api/admin/config', adminAuth, (req, res) => {
+function readEnvMap() {
+  const conf = {};
   try {
     const raw = fs.readFileSync(ENV_FILE, 'utf8');
-    const conf = {};
     raw.split('\n').forEach(line => {
       const eq = line.indexOf('=');
       if (eq > 0 && !line.startsWith('#')) {
-        const k = line.slice(0, eq).trim();
-        const v = line.slice(eq + 1).trim();
-        conf[k] = isSecretEnvKey(k) ? '***' : v;
+        conf[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
       }
     });
-    res.json({ success: true, data: conf });
+  } catch {}
+  return conf;
+}
+
+app.get('/api/admin/config', adminAuth, (req, res) => {
+  try {
+    const rawMap = readEnvMap();
+    const conf = {};
+    Object.entries(rawMap).forEach(([k, v]) => {
+      conf[k] = isSecretEnvKey(k) ? (v ? '***' : '') : v;
+    });
+    res.json({
+      success: true,
+      data: conf,
+      payConfigured: !!(rawMap.STRIPE_SECRET_KEY && String(rawMap.STRIPE_SECRET_KEY).startsWith('sk_')),
+      smtpConfigured: !!(rawMap.SMTP_HOST && rawMap.SMTP_USER),
+      siteUrl: rawMap.SITE_URL || SITE
+    });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.put('/api/admin/config', adminAuth, (req, res) => {
   const { key, value } = req.body || {};
-  if (!key) return res.status(400).json({ success: false, error: 'Key required' });
-  if (isSecretEnvKey(key) && key !== 'REALDEBRID_API_TOKEN') {
-    return res.status(400).json({ success: false, error: 'Use the Real-Debrid page or edit .env on the server for secrets' });
+  if (!key || !/^[A-Z0-9_]+$/i.test(key)) {
+    return res.status(400).json({ success: false, error: 'Valid key required' });
+  }
+  if (isSecretEnvKey(key) && !ADMIN_WRITABLE_SECRETS.has(key)) {
+    return res.status(400).json({ success: false, error: 'This secret cannot be edited from the UI' });
+  }
+  // Don't overwrite secrets when UI sends the masked placeholder
+  if (isSecretEnvKey(key) && (value === '***' || value === undefined)) {
+    return res.status(400).json({ success: false, error: 'Enter a new secret value (not ***)' });
   }
   try {
-    upsertEnvKey(key, value);
-    res.json({ success: true, message: 'Saved - restart to apply' });
+    upsertEnvKey(key, String(value ?? '').trim());
+    res.json({ success: true, message: 'Saved — restart app to apply', needsRestart: true });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+/** Save several payments/email keys at once */
+app.put('/api/admin/integrations', adminAuth, (req, res) => {
+  try {
+    const body = req.body || {};
+    const allowed = [
+      'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'SITE_URL',
+      'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'SMTP_SECURE',
+      'ADFREE_PRICE_PENCE', 'ADFREE_CURRENCY'
+    ];
+    let saved = 0;
+    for (const key of allowed) {
+      if (body[key] === undefined || body[key] === null) continue;
+      const val = String(body[key]).trim();
+      if (!val || val === '***') continue;
+      upsertEnvKey(key, val);
+      saved++;
+    }
+    if (!saved) return res.status(400).json({ success: false, error: 'No new values to save' });
+    res.json({ success: true, message: `Saved ${saved} setting(s). Restart app to apply.`, needsRestart: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 /** Admin Real-Debrid management */

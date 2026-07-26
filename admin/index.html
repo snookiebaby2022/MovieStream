@@ -770,6 +770,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
       <div class="nav-item" data-nav="nginx" onclick="showPage('nginx',this)"><span class="nav-icon">🌐</span><span class="nav-text">Nginx</span></div>
 
       <div class="nav-sec">Config</div>
+      <div class="nav-item" data-nav="payments" onclick="showPage('payments',this)"><span class="nav-icon">💳</span><span class="nav-text">Payments &amp; Email</span></div>
       <div class="nav-item" data-nav="config" onclick="showPage('config',this)"><span class="nav-icon">🔧</span><span class="nav-text">Settings</span></div>
       <div class="nav-item" data-nav="activity" onclick="showPage('activity',this)"><span class="nav-icon">📝</span><span class="nav-text">Activity</span></div>
     </nav>
@@ -1274,6 +1275,44 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         </div>
       </div>
 
+      <div class="page" id="page-payments">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">💳 Payments &amp; Email</div>
+              <div class="panel-sub">Stripe Ad-Free £1 + SMTP password resets</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadPayments()">⟳ Refresh</button>
+          </div>
+          <div class="panel-body">
+            <div id="payStatusBox" style="margin-bottom:16px;font-size:13px;color:var(--muted)">Loading…</div>
+            <div class="stat-grid" style="margin-bottom:18px">
+              <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">💳</div><div class="stat-label">Stripe</div><div class="stat-value" id="payStripeState" style="font-size:18px">—</div><div class="stat-sub">sk_live / sk_test</div></div>
+              <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">✉️</div><div class="stat-label">SMTP</div><div class="stat-value" id="paySmtpState" style="font-size:18px">—</div><div class="stat-sub">password reset emails</div></div>
+            </div>
+            <h3 style="margin:0 0 10px;font-size:14px">Stripe (Ad-Free checkout)</h3>
+            <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.5">Dashboard → <b>Developers → API keys</b> → Secret key. Use <code>sk_test_…</code> first, then <code>sk_live_…</code>. After save, click <b>Restart App</b>.</p>
+            <div class="form-row" style="margin-bottom:10px"><input class="form-input" id="payStripeKey" placeholder="STRIPE_SECRET_KEY (sk_live_… or sk_test_…)" autocomplete="off"></div>
+            <div class="form-row" style="margin-bottom:10px"><input class="form-input" id="payStripeWh" placeholder="STRIPE_WEBHOOK_SECRET (optional, whsec_…)" autocomplete="off"></div>
+            <div class="form-row" style="margin-bottom:18px"><input class="form-input" id="paySiteUrl" placeholder="SITE_URL e.g. https://snookiebaby.xyz:8443"></div>
+            <h3 style="margin:0 0 10px;font-size:14px">SMTP (password reset emails)</h3>
+            <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.5">Gmail: enable 2FA → App passwords → use that as SMTP_PASS. Host <code>smtp.gmail.com</code>, port <code>587</code>, secure <code>0</code>.</p>
+            <div class="form-row" style="margin-bottom:10px;gap:8px;display:flex;flex-wrap:wrap">
+              <input class="form-input" id="paySmtpHost" placeholder="SMTP_HOST" style="flex:1;min-width:160px">
+              <input class="form-input" id="paySmtpPort" placeholder="SMTP_PORT" style="width:110px" value="587">
+              <input class="form-input" id="paySmtpSecure" placeholder="SMTP_SECURE 0/1" style="width:120px" value="0">
+            </div>
+            <div class="form-row" style="margin-bottom:10px"><input class="form-input" id="paySmtpUser" placeholder="SMTP_USER (email)" autocomplete="username"></div>
+            <div class="form-row" style="margin-bottom:10px"><input class="form-input" id="paySmtpPass" type="password" placeholder="SMTP_PASS (app password)" autocomplete="new-password"></div>
+            <div class="form-row" style="margin-bottom:14px"><input class="form-input" id="paySmtpFrom" placeholder="SMTP_FROM (optional, e.g. FlixNova &lt;you@gmail.com&gt;)"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-green" onclick="savePayments()">💾 Save Stripe + SMTP</button>
+              <button class="btn btn-yellow" onclick="procAction('restart')">🔄 Restart App</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="page" id="page-config">
         <div class="panel">
           <div class="panel-head">
@@ -1284,7 +1323,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
             <button class="btn btn-secondary btn-sm" onclick="loadConfig()">⟳ Refresh</button>
           </div>
           <div class="panel-body">
-            <div style="font-size:13px;color:var(--muted);margin-bottom:14px">⚠️ Restart app after saving changes. Secrets are hidden.</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:14px">⚠️ Restart app after saving changes. Secrets are hidden. Prefer <b>Payments &amp; Email</b> for Stripe/SMTP.</div>
             <div id="configBody"></div>
           </div>
         </div>
@@ -1434,6 +1473,7 @@ function showPage(id,navEl){
     logs:'Application Logs',
     process:'Process Control',
     nginx:'Nginx Control',
+    payments:'Payments & Email',
     config:'Configuration',
     activity:'Activity Log'
   };
@@ -1451,6 +1491,7 @@ function showPage(id,navEl){
     logs:'Review application output and error streams',
     process:'Control the running application process',
     nginx:'Operate the web server layer',
+    payments:'Stripe Ad-Free unlock and SMTP password resets',
     config:'Review and adjust runtime configuration',
     activity:'Recent local admin activity'
   };
@@ -1463,6 +1504,7 @@ function showPage(id,navEl){
   if(id==='scrapers')loadScrapers();
   if(id==='cache')loadCacheStats();
   if(id==='process')loadProcStatus();
+  if(id==='payments')loadPayments();
   if(id==='config')loadConfig();
   if(id==='activity')loadActivity();
   closeSidebar();
@@ -1846,6 +1888,48 @@ async function testDebrid(){
   else toast(d?.error||'Test failed','error');
 }
 
+async function loadPayments(){
+  const d=await af('/config');
+  if(!d?.success){document.getElementById('payStatusBox').textContent=d?.error||'Failed to load';return;}
+  document.getElementById('payStripeState').textContent=d.payConfigured?'Configured':'Missing';
+  document.getElementById('paySmtpState').textContent=d.smtpConfigured?'Configured':'Missing';
+  document.getElementById('payStatusBox').innerHTML=
+    (d.payConfigured?'<span class="badge badge-green">Stripe ready</span> ':'<span class="badge badge-yellow">Stripe missing</span> ')+
+    (d.smtpConfigured?'<span class="badge badge-green">SMTP ready</span>':'<span class="badge badge-yellow">SMTP missing</span>')+
+    ` · SITE_URL: <code>${esc(d.siteUrl||'')}</code>`;
+  const site=document.getElementById('paySiteUrl');
+  if(site && !site.value) site.value=d.siteUrl||d.data?.SITE_URL||'https://snookiebaby.xyz:8443';
+  const host=document.getElementById('paySmtpHost');
+  if(host && !host.value && d.data?.SMTP_HOST && d.data.SMTP_HOST!=='***') host.value=d.data.SMTP_HOST;
+  const port=document.getElementById('paySmtpPort');
+  if(port && d.data?.SMTP_PORT && d.data.SMTP_PORT!=='***') port.value=d.data.SMTP_PORT;
+  const user=document.getElementById('paySmtpUser');
+  if(user && !user.value && d.data?.SMTP_USER && d.data.SMTP_USER!=='***') user.value=d.data.SMTP_USER;
+  const from=document.getElementById('paySmtpFrom');
+  if(from && !from.value && d.data?.SMTP_FROM && d.data.SMTP_FROM!=='***') from.value=d.data.SMTP_FROM;
+}
+async function savePayments(){
+  const body={
+    STRIPE_SECRET_KEY:document.getElementById('payStripeKey')?.value||'',
+    STRIPE_WEBHOOK_SECRET:document.getElementById('payStripeWh')?.value||'',
+    SITE_URL:document.getElementById('paySiteUrl')?.value||'',
+    SMTP_HOST:document.getElementById('paySmtpHost')?.value||'',
+    SMTP_PORT:document.getElementById('paySmtpPort')?.value||'',
+    SMTP_SECURE:document.getElementById('paySmtpSecure')?.value||'',
+    SMTP_USER:document.getElementById('paySmtpUser')?.value||'',
+    SMTP_PASS:document.getElementById('paySmtpPass')?.value||'',
+    SMTP_FROM:document.getElementById('paySmtpFrom')?.value||''
+  };
+  const d=await af('/integrations',{method:'PUT',body});
+  if(d?.success){
+    toast(d.message,'success');
+    document.getElementById('payStripeKey').value='';
+    document.getElementById('payStripeWh').value='';
+    document.getElementById('paySmtpPass').value='';
+    loadPayments();
+  }else toast(d?.error||'Failed','error');
+}
+
 async function loadConfig(){
   const d=await af('/config');
   if(!d?.success)return;
@@ -1854,14 +1938,15 @@ async function loadConfig(){
       <div class="config-key">${esc(k)}</div>
       <div class="config-val">
         <div class="form-row">
-          <input class="form-input" id="cfg-${escAttr(k)}" value="${escAttr(v)}" ${v==='***'?'disabled':''} style="font-family:'JetBrains Mono',monospace;font-size:12px">
-          ${v!=='***'?`<button class="btn btn-blue btn-sm" onclick="saveConfig('${String(k).replace(/'/g,"\\'")}')">Save</button>`:''}
+          <input class="form-input" id="cfg-${escAttr(k)}" value="${escAttr(v)}" ${v==='***'?'placeholder="•••••••• (hidden — enter new value to replace)"':''} style="font-family:'JetBrains Mono',monospace;font-size:12px">
+          <button class="btn btn-blue btn-sm" onclick="saveConfig('${String(k).replace(/'/g,"\\'")}')">Save</button>
         </div>
       </div>
-    </div>`).join('')+`<div style="margin-top:14px;font-size:13px;color:var(--muted)">Restart app after changes: <code style="color:#bfdcff">pm2 restart moviestream --update-env</code></div>`;
+    </div>`).join('')+`<div style="margin-top:14px;font-size:13px;color:var(--muted)">Restart app after changes: Process → Restart, or <code style="color:#bfdcff">pm2 restart moviestream --update-env</code></div>`;
 }
 async function saveConfig(key){
   const val=document.getElementById(`cfg-${key}`)?.value;
+  if(val==='***'){toast('Enter a new value (not ***)','error');return;}
   const d=await af('/config',{method:'PUT',body:{key,value:val}});
   if(d?.success)toast(d.message,'success');else toast(d?.error||'Failed','error');
 }
