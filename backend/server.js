@@ -13,11 +13,21 @@ const { execSync }    = require('child_process');
 const { createServer }= require('http');
 const { Server }      = require('socket.io');
 const ScraperManager  = require('./scrapers/ScraperManager');
-const { router: authRouter } = require('./authRoutes');
+const { router: authRouter, verifyToken } = require('./authRoutes');
 const debridRouter = require('./debridRoutes');
 const { router: featureRouter } = require('./featureRoutes');
 const { router: payRouter, handleWebhook } = require('./paymentRoutes');
 const { TitleRequest, PlayEvent } = require('./models');
+
+function requireUser(req, res) {
+  const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const user = verifyToken(tok);
+  if (!user) {
+    res.status(401).json({ success: false, error: 'Login required to watch' });
+    return null;
+  }
+  return user;
+}
 
 dotenv.config();
 
@@ -406,6 +416,7 @@ app.get('/api/season/:tmdbId/:season', async (req, res) => {
 
 app.get('/api/sources/:tmdbId/:type', async (req, res) => {
   try {
+    if (!requireUser(req, res)) return;
     const { tmdbId, type } = req.params;
     const { season, episode, nocache, all } = req.query;
     // Default clean-only (fewer popup-prone hosts). ?all=1 unlocks fallback servers.

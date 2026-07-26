@@ -6,6 +6,8 @@
  */
 const express = require('express');
 const axios = require('axios');
+const { verifyToken } = require('./authRoutes');
+const { User } = require('./models');
 
 const router = express.Router();
 const TORRENTIO = 'https://torrentio.strem.fun';
@@ -108,12 +110,33 @@ router.get('/status', async (req, res) => {
 
 router.post('/streams', async (req, res) => {
   try {
-    const token = tokenFrom(req);
+    // Real-Debrid is for Ad-Free (paying) members only
+    const userTok = verifyToken(
+      req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+    );
+    if (!userTok) {
+      return res.status(401).json({ success: false, error: 'Login required', code: 'LOGIN_REQUIRED' });
+    }
+    if (require('mongoose').connection.readyState === 1) {
+      const user = await User.findById(userTok.id).select('adFree');
+      if (!user?.adFree) {
+        return res.status(403).json({
+          success: false,
+          error: 'Ad-Free (£1) required for Real-Debrid streams. Free accounts use embed servers.',
+          code: 'ADFREE_REQUIRED'
+        });
+      }
+    } else {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+
+    // Prefer site-wide RD key for paying users
+    const token = siteToken() || tokenFrom(req);
     const { imdbId, type, season, episode, tmdbId } = req.body || {};
     if (!token) {
       return res.status(400).json({
         success: false,
-        error: 'Real-Debrid token required (paste in RD button or set REALDEBRID_API_TOKEN on server)'
+        error: 'Real-Debrid not configured on server (set REALDEBRID_API_TOKEN)'
       });
     }
 

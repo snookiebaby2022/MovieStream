@@ -212,49 +212,12 @@
     }).catch(function () {});
   }
 
-  /** Pre-roll ad before movies/TV for free users; Ad-Free skips */
+  /**
+   * Free users → embed players (provider ads).
+   * Ad-Free users → Real-Debrid (no FlixNova overlay).
+   */
   function withPreroll(playFn) {
-    if (typeof playFn !== 'function') return;
-    if (isAdFree()) { playFn(); return; }
-    var pw = $('pw');
-    if (!pw) { playFn(); return; }
-    var secs = 7;
-    var ads = [
-      { t: 'Support FlixNova', d: 'Free viewers see a short ad before playback. Pay once to remove all site & player ads forever.' },
-      { t: 'Watch without interruptions', d: 'Ad-Free is a one-time ' + (F.payLabel || '£1') + ' unlock — no subscription.' },
-      { t: 'Enjoy the show', d: 'Thanks for watching. Remove ads anytime from the header.' }
-    ];
-    var ad = ads[Math.floor(Math.random() * ads.length)];
-    pw.innerHTML =
-      '<div class="preroll" id="preroll">' +
-      '<div class="preroll-kicker">Advertisement</div>' +
-      '<h3>' + esc(ad.t) + '</h3>' +
-      '<p>' + esc(ad.d) + '</p>' +
-      '<div class="preroll-count" id="prerollCount">Playing in ' + secs + 's…</div>' +
-      '<div class="preroll-actions">' +
-      '<button type="button" class="pbtn gold" id="prerollPay">Remove ads ' + esc(F.payLabel || '£1') + '</button>' +
-      '<button type="button" class="pbtn ghost" id="prerollSkip" disabled>Skip in ' + secs + 's</button>' +
-      '</div></div>';
-    var pay = $('prerollPay');
-    var skip = $('prerollSkip');
-    var count = $('prerollCount');
-    if (pay) pay.onclick = function () { startCheckout(); };
-    var timer = setInterval(function () {
-      secs -= 1;
-      if (count) count.textContent = secs > 0 ? ('Playing in ' + secs + 's…') : 'Starting…';
-      if (skip) {
-        if (secs > 0) { skip.textContent = 'Skip in ' + secs + 's'; skip.disabled = true; }
-        else { skip.textContent = 'Skip ad ▸'; skip.disabled = false; }
-      }
-      if (secs <= 0) {
-        clearInterval(timer);
-        if (skip) skip.onclick = function () { playFn(); };
-        // auto-start shortly after unlock
-        setTimeout(function () {
-          if ($('preroll')) playFn();
-        }, 400);
-      }
-    }, 1000);
+    if (typeof playFn === 'function') playFn();
   }
 
   function bindVideoExtras(video, url, isRd) {

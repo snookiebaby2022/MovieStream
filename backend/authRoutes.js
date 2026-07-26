@@ -78,7 +78,7 @@ router.post('/register', async (req, res) => {
       passHash
     });
     const token = signToken({ id: String(user._id), username: user.username });
-    res.json({ success: true, token, username: user.username });
+    res.json({ success: true, token, username: user.username, adFree: !!user.adFree });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -93,7 +93,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
     const token = signToken({ id: String(user._id), username: user.username });
-    res.json({ success: true, token, username: user.username });
+    res.json({ success: true, token, username: user.username, adFree: !!user.adFree });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
