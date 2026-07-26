@@ -74,6 +74,57 @@ function isLikelyBrowserPlayable(title, url) {
 }
 
 const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?code[_\s-]?35|"error_code"\s*:\s*35|unavailable for legal reasons|file was removed from debrid/i;
+/** Torrentio serves short stub MP4s when RD can't open / blocks a file */
+const FAILED_STUB_RE = /\/videos\/failed_|failed_infringement|failed_opening|failed_unexpected/i;
+
+/** Lightweight redirect check — drop Torrentio failed_* stubs, keep everything else */
+async function resolveLooksPlayable(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  try {
+    const r = await axios.get(url, {
+      timeout: 5000,
+      maxRedirects: 0,
+      validateStatus: () => true,
+      headers: { 'User-Agent': ua(), Accept: '*/*' }
+    });
+    const loc = String(r.headers.location || '');
+    if (FAILED_STUB_RE.test(loc) || FAILED_STUB_RE.test(String(r.request?.res?.responseUrl || ''))) {
+      return false;
+    }
+    // Direct body that is already a failed stub (rare)
+    if (r.status >= 200 && r.status < 300) {
+      const ct = String(r.headers['content-type'] || '');
+      if (/video\/mp4/i.test(ct) && FAILED_STUB_RE.test(url)) return false;
+    }
+    return true;
+  } catch {
+    // Network blip — keep (client will try)
+    return true;
+  }
+}
+
+async function filterFailedResolves(streams, { need = 16, concurrency = 8, maxCheck = 28 } = {}) {
+  if (!streams.length) return { streams: [], dropped: 0 };
+  const list = streams.slice(0, maxCheck);
+  const kept = [];
+  let dropped = 0;
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, list.length) }, async () => {
+    while (cursor < list.length && kept.length < need) {
+      const idx = cursor++;
+      const s = list[idx];
+      const ok = await resolveLooksPlayable(s.url || s.embedUrl);
+      if (ok) kept.push(s);
+      else dropped++;
+    }
+  });
+  await Promise.all(workers);
+  if (!kept.length) {
+    // All checked were stubs (or none kept) — let client fall back to embeds
+    return { streams: [], dropped };
+  }
+  return { streams: kept, dropped };
+}
 
 async function requireAdFree(req, res) {
   const userTok = verifyToken(
@@ -278,7 +329,6 @@ router.post('/streams', async (req, res) => {
       return res.status(400).json({ success: false, error: 'IMDB id required for debrid streams' });
     }
 
-    const cfg = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
     let path;
     if (type === 'tv' || type === 'series') {
       const s = parseInt(season, 10) || 1;
@@ -288,20 +338,31 @@ router.post('/streams', async (req, res) => {
       path = `/stream/movie/${imdb}.json`;
     }
 
-    const url = `${TORRENTIO}/${cfg}${path}`;
+    async function fetchTorrentio(cfg) {
+      const url = `${TORRENTIO}/${cfg}${path}`;
+      const r = await axios.get(url, {
+        headers: { 'User-Agent': ua(), Accept: 'application/json' },
+        timeout: 25000,
+        validateStatus: s => s < 500
+      });
+      return r;
+    }
+
+    // Prefer clean releases; retry without filter if empty (some titles only have edge sources)
+    const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
+    const cfgAll = `realdebrid=${encodeURIComponent(token)}`;
     console.log('Debrid/Torrentio:', path);
 
-    const r = await axios.get(url, {
-      headers: { 'User-Agent': ua(), Accept: 'application/json' },
-      timeout: 25000,
-      validateStatus: s => s < 500
-    });
-
+    let r = await fetchTorrentio(cfgClean);
     if (r.status >= 400) {
       return res.status(502).json({ success: false, error: `Torrentio HTTP ${r.status}` });
     }
+    let raw = r.data?.streams || [];
+    if (!raw.length) {
+      r = await fetchTorrentio(cfgAll);
+      if (r.status < 400) raw = r.data?.streams || [];
+    }
 
-    const raw = r.data?.streams || [];
     let streams = raw
       .map((s, i) => {
         const playUrl = s.url || s.externalUrl || '';
@@ -336,10 +397,15 @@ router.post('/streams', async (req, res) => {
       (b.seeders || 0) - (a.seeders || 0)
     );
 
-    // Keep playable-looking ones first, then a few heavier backups
+    // Check redirects and drop Torrentio failed_* stubs before client sees them
+    const candidates = streams.slice(0, 48);
+    const filtered = await filterFailedResolves(candidates, { need: 16, concurrency: 8, maxCheck: 28 });
+    streams = filtered.streams;
+    if (filtered.dropped) {
+      console.log('Debrid filtered stubs:', filtered.dropped, 'kept', streams.length, path);
+    }
+
     const friendly = streams.filter(s => s.browserOk);
-    const rest = streams.filter(s => !s.browserOk);
-    streams = [...friendly, ...rest].slice(0, 40);
 
     res.json({
       success: true,
@@ -348,6 +414,7 @@ router.post('/streams', async (req, res) => {
         streams,
         totalSources: streams.length,
         browserFriendly: friendly.length,
+        droppedStubs: filtered.dropped || 0,
         provider: 'realdebrid+torrentio'
       }
     });

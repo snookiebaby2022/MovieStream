@@ -1892,9 +1892,15 @@ function isDirectUrl(url,s){
 function isHardFailUrl(url,s){
   var u=String(url||'');
   var t=String((s&&(s.title||s.source))||'');
-  if(s&&s.browserOk===false)return true;
-  if(/\.mkv(\?|$)/i.test(u))return true;
-  if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b/i.test(u+' '+t))return true;
+  // On native app, skip formats WebView usually cannot decode
+  if(isNativeApp()){
+    if(s&&s.browserOk===false)return true;
+    if(/\.mkv(\?|$)/i.test(u))return true;
+    if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b/i.test(u+' '+t))return true;
+    return false;
+  }
+  // Desktop: only treat clearly bad codecs as hard-fail (MKV/H264 often still worth trying / External)
+  if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b/i.test(u+' '+t)&&!/x264|h\.?264|avc/i.test(t))return true;
   return false;
 }
 function resolvePlayer(s,url){
@@ -1974,9 +1980,12 @@ function checkAndDropRd(url,idx){
 /** RD copyright blocks often play as a ~30s orange stub video — not an HTML error */
 function isRdCopyrightStub(video, source){
   if(!S.debridMode||!video)return false;
+  var src='';
+  try{src=String(video.currentSrc||video.src||(source&&(source.embedUrl||source.url))||'');}catch(e){}
+  if(/failed_infringement|failed_opening|failed_unexpected|\/videos\/failed_/i.test(src))return true;
   var d=video.duration;
   if(!isFinite(d)||d<=0)return false;
-  // RD's infringement placeholder is typically ~30 seconds (not every short clip)
+  // RD/Torrentio placeholder stubs are typically ~20–40 seconds
   if(d>=20&&d<=40)return true;
   return false;
 }
@@ -1993,6 +2002,7 @@ function handleSrc(data){
   S.debridMode=!!(data&&data.debrid);
   S.playGen=(S.playGen||0)+1;
   S.failed={};
+  S._triedRdExternal=0;
   if(!S.src.length){showPE('No sources found. External providers may be down.');return;}
   // Drop any already-labeled infringing titles from torrentio
   S.src=S.src.filter(function(s){
@@ -2040,12 +2050,18 @@ function tryS(idx){
   setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
   if(!url){mFail(idx);tryS(idx+1);return;}
 
-  // Skip unplayable RD files unless user forced External / Embed
+  // Skip awkward RD files (HEVC/MKV) when a friendlier RD link exists — never hide the chip row
   var mode=getPlayerMode();
   if(mode!=='external'&&mode!=='embed'&&s.debrid&&isHardFailUrl(url,s)){
-    var anyOk=S.src.some(function(x){return x.browserOk!==false&&!isHardFailUrl(x.embedUrl||x.url||'',x);});
+    var anyOk=S.src.some(function(x,i){return i!==idx&&x.browserOk!==false&&!isHardFailUrl(x.embedUrl||x.url||'',x);});
     if(anyOk){mFail(idx);tryS(idx+1);return;}
-    if(!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
+    // Only hard options left — try External once, then keep trying html5; embeds only after all RD fail
+    if(!S._triedRdExternal){
+      S._triedRdExternal=1;
+      setSt('sld','RD file may need External player…');
+      pExt(url,idx,gen);
+      return;
+    }
   }
 
   var engine=resolvePlayer(s,url);
