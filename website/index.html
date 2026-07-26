@@ -164,14 +164,34 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .adtip.on{display:block}.adtip b{color:var(--gold)}.adtip button{margin-left:8px;background:none;border:0;color:var(--t3);cursor:pointer;font-size:12px}
 .auth-btn{padding:7px 12px;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0;font-family:inherit}
 .auth-btn:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
-#authOv,#rdOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px}
-#authOv.on,#rdOv.on{display:flex}
+.auth-btn.primary{background:var(--red);border-color:var(--red);color:#fff}
+.auth-btn.primary:hover{filter:brightness(1.08);background:var(--red)}
+#authOv,#rdOv,#watchGateOv,#payPromoOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+#authOv.on,#rdOv.on,#watchGateOv.on,#payPromoOv.on{display:flex}
+#rdBtn{display:none}
 #rdBtn.on{border-color:var(--green);color:var(--green);background:rgba(70,211,105,.12)}
-.auth-box{width:100%;max-width:380px;background:var(--s1);border:1px solid var(--s4);border-radius:14px;padding:22px}
+.auth-box{width:100%;max-width:380px;background:var(--s1);border:1px solid var(--s4);border-radius:14px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.55)}
 .auth-box h2{font-size:18px;margin-bottom:6px}.auth-box p{font-size:12px;color:var(--t3);margin-bottom:14px}
 .auth-box input{width:100%;padding:10px 12px;margin-bottom:10px;border-radius:8px;border:1px solid var(--s5);background:var(--s2);color:#fff;font-size:13px}
 .auth-box .pbtn{width:100%;margin-top:4px}
 .auth-switch{margin-top:12px;font-size:12px;color:var(--t3);text-align:center}.auth-switch a{color:var(--red);cursor:pointer}
+.gate-box,.promo-box{width:100%;max-width:420px;background:linear-gradient(165deg,#1a1214 0%,#121212 45%,#0d0d0d 100%);border:1px solid rgba(229,9,20,.35);border-radius:16px;padding:28px 24px 22px;box-shadow:0 28px 70px rgba(0,0,0,.65);text-align:center;position:relative;overflow:hidden}
+.gate-box::before,.promo-box::before{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,transparent,var(--red),var(--gold),transparent)}
+.gate-kicker,.promo-kicker{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.gate-box h2,.promo-box h2{font-size:22px;font-weight:800;margin:0 0 10px;line-height:1.25;color:#fff}
+.gate-box p,.promo-box p{font-size:13px;color:var(--t2);line-height:1.55;margin:0 0 18px}
+.gate-actions,.promo-actions{display:flex;flex-direction:column;gap:8px}
+.gate-actions .pbtn,.promo-actions .pbtn{width:100%;margin:0}
+.gate-actions .pbtn.ghost,.promo-actions .pbtn.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)}
+.gate-actions .pbtn.ghost:hover,.promo-actions .pbtn.ghost:hover{background:rgba(255,255,255,.12)}
+.promo-perks{list-style:none;text-align:left;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:8px}
+.promo-perks li{font-size:13px;color:var(--t2);padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);display:flex;gap:10px;align-items:flex-start}
+.promo-perks li b{color:#fff;font-weight:700}
+.promo-price{font-size:28px;font-weight:800;color:#fff;margin:0 0 4px}
+.promo-price span{font-size:13px;font-weight:600;color:var(--t3);margin-left:6px}
+.promo-x{position:absolute;top:10px;right:12px;background:none;border:0;color:var(--t3);font-size:18px;cursor:pointer;line-height:1;padding:4px}
+.promo-x:hover{color:#fff}
+.promo-note{font-size:11px;color:var(--t3);margin-top:12px}
 .qbadge{display:inline-block;margin-left:4px;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:800}
 .q-HD{background:rgba(70,211,105,.2);color:var(--green)}.q-Auto{background:rgba(96,165,250,.15);color:#60a5fa}.q-CAM{background:rgba(245,197,24,.15);color:var(--gold)}
 .epnav{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:rgba(0,0,0,.45);border-bottom:1px solid var(--s3)}
@@ -237,16 +257,17 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
       <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
     </select>
     <button class="auth-btn" id="reqBtn" onclick="FlixExtra.openRequest()" title="Request a title">Request</button>
-    <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.startCheckout()" title="Remove site ads">Ad-Free £1</button>
+    <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Ad-Free + Real-Debrid">Ad-Free £1</button>
     <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
     <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
-    <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid">RD</button>
-    <button class="auth-btn" id="authBtn" onclick="openAuth()">Sign In</button>
+    <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid" style="display:none">RD</button>
+    <button class="auth-btn" id="regBtn" onclick="openAuth('register')">Register</button>
+    <button class="auth-btn primary" id="authBtn" onclick="openAuth('login')">Sign In</button>
     <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
   </div>
 </header>
 <div class="adtip" id="adtip">
-  <b>Watching:</b> Sign in to play. Free accounts use embed servers (may show ads). Unlock <b>Ad-Free £1</b> for Real-Debrid streams with no player ads.
+  <b>Free plan:</b> Embed servers (may include ads). Unlock <b>Ad-Free £1</b> for Real-Debrid streams with no player ads.
   <button type="button" onclick="dismissAdTip()">Dismiss</button>
 </div>
 <div id="hero">
@@ -306,6 +327,37 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     </div>
     <div class="mtabs" id="mtabs"></div>
     <div class="tbd"><div class="tp" id="tpEp"></div><div class="tp" id="tpCast"></div><div class="tp" id="tpSim"></div><div class="tp" id="tpTrail"></div><div class="tp" id="tpComm"></div><div class="tp" id="tpLinks"></div></div>
+  </div>
+</div>
+<div id="watchGateOv" onclick="if(event.target===this)closeWatchGate()">
+  <div class="gate-box" role="dialog" aria-labelledby="gateTitle">
+    <div class="gate-kicker">Account required</div>
+    <h2 id="gateTitle">Register or log in to watch</h2>
+    <p>Create a free account to stream movies &amp; TV. Free members use embed players. Upgrade later for Real-Debrid &amp; Ad-Free.</p>
+    <div class="gate-actions">
+      <button type="button" class="pbtn" onclick="closeWatchGate();openAuth('register')">Create free account</button>
+      <button type="button" class="pbtn ghost" onclick="closeWatchGate();openAuth('login')">Log in</button>
+      <button type="button" class="pbtn ghost" onclick="closeWatchGate()">Not now</button>
+    </div>
+  </div>
+</div>
+<div id="payPromoOv" onclick="if(event.target===this)FlixExtra.closePayPromo()">
+  <div class="promo-box" role="dialog" aria-labelledby="promoTitle">
+    <button type="button" class="promo-x" onclick="FlixExtra.closePayPromo()" aria-label="Close">✕</button>
+    <div class="promo-kicker">One-time unlock</div>
+    <h2 id="promoTitle">Watch with Real-Debrid — Ad-Free</h2>
+    <p class="promo-price">£1 <span>forever · no subscription</span></p>
+    <p>Skip embed ads and play Direct Real-Debrid streams on every title you watch.</p>
+    <ul class="promo-perks">
+      <li><span>▶</span><span><b>Real-Debrid links</b> — direct HD streams, not iframe embeds</span></li>
+      <li><span>✕</span><span><b>Ad-Free player</b> — no FlixNova ads while you watch</span></li>
+      <li><span>✓</span><span><b>Everything unlocked</b> — RD + embed backups when needed</span></li>
+    </ul>
+    <div class="promo-actions">
+      <button type="button" class="pbtn" id="promoPayBtn" onclick="FlixExtra.startCheckout()">Unlock Ad-Free for £1</button>
+      <button type="button" class="pbtn ghost" onclick="FlixExtra.closePayPromo()">Continue with free embeds</button>
+    </div>
+    <div class="promo-note">Sign in required. Free accounts keep embed servers with ads.</div>
   </div>
 </div>
 <div id="authOv">
@@ -376,28 +428,34 @@ function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStor
 function isAdFreeUser(){
   return !!(window.FlixExtra&&FlixExtra.isAdFree&&FlixExtra.isAdFree())||!!(S.user&&S.user.adFree)||localStorage.getItem('fn_adfree')==='1';
 }
+function openWatchGate(item){
+  if(item)S._pendingWatch=item;
+  var g=$('watchGateOv');if(g)g.classList.add('on');
+}
+function closeWatchGate(){var g=$('watchGateOv');if(g)g.classList.remove('on');}
 function requireWatchAuth(item){
   if(S.token)return true;
   if(item)S._pendingWatch=item;
-  openAuth();
-  var err=$('authErr');
-  if(err){err.textContent='Sign in or register to watch movies & TV.';err.style.display='block';}
+  openWatchGate(item);
   return false;
 }
 function updateAdTip(){
   var e=$('adtip');if(!e)return;
-  if(localStorage.getItem('fn_adtip')==='1'||isAdFreeUser())e.classList.remove('on');
+  // Tip only for logged-in free users
+  if(!S.token||localStorage.getItem('fn_adtip')==='1'||isAdFreeUser())e.classList.remove('on');
   else e.classList.add('on');
 }
 function getRdToken(){return (localStorage.getItem('fn_rd')||'').trim();}
 function hasRd(){return isAdFreeUser()&&!!(getRdToken()||S.siteRd);}
 function refreshRdBtn(){
   var b=$('rdBtn');if(!b)return;
-  // RD is unlocked via Ad-Free — button shows status for paying users
-  var on=isAdFreeUser()&&(S.siteRd||!!getRdToken());
+  // RD button only for paying Ad-Free members — free users never see debrid UI
+  var premium=isAdFreeUser();
+  b.style.display=premium?'inline-flex':'none';
+  var on=premium&&(S.siteRd||!!getRdToken());
   b.classList.toggle('on',on);
-  b.textContent=isAdFreeUser()?(on?'RD ✓':'RD'):'RD';
-  b.title=isAdFreeUser()?'Real-Debrid (Ad-Free)':'Unlock Ad-Free £1 for Real-Debrid';
+  b.textContent=on?'RD ✓':'RD';
+  b.title='Real-Debrid streams (Ad-Free)';
   updateAdTip();
 }
 function checkSiteRd(){
@@ -408,12 +466,16 @@ function checkSiteRd(){
   }).catch(function(){S.siteRd=false;refreshRdBtn();});
 }
 function openRd(){
+  if(!isAdFreeUser()){
+    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+    else alert('Unlock Ad-Free £1 for Real-Debrid streams.');
+    return;
+  }
   $('rdErr').style.display='none';$('rdOk').style.display='none';
   $('rdToken').value=getRdToken();
   $('rdOv').classList.add('on');
   if(getRdToken())verifyRd();
-  else if(isAdFreeUser()&&S.siteRd)$('rdOk').textContent='Ad-Free active — Real-Debrid streams enabled for your account.',$('rdOk').style.display='block';
-  else if(!isAdFreeUser())$('rdOk').textContent='Real-Debrid is for Ad-Free members. Free accounts use embed servers with ads.',$('rdOk').style.display='block';
+  else if(S.siteRd)$('rdOk').textContent='Ad-Free active — Real-Debrid streams enabled for your account.',$('rdOk').style.display='block';
 }
 function closeRd(){$('rdOv').classList.remove('on');}
 function clearRd(){localStorage.removeItem('fn_rd');refreshRdBtn();$('rdToken').value='';$('rdOk').style.display='none';$('rdErr').style.display='none';checkSiteRd();}
@@ -482,18 +544,35 @@ function uapi(path,opts){
 }
 function refreshAuthBtn(){
   var b=$('authBtn');if(!b)return;
-  if(S.user){b.textContent=S.user.username+' ▾';b.onclick=function(){if(confirm('Sign out?')){S.token='';S.user=null;localStorage.removeItem('fn_token');if(window.FlixExtra){FlixExtra.F.profile=null;FlixExtra.F.profiles=[];}refreshAuthBtn();var pb=$('profBtn');if(pb)pb.style.display='none';}};}
-  else{b.textContent='Sign In';b.onclick=openAuth;}
+  var reg=$('regBtn');
+  if(S.user){
+    b.textContent=S.user.username+' ▾';
+    b.classList.remove('primary');
+    b.onclick=function(){if(confirm('Sign out?')){S.token='';S.user=null;localStorage.removeItem('fn_token');if(window.FlixExtra){FlixExtra.F.profile=null;FlixExtra.F.profiles=[];FlixExtra.setAdFree(false);}refreshAuthBtn();refreshRdBtn();var pb=$('profBtn');if(pb)pb.style.display='none';}}};
+    if(reg)reg.style.display='none';
+  }else{
+    b.textContent='Sign In';
+    b.classList.add('primary');
+    b.onclick=function(){openAuth('login');};
+    if(reg){reg.style.display='inline-flex';reg.onclick=function(){openAuth('register');};}
+  }
+  refreshRdBtn();
 }
-function openAuth(){S.authMode='login';$('authTitle').textContent='Sign In';$('authSub').textContent='Sync My List & history across devices';$('authEmail').style.display='none';$('authSubmit').textContent='Sign In';$('authErr').style.display='none';$('authOv').classList.add('on');}
-function closeAuth(){$('authOv').classList.remove('on');}
-function toggleAuthMode(){
-  S.authMode=S.authMode==='login'?'register':'login';
+function openAuth(mode){
+  closeWatchGate();
+  S.authMode=(mode==='register')?'register':'login';
   var reg=S.authMode==='register';
   $('authTitle').textContent=reg?'Create Account':'Sign In';
+  $('authSub').textContent=reg?'Register free to watch movies & TV':'Sync My List & history across devices';
   $('authEmail').style.display=reg?'block':'none';
   $('authSubmit').textContent=reg?'Register':'Sign In';
+  $('authErr').style.display='none';
   $('authSwitch').innerHTML=reg?'Have an account? <a onclick="toggleAuthMode()">Sign In</a> · <a onclick="closeAuth()">Close</a>':'No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="FlixExtra.forgotPassword()">Forgot password?</a> · <a onclick="closeAuth()">Close</a>';
+  $('authOv').classList.add('on');
+}
+function closeAuth(){$('authOv').classList.remove('on');}
+function toggleAuthMode(){
+  openAuth(S.authMode==='login'?'register':'login');
 }
 function submitAuth(){
   var u=$('authUser').value.trim(),p=$('authPass').value,e=$('authEmail').value.trim();
@@ -503,12 +582,16 @@ function submitAuth(){
   uapi(path,{method:'POST',body:body}).then(function(d){
     if(!d.success){err.textContent=d.error||'Failed';err.style.display='block';return;}
     S.token=d.token;S.user={username:d.username,adFree:!!(d.adFree)};localStorage.setItem('fn_token',d.token);
-    closeAuth();refreshAuthBtn();syncWatchlistUp();
+    if(d.adFree&&window.FlixExtra)FlixExtra.setAdFree(true);
+    closeAuth();closeWatchGate();refreshAuthBtn();syncWatchlistUp();
     if(window.FlixExtra){FlixExtra.loadProfiles();FlixExtra.loadPayStatus();}
     // Resume watch after forced login
     if(S._pendingWatch){
       var pending=S._pendingWatch;S._pendingWatch=null;
       setTimeout(function(){openModal(pending);},200);
+    }else if(S._pendingPay){
+      S._pendingPay=false;
+      setTimeout(function(){if(window.FlixExtra)FlixExtra.startCheckout();},250);
     }
   }).catch(function(ex){err.textContent=ex.message;err.style.display='block';});
 }
@@ -1044,14 +1127,14 @@ function openModal(item){
       imdb=det.data.imdbId||null;
       if(S.item)S.item.imdbId=imdb;
     }
-    // Free → embeds (ads). Paying Ad-Free → Real-Debrid.
+    // Free → embeds only (no debrid). Paying → Real-Debrid + embed backups.
     if(!premium){
       $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading embed servers...</span></div>';
       return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
         if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
           handleSrc(emb.data);
-          setSt('sok','▶ Free · embeds may show ads · Unlock Ad-Free for RD');
-        }else showPE('No embed servers right now. Try again or unlock Ad-Free £1 for Real-Debrid.');
+          setSt('sok','▶ Free · embed servers');
+        }else showPE('No embed servers right now. Try again, or unlock Ad-Free £1 for Real-Debrid.');
       });
     }
     $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding Real-Debrid streams...</span></div>';
@@ -1063,8 +1146,10 @@ function openModal(item){
         return;
       }
       return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
-        if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length)handleSrc(emb.data);
-        else showPE('No streams yet. Try another title.');
+        if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
+          handleSrc(emb.data);
+          setSt('sok','▶ Embed backup · Ad-Free');
+        }else showPE('No streams yet. Try another title.');
       });
     });
   }).catch(function(e){
@@ -1280,9 +1365,10 @@ function handleSrc(data){
   if(!S.src.length){showPE('No sources found. External providers may be down.');return;}
   var moreBtn=$('moreSrvBtn');
   if(moreBtn){
+    // Paying users can fall back to embeds; free users only ever see embeds
     moreBtn.style.display='inline-flex';
-    moreBtn.textContent=S.debridMode?'Embed servers':'More servers';
-    moreBtn.title=S.debridMode?'Fallback embeds may show ads/popups':'Include backup servers';
+    moreBtn.textContent=S.debridMode?'Embed backups':'More servers';
+    moreBtn.title=S.debridMode?'Load embed backups':'More embed servers';
   }
   $('schips').innerHTML=S.src.map(function(s,i){
     var q=s.quality||'Auto';
@@ -1462,7 +1548,7 @@ function routeFromLocation(){
   openModal(item);
   return true;
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeMoreNav();if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();}}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeWatchGate();closeMoreNav();if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();FlixExtra.closePayPromo();}}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
 document.addEventListener('click',function(e){var m=$('navMore');if(m&&!m.contains(e.target))closeMoreNav();});
 $('ov').addEventListener('click',function(e){if(e.target===e.currentTarget)closeModal();});
 $('authOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeAuth();});

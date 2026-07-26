@@ -13,8 +13,8 @@
   };
 
   var HOUSE_ADS = [
-    { t: 'Go Ad-Free forever', d: 'One-time payment — remove FlixNova banners on this account.', cta: 'Unlock £1', action: 'pay' },
-    { t: 'Better with Real-Debrid', d: 'Direct streams, no iframe popups. Tap RD if streams struggle.', cta: 'Open RD', action: 'rd' },
+    { t: 'Go Ad-Free forever', d: 'One-time £1 — Real-Debrid streams + no FlixNova ads.', cta: 'Unlock £1', action: 'pay' },
+    { t: 'Real-Debrid for members', d: 'Paying members get direct RD links. Free accounts use embeds.', cta: 'Unlock £1', action: 'pay' },
     { t: 'Request missing titles', d: 'Can’t find something? Send a request and we’ll check it.', cta: 'Request', action: 'request' }
   ];
 
@@ -494,16 +494,57 @@
     }).catch(function () {});
   }
 
+  function openPayPromo(force) {
+    if (isAdFree()) return;
+    var ov = $('payPromoOv');
+    if (!ov) return;
+    var label = F.payLabel || '£1';
+    var btn = $('promoPayBtn');
+    if (btn) btn.textContent = 'Unlock Ad-Free for ' + label;
+    ov.classList.add('on');
+    if (force) localStorage.removeItem('fn_paypromo_dismiss');
+  }
+
+  function closePayPromo(persist) {
+    var ov = $('payPromoOv');
+    if (ov) ov.classList.remove('on');
+    if (persist !== false) localStorage.setItem('fn_paypromo_dismiss', String(Date.now()));
+  }
+
+  function maybeShowPayPromo() {
+    if (isAdFree()) return;
+    if (localStorage.getItem('fn_paypromo_dismiss')) {
+      var ts = parseInt(localStorage.getItem('fn_paypromo_dismiss'), 10) || 0;
+      // Re-show after 2 days
+      if (Date.now() - ts < 2 * 24 * 60 * 60 * 1000) return;
+    }
+    // Don’t steal focus from watch / auth / deep links
+    if (location.pathname.indexOf('/watch/') === 0) return;
+    if ($('ov') && $('ov').classList.contains('on')) return;
+    if ($('authOv') && $('authOv').classList.contains('on')) return;
+    if ($('watchGateOv') && $('watchGateOv').classList.contains('on')) return;
+    setTimeout(function () { openPayPromo(false); }, 1800);
+  }
+
   function startCheckout() {
     if (isAdFree()) { alert('You already have Ad-Free.'); return; }
-    var email = '';
     if (!(global.S && S.token)) {
-      email = prompt('Optional email for Stripe receipt (or Cancel to continue as guest):') || '';
+      // Must be logged in so Ad-Free sticks to the account
+      if (global.S) S._pendingPay = true;
+      closePayPromo(false);
+      if (typeof openAuth === 'function') openAuth('register');
+      var err = $('authErr');
+      if (err) {
+        err.textContent = 'Create an account or log in, then we’ll take you to the £1 Ad-Free checkout.';
+        err.style.display = 'block';
+      }
+      return;
     }
+    closePayPromo(false);
     fetch('/api/pay/checkout', {
       method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, (S.token ? { 'x-user-token': S.token } : {})),
-      body: JSON.stringify({ email: email })
+      headers: Object.assign({ 'Content-Type': 'application/json' }, { 'x-user-token': S.token }),
+      body: JSON.stringify({})
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.success && d.url) { location.href = d.url; return; }
       alert(d.error || 'Checkout unavailable. Add STRIPE_SECRET_KEY on the server.');
@@ -547,9 +588,11 @@
   }
 
   function adAction(action) {
-    if (action === 'pay') startCheckout();
-    else if (action === 'rd' && typeof openRd === 'function') openRd();
-    else if (action === 'request') openRequest();
+    if (action === 'pay') openPayPromo(true);
+    else if (action === 'rd') {
+      if (isAdFree() && typeof openRd === 'function') openRd();
+      else openPayPromo(true);
+    } else if (action === 'request') openRequest();
   }
 
   function injectRowAds() {
@@ -563,7 +606,9 @@
     if (btn) btn.style.display = isAdFree() ? 'none' : 'inline-flex';
     var badge = $('adfreeBadge');
     if (badge) badge.style.display = isAdFree() ? 'inline-flex' : 'none';
+    if (isAdFree()) closePayPromo(false);
     injectRowAds();
+    if (typeof refreshRdBtn === 'function') refreshRdBtn();
   }
 
   function init() {
@@ -572,7 +617,7 @@
     if (handleResetRoute()) return;
     handlePayReturn();
     loadProfiles();
-    loadPayStatus();
+    loadPayStatus().finally(function () { maybeShowPayPromo(); });
     var langSel = $('langSel');
     if (langSel) langSel.addEventListener('change', function () { setLang(langSel.value); });
     injectRowAds();
@@ -604,6 +649,9 @@
     adAction: adAction,
     injectRowAds: injectRowAds,
     renderAdUi: renderAdUi,
-    withPreroll: withPreroll
+    withPreroll: withPreroll,
+    openPayPromo: openPayPromo,
+    closePayPromo: closePayPromo,
+    maybeShowPayPromo: maybeShowPayPromo
   };
 })(window);
