@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.env*
+*.log
+coverage/
+.nyc_output/
+.vscode/
+.idea/
+.DS_Store
+*.pem
+*.key
+*.crt
+uploads/temp/
+tmp/
+*.sqlite
