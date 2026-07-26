@@ -127,6 +127,8 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
 .srcbar{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:8px 12px;background:rgba(0,0,0,.6);border-bottom:1px solid var(--s3)}
 .srclbl{font-size:10px;color:var(--t3);flex-shrink:0}
 .sc{padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600;border:1px solid var(--s5);background:var(--s4);color:var(--t2);cursor:pointer;transition:all .18s}.sc:hover{border-color:#555;color:#fff}.sc.on{background:var(--red);border-color:var(--red);color:#fff}.sc.dead{opacity:.3;text-decoration:line-through;pointer-events:none}
+.pchips{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.pc{padding:3px 9px;border-radius:12px;font-size:10px;font-weight:600;border:1px solid rgba(96,165,250,.35);background:rgba(96,165,250,.08);color:#93c5fd;cursor:pointer}.pc:hover{border-color:#60a5fa;color:#fff}.pc.on{background:#2563eb;border-color:#2563eb;color:#fff}
 .srcst{margin-left:auto;font-size:10px;flex-shrink:0}.sok{color:var(--green)}.sld{color:#60a5fa}.sfl{color:var(--red)}
 .mb{display:flex;gap:16px;padding:16px 18px}
 .mp{width:110px;flex-shrink:0;border-radius:var(--r);overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.5);align-self:flex-start}.mp img{width:100%;display:block}
@@ -361,6 +363,8 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
       <div id="schips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
       <button class="sc" id="nextSrcBtn" onclick="nextSrc()" title="Try next server">Next &#8250;</button>
       <button class="sc" id="moreSrvBtn" onclick="loadAllServers()" title="Include backup servers (may have more ads)">More servers</button>
+      <span class="srclbl" style="margin-left:6px">Player:</span>
+      <div class="pchips" id="pchips"></div>
       <button class="list-btn" id="mListBtn" onclick="toggleListModal()">+ Wishlist</button>
       <span class="srcst" id="srcst"></span>
     </div>
@@ -495,7 +499,7 @@ function getItem(k){return STORE[k]||null;}
 function clearStore(){STORE={};STOREKEY=0;}
 
 // ── STATE ──────────────────────────────────────────────────
-var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false};
+var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false,hls:null,playGen:0,playerMode:localStorage.getItem('fn_player')||'auto'};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
 function isAdFreeUser(){
   // Prefer server-backed flags; localStorage is cache only (cleared when /me or pay/status says false)
@@ -1684,13 +1688,101 @@ function bSim(items){clearStore();$('tpSim').innerHTML='<div class="sg">'+items.
 function bTrail(videos){$('tpTrail').innerHTML='<div class="tb"><iframe src="'+YTN+videos[0].key+'?rel=0&modestbranding=1" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe></div>';}
 
 // ── SOURCES & PLAYER ───────────────────────────────────────
+function isNativeApp(){
+  try{
+    if(window.Capacitor){
+      if(typeof Capacitor.isNativePlatform==='function')return !!Capacitor.isNativePlatform();
+      return true;
+    }
+  }catch(e){}
+  return /FlixNova|wv\)|Android.*Version\/4\.0/i.test(navigator.userAgent||'');
+}
+function destroyPlayer(){
+  if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+  if(S.hls){
+    try{S.hls.destroy();}catch(e){}
+    S.hls=null;
+  }
+  var vids=document.querySelectorAll('#pw video');
+  for(var i=0;i<vids.length;i++){
+    try{vids[i].pause();vids[i].removeAttribute('src');vids[i].load();}catch(e){}
+  }
+  var emb=$('emb');
+  if(emb){try{emb.src='about:blank';}catch(e){}}
+}
+function pwTools(extra){
+  return '<div class="pw-tools">'+
+    '<button type="button" onclick="nextSrc()">Next</button>'+
+    '<button type="button" onclick="retryAll()">Reload</button>'+
+    (extra||'')+
+    '</div>';
+}
+function getPlayerMode(){return S.playerMode||localStorage.getItem('fn_player')||'auto';}
+function setPlayerMode(mode){
+  S.playerMode=mode||'auto';
+  try{localStorage.setItem('fn_player',S.playerMode);}catch(e){}
+  renderPlayerChips();
+  if(S.src&&S.src.length)tryS(S.si||0);
+}
+function renderPlayerChips(){
+  var el=$('pchips'); if(!el)return;
+  var mode=getPlayerMode();
+  var opts=[
+    ['auto','Auto'],
+    ['html5','HTML5'],
+    ['hls','HLS'],
+    ['embed','Embed'],
+    ['external','External']
+  ];
+  el.innerHTML=opts.map(function(o){
+    return '<button type="button" class="pc'+(mode===o[0]?' on':'')+'" onclick="setPlayerMode(\''+o[0]+'\')" title="Player: '+o[1]+'">'+o[1]+'</button>';
+  }).join('');
+}
+function isHlsUrl(url,s){
+  return !!(s&&s.type==='hls')||/\.m3u8(\?|$)/i.test(url||'');
+}
+function isDirectUrl(url,s){
+  if(!url)return false;
+  if(s&&(s.debrid||s.type==='direct'||s.type==='hls'))return true;
+  return /\.(m3u8|mp4|webm|mkv)(\?|$)/i.test(url);
+}
+function isHardFailUrl(url,s){
+  var u=String(url||'');
+  var t=String((s&&(s.title||s.source))||'');
+  if(s&&s.browserOk===false)return true;
+  if(/\.mkv(\?|$)/i.test(u))return true;
+  if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b/i.test(u+' '+t))return true;
+  return false;
+}
+function resolvePlayer(s,url){
+  var mode=getPlayerMode();
+  var direct=isDirectUrl(url,s);
+  var hls=isHlsUrl(url,s);
+  if(mode==='external')return 'external';
+  if(mode==='embed')return (direct&&s&&s.debrid)?'embed_servers':'embed';
+  if(mode==='hls')return direct?(hls?'hls':'html5'):'embed';
+  if(mode==='html5')return direct?'html5':'embed';
+  // auto
+  if(!direct)return 'embed';
+  if(isNativeApp()&&isHardFailUrl(url,s))return 'skip';
+  if(hls)return 'hls';
+  if(isNativeApp()&&/\.mkv(\?|$)/i.test(url))return 'skip';
+  return 'html5';
+}
 function handleSrc(data){
+  destroyPlayer();
   S.src=(data&&data.sources)?data.sources:[];
   S.debridMode=!!(data&&data.debrid);
+  S.playGen=(S.playGen||0)+1;
   if(!S.src.length){showPE('No sources found. External providers may be down.');return;}
+  // On the app, prefer browser-friendly RD streams first
+  if(isNativeApp()&&S.debridMode){
+    S.src=S.src.slice().sort(function(a,b){
+      return (b.browserOk?1:0)-(a.browserOk?1:0) || (b.browserScore||0)-(a.browserScore||0);
+    });
+  }
   var moreBtn=$('moreSrvBtn');
   if(moreBtn){
-    // Paying users can fall back to embeds; free users only ever see embeds
     moreBtn.style.display='inline-flex';
     moreBtn.textContent=S.debridMode?'Embed backups':'More servers';
     moreBtn.title=S.debridMode?'Load embed backups':'More embed servers';
@@ -1700,9 +1792,9 @@ function handleSrc(data){
     var label=s.debrid?(he(s.quality||'HD')+(s.size?' · '+he(s.size):'')):he(s.source);
     return'<button class="sc'+(i===0?' on':'')+'" id="sc'+i+'" onclick="tryS('+i+')" title="'+he(s.title||s.source)+'">'+(s.debrid?'RD ':'')+label+'<span class="qbadge q-'+(q==='1080p'||q==='4K'||q==='720p'?'HD':q)+'">'+he(q)+'</span></button>';
   }).join('');
+  renderPlayerChips();
   $('srcbar').style.display='flex';
   tryS(0);
-  // Auto-next: after ~52 min on TV, offer/advance (embed end can't be detected cross-origin)
   if(S.autoNextTimer)clearTimeout(S.autoNextTimer);
   if(S.autoNext&&S.item&&(S.item.type||'')==='tv'){
     S.autoNextTimer=setTimeout(function(){
@@ -1713,42 +1805,48 @@ function handleSrc(data){
 function setSt(c,m){$('srcst').className='srcst '+c;$('srcst').textContent=m;}
 function nextSrc(){tryS(S.si+1);}
 function tryS(idx){
-  if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+  destroyPlayer();
   if(idx>=S.src.length){
-    // RD often returns MKV/HEVC that browsers can't play — fall back to clean embeds
     if(S.debridMode&&!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
-    showPE('All streams failed. Tap Embed servers or try another title.');
+    showPE('All streams failed. Switch Player to Embed/External, or try another title.');
     return;
   }
-  S.si=idx;document.querySelectorAll('#schips .sc').forEach(function(c,i){c.classList.toggle('on',i===idx);});
-  var s=S.src[idx],url=s.embedUrl||s.url||'';setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
+  S.si=idx;
+  document.querySelectorAll('#schips .sc').forEach(function(c,i){c.classList.toggle('on',i===idx);});
+  var s=S.src[idx],url=s.embedUrl||s.url||'';
+  var gen=++S.playGen;
+  setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
   if(!url){mFail(idx);tryS(idx+1);return;}
-  // Skip RD files browsers usually can't play (4K HEVC/AV1/MKV)
-  if(s.debrid&&s.browserOk===false){
-    var anyOk=S.src.some(function(x){return x.browserOk;});
-    if(!anyOk){
-      if(!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
-    }else if(idx<S.src.length-1){
-      mFail(idx);tryS(idx+1);return;
-    }
+
+  // Skip unplayable RD files unless user forced External / Embed
+  var mode=getPlayerMode();
+  if(mode!=='external'&&mode!=='embed'&&s.debrid&&isHardFailUrl(url,s)){
+    var anyOk=S.src.some(function(x){return x.browserOk!==false&&!isHardFailUrl(x.embedUrl||x.url||'',x);});
+    if(anyOk){mFail(idx);tryS(idx+1);return;}
+    if(!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
   }
-  // Real-Debrid / direct always use native player (no iframe ads)
-  if(s.debrid||s.type==='direct'||s.type==='hls'||/\.(m3u8|mp4|mkv|webm)(\?|$)/i.test(url)){
-    if(s.type==='hls'||/\.m3u8(\?|$)/i.test(url))pHLS(url,idx);
-    else pDir(url,idx);
-    return;
+
+  var engine=resolvePlayer(s,url);
+  if(engine==='skip'){mFail(idx);tryS(idx+1);return;}
+  if(engine==='external'){pExt(url,idx,gen);return;}
+  if(engine==='embed_servers'){
+    if(!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
+    pEmb(url,idx,gen);return;
   }
-  pEmb(url,idx);
+  if(engine==='embed'){pEmb(url,idx,gen);return;}
+  if(engine==='hls'||isHlsUrl(url,s)){pHls(url,idx,gen);return;}
+  pDir(url,idx,gen);
 }
 function loadEmbedFallback(){
   if(!S.item)return;
+  destroyPlayer();
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
-  setSt('sld','RD file not browser-playable — trying clean embed servers…');
+  setSt('sld','Switching to embed servers…');
   $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Switching to embed servers...</span></div>';
   S.cleanMode=true;
   api(sourcesPath(id,type,S.sn,S.ep)).then(function(d){
     if(d.success&&d.data&&d.data.sources&&d.data.sources.length)handleSrc(d.data);
-    else showPE('No working streams. Try Embed servers (may show ads) or another title.');
+    else showPE('No working streams. Try Player → External, or another title.');
   }).catch(function(e){showPE(e.message);});
 }
 function withAutoplay(url){
@@ -1756,90 +1854,164 @@ function withAutoplay(url){
   if(/[?&](autoplay|autoPlay)=/i.test(url))return url;
   return url+(url.indexOf('?')>=0?'&':'?')+'autoplay=1&autoPlay=true';
 }
-function pEmb(url,idx){
+function pEmb(url,idx,gen){
   var start=function(){
-    // No sandbox — players show "disable sandbox" and refuse to play when sandboxed.
+    if(gen&&gen!==S.playGen)return;
+    destroyPlayer();
     S.popupHits=0;S.playerReadyAt=Date.now();
     if(window.FlixExtra)FlixExtra.trackPlay('embed',true);
     var playUrl=withAutoplay(url);
     var wrapped='/player.html?u='+encodeURIComponent(playUrl);
-    var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button><button type="button" onclick="openDirectEmbed()">Direct</button></div>';
+    var tools=pwTools('<button type="button" onclick="openDirectEmbed()">Direct</button><button type="button" onclick="setPlayerMode(\'external\')">External</button>');
     $('pw').innerHTML=tools+'<iframe id="emb" src="'+wrapped+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
     S._directUrl=playUrl;
     var frame=$('emb'),loaded=false;
     if(frame){
-      frame.addEventListener('load',function(){loaded=true;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');});
-      frame.addEventListener('error',function(){mFail(idx);tryS(idx+1);});
+      frame.addEventListener('load',function(){loaded=true;if(gen&&gen!==S.playGen)return;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · Embed');});
+      frame.addEventListener('error',function(){if(gen&&gen!==S.playGen)return;mFail(idx);tryS(idx+1);});
     }
     S.failTimer=setTimeout(function(){
-      if(!loaded&&!S.failed[idx]){setSt('sld','Slow server — tap Next Server');}
-    },14000);
-    setTimeout(function(){if(!S.failed[idx])setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');},4000);
+      if(!loaded&&!S.failed[idx]){setSt('sld','Slow server — tap Next or switch Player');}
+    },isNativeApp()?18000:14000);
+    setTimeout(function(){if(!S.failed[idx]&&(!gen||gen===S.playGen))setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · Embed');},4000);
   };
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 function openDirectEmbed(){
   if(!S._directUrl)return;
-  var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button></div>';
+  destroyPlayer();
+  var tools=pwTools();
   $('pw').innerHTML=tools+'<iframe id="emb" src="'+S._directUrl+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
   setSt('sok','▶ Direct embed');
 }
-function pHLS(url,idx){
+function pExt(url,idx,gen){
+  destroyPlayer();
+  var safe=String(url||'').replace(/"/g,'&quot;');
+  $('pw').innerHTML=pwTools('<button type="button" onclick="copyStreamUrl()">Copy URL</button>')+
+    '<div class="pe"><h3>External player</h3><p>Opening the stream outside FlixNova (VLC / browser). If nothing opens, copy the URL.</p>'+
+    '<button class="pbtn" onclick="openExternalStream()">Open again</button>'+
+    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="setPlayerMode(\'auto\')">Back to Auto</button></div>';
+  S._extUrl=url;
+  setSt('sok','▶ External player');
+  openExternalStream();
+  if(gen&&gen!==S.playGen)return;
+}
+function openExternalStream(){
+  var url=S._extUrl||(S.src[S.si]&&(S.src[S.si].embedUrl||S.src[S.si].url));
+  if(!url)return;
+  try{
+    if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Browser&&Capacitor.Plugins.Browser.open){
+      Capacitor.Plugins.Browser.open({url:url});return;
+    }
+  }catch(e){}
+  try{
+    var a=document.createElement('a');
+    a.href=url;a.target='_blank';a.rel='noopener noreferrer';
+    document.body.appendChild(a);a.click();a.remove();
+  }catch(e2){
+    try{window.open(url,'_blank','noopener');}catch(e3){prompt('Open this URL in a video app:',url);}
+  }
+}
+function copyStreamUrl(){
+  var url=S._extUrl||S._directUrl||(S.src[S.si]&&(S.src[S.si].embedUrl||S.src[S.si].url))||'';
+  if(!url)return;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){setSt('sok','URL copied');}).catch(function(){prompt('Copy stream URL:',url);});
+  }else prompt('Copy stream URL:',url);
+}
+function pHls(url,idx,gen){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
   var start=function(){
-    $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline style="width:100%;height:100%;background:#000"></video>';
+    if(gen&&gen!==S.playGen)return;
+    destroyPlayer();
+    $('pw').innerHTML=pwTools('<button type="button" onclick="setPlayerMode(\'embed\')">Embed</button><button type="button" onclick="setPlayerMode(\'external\')">External</button>')+
+      '<video id="hv" controls autoplay playsinline webkit-playsinline preload="metadata" style="width:100%;height:100%;background:#000"></video>';
     var v=document.getElementById('hv');
+    if(!v){mFail(idx);tryS(idx+1);return;}
     var failed=false;
-    var fail=function(){if(failed)return;failed=true;mFail(idx);tryS(idx+1);};
-    S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},12000);
+    var fail=function(){
+      if(failed||(gen&&gen!==S.playGen))return;
+      failed=true;mFail(idx);tryS(idx+1);
+    };
+    S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},isNativeApp()?16000:12000);
+    var useWorker=!isNativeApp();
     if(window.Hls&&Hls.isSupported()){
-      var h=new Hls({enableWorker:true,xhrSetup:function(xhr){xhr.withCredentials=false;}});
+      var h=new Hls({
+        enableWorker:useWorker,
+        lowLatencyMode:false,
+        maxBufferLength:isNativeApp()?20:60,
+        maxMaxBufferLength:isNativeApp()?40:120,
+        xhrSetup:function(xhr){xhr.withCredentials=false;}
+      });
+      S.hls=h;
       h.loadSource(url);h.attachMedia(v);
       h.on(Hls.Events.MANIFEST_PARSED,function(){
+        if(gen&&gen!==S.playGen)return;
         if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-        v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
+        v.play().catch(function(){});
+        setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':'')+' · HLS');
         if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
       });
-      h.on(Hls.Events.ERROR,function(_,d){if(d.fatal)fail();});
+      h.on(Hls.Events.ERROR,function(_,d){if(d&&d.fatal)fail();});
     }else if(v.canPlayType('application/vnd.apple.mpegurl')){
-      v.src=url;v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
+      v.src=url;v.play().catch(function(){});
+      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':'')+' · HLS');
       if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
     }else{fail();}
   };
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
-function pDir(url,idx){
+function pDir(url,idx,gen){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
+  // App WebView often crashes on MKV/HEVC — skip to next/embed
+  if(isNativeApp()&&isHardFailUrl(url,S.src[idx])){
+    mFail(idx);tryS(idx+1);return;
+  }
   var start=function(){
-    $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
+    if(gen&&gen!==S.playGen)return;
+    destroyPlayer();
+    $('pw').innerHTML=pwTools('<button type="button" onclick="setPlayerMode(\'hls\')">HLS</button><button type="button" onclick="setPlayerMode(\'embed\')">Embed</button><button type="button" onclick="setPlayerMode(\'external\')">External</button>')+
+      '<video id="dv" controls autoplay playsinline webkit-playsinline preload="metadata" style="width:100%;height:100%;background:#000"></video>';
     var v=$('dv');
+    if(!v){mFail(idx);tryS(idx+1);return;}
     var settled=false;
     var ok=function(){
-      if(settled)return;settled=true;
+      if(settled||(gen&&gen!==S.playGen))return;settled=true;
       if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':''));
+      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':'')+' · HTML5');
     };
     var fail=function(){
-      if(settled)return;settled=true;
+      if(settled||(gen&&gen!==S.playGen))return;settled=true;
       if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
       mFail(idx);tryS(idx+1);
     };
     v.oncanplay=ok;
     v.onloadeddata=ok;
     v.onerror=fail;
+    try{v.src=url;}catch(e){fail();return;}
     S.failTimer=setTimeout(function(){
       if(!settled&&v.readyState<2)fail();
-    },10000);
+    },isNativeApp()?14000:10000);
     v.play().catch(function(){});
     if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
   };
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 function mFail(idx){S.failed[idx]=1;var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');}
-function showPE(msg){setSt('sfl','Failed');$('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p></p><button class="pbtn" onclick="retryAll()">Try Again</button><button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button></div>';var p=$('pw').querySelector('p');if(p)p.textContent=String(msg||'Playback failed');}
+function showPE(msg){
+  destroyPlayer();
+  setSt('sfl','Failed');
+  $('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p></p>'+
+    '<button class="pbtn" onclick="retryAll()">Try Again</button>'+
+    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button>'+
+    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="setPlayerMode(\'embed\')">Use Embed</button>'+
+    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="setPlayerMode(\'external\')">External</button></div>';
+  var p=$('pw').querySelector('p');if(p)p.textContent=String(msg||'Playback failed');
+}
 function retryAll(){
   if(!S.item)return;
   if(!requireWatchAuth(S.item))return;
+  destroyPlayer();
   S.failed={};S.src=[];S._triedEmbeds=0;
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
   $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Retrying...</span></div>';
@@ -1857,12 +2029,13 @@ function retryAll(){
   }).catch(function(e){showPE(e.message);});
 }
 function closeModal(){
-  if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+  destroyPlayer();
   if(S.autoNextTimer){clearTimeout(S.autoNextTimer);S.autoNextTimer=null;}
   $('ov').classList.remove('on');document.body.style.overflow='';
   $('pw').innerHTML='';$('srcbar').style.display='none';$('epnav').style.display='none';
   document.title='FlixNova - Watch Free Movies & TV Shows Online';
-  S.item=null;S.src=[];S.failed={};sockEmit('stop-watching');
+  S.item=null;S.src=[];S.failed={};S._extUrl='';S._directUrl='';
+  sockEmit('stop-watching');
   try{if(location.pathname.indexOf('/watch/')===0)history.replaceState(null,'','/');}catch(ex){}
 }
 function routeFromLocation(){
@@ -1882,7 +2055,7 @@ $('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
 window.addEventListener('popstate',function(){if(!routeFromLocation())closeModal();});
 window.addEventListener('scroll',function(){$('hdr').classList.toggle('bg',window.scrollY>40);},{passive:true});
 document.addEventListener('visibilitychange',function(){if(document.hidden){var v=$('hvid');if(v)v.classList.remove('on');}});
-var hs=document.createElement('script');hs.src='https://cdn.jsdelivr.net/npm/hls.js@latest';document.head.appendChild(hs);
+var hs=document.createElement('script');hs.src='https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';document.head.appendChild(hs);
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
 api('/genres/movie').then(function(d){
   if(!d.success||!d.data)return;

@@ -13,7 +13,13 @@
       "*.tmdb.org",
       "www.youtube-nocookie.com",
       "*.stripe.com",
-      "checkout.stripe.com"
+      "checkout.stripe.com",
+      "*.real-debrid.com",
+      "real-debrid.com",
+      "*.cdn.real-debrid.com",
+      "torrentio.strem.fun",
+      "*.jsdelivr.net",
+      "cdn.jsdelivr.net"
     ]
   },
   "android": {

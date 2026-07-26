@@ -297,6 +297,19 @@
       dl.textContent = t('download');
       dl.onclick = function () {
         if (!url) return;
+        var native = false;
+        try { native = !!(window.Capacitor && (Capacitor.isNativePlatform ? Capacitor.isNativePlatform() : true)); } catch (e) {}
+        // Opening _blank / download intents can kill the Android WebView — copy URL in-app instead
+        if (native) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(function () {
+              alert('Stream URL copied. Paste it into VLC or a download app.');
+            }).catch(function () { prompt('Copy stream URL:', url); });
+          } else {
+            prompt('Copy stream URL:', url);
+          }
+          return;
+        }
         var a = document.createElement('a');
         a.href = url; a.download = ''; a.target = '_blank'; a.rel = 'noopener';
         document.body.appendChild(a); a.click(); a.remove();
