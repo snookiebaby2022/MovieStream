@@ -491,8 +491,9 @@
   }
 
   function isAdFree() {
-    if (typeof F.adFree === 'boolean') return F.adFree;
-    return !!(global.S && S.user && S.user.adFree);
+    // Prefer live account flag from /me or login — localStorage is only a fallback cache
+    if (global.S && S.user && typeof S.user.adFree === 'boolean') return !!S.user.adFree;
+    return !!F.adFree;
   }
 
   function setAdFree(on) {

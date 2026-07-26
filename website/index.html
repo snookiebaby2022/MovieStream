@@ -534,9 +534,24 @@ function clearStore(){STORE={};STOREKEY=0;}
 var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false,hls:null,playGen:0,playerMode:localStorage.getItem('fn_player')||'auto'};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
 function isAdFreeUser(){
-  // Prefer server-backed flags; localStorage is cache only (cleared when /me or pay/status says false)
+  // Live account flag wins (important on Android cold start before localStorage cache syncs)
+  if(S.user&&typeof S.user.adFree==='boolean')return !!S.user.adFree;
   if(window.FlixExtra&&typeof FlixExtra.isAdFree==='function')return !!FlixExtra.isAdFree();
-  return !!(S.user&&S.user.adFree);
+  try{return localStorage.getItem('fn_adfree')==='1';}catch(e){return false;}
+}
+/** Ensure /me (or pay status) has synced Ad-Free before choosing RD vs embeds */
+function ensureAdFreeReady(){
+  if(!S.token)return Promise.resolve(false);
+  if(S.user&&typeof S.user.adFree==='boolean'&&S._userSynced)return Promise.resolve(!!S.user.adFree);
+  return uapi('/me').then(function(d){
+    if(!d||!d.success||!d.data)return isAdFreeUser();
+    S.user={username:d.data.username,adFree:!!d.data.adFree};
+    S._userSynced=true;
+    if(window.FlixExtra)FlixExtra.setAdFree(!!d.data.adFree);
+    refreshAuthBtn();
+    syncAdultUi();
+    return !!d.data.adFree;
+  }).catch(function(){return isAdFreeUser();});
 }
 function openWatchGate(item){
   if(item)S._pendingWatch=item;
@@ -630,14 +645,24 @@ function verifyRd(){
 function fetchDebridStreams(imdbId,type,sn,ep,tmdbId){
   // Paying / Ad-Free only — free users stay on embeds
   if(!isAdFreeUser()||!S.token)return Promise.resolve(null);
-  var headers={'Content-Type':'application/json','x-user-token':S.token};
+  var headers={
+    'Content-Type':'application/json',
+    'x-user-token':S.token,
+    'Authorization':'Bearer '+S.token
+  };
   var token=getRdToken();
   if(token)headers['x-rd-token']=token;
   return fetch('/api/debrid/streams',{
     method:'POST',
     headers:headers,
     body:JSON.stringify({imdbId:imdbId||'',type:type==='tv'?'tv':'movie',season:sn||1,episode:ep||1,tmdbId:tmdbId})
-  }).then(function(r){return r.json();}).catch(function(){return null;});
+  }).then(function(r){
+    return r.json().then(function(d){
+      if(!d)d={success:false};
+      d._http=r.status;
+      return d;
+    });
+  }).catch(function(){return null;});
 }
 function toggleMoreNav(e){if(e)e.stopPropagation();$('navMore').classList.toggle('open');}
 function closeMoreNav(){var n=$('navMore');if(n)n.classList.remove('open');}
@@ -730,8 +755,8 @@ function submitAuth(){
   var body=S.authMode==='register'?{username:u,password:p,email:e}:{username:u,password:p};
   uapi(path,{method:'POST',body:body}).then(function(d){
     if(!d.success){err.textContent=d.error||'Failed';err.style.display='block';return;}
-    S.token=d.token;S.user={username:d.username,adFree:!!(d.adFree)};localStorage.setItem('fn_token',d.token);
-    if(d.adFree&&window.FlixExtra)FlixExtra.setAdFree(true);
+    S.token=d.token;S.user={username:d.username,adFree:!!(d.adFree)};S._userSynced=true;localStorage.setItem('fn_token',d.token);
+    if(window.FlixExtra)FlixExtra.setAdFree(!!d.adFree);
     closeAuth();closeWatchGate();refreshAuthBtn();syncWatchlistUp();
     if(window.FlixExtra){FlixExtra.loadProfiles();FlixExtra.loadPayStatus();}
     // Resume watch after forced login
@@ -1501,46 +1526,51 @@ function openModal(item){
   document.title=(item.title||'')+' - FlixNova';
   S.cleanMode=localStorage.getItem('fn_clean')!=='0';
   S._triedEmbeds=0;
-  var premium=isAdFreeUser();
-  api('/details/'+id+'/'+type).then(function(det){
-    var imdb=null;
-    if(det&&det.success){
-      fillDet(det.data,id,type);
-      imdb=det.data.imdbId||null;
-      if(S.item){
-        S.item.imdbId=imdb;
-        S.item.title=det.data.title||S.item.title;
-        S.item.poster=det.data.poster||S.item.poster;
-        S.item.backdrop=det.data.backdrop||S.item.backdrop;
-        S.item.year=det.data.year||S.item.year;
-        S.item.rating=det.data.rating||S.item.rating;
-        S.item.overview=det.data.overview||S.item.overview;
-        saveContinue(S.item,S.sn,S.ep);
+  // Wait for Ad-Free sync (Android cold start often races /me) before choosing RD vs embeds
+  ensureAdFreeReady().then(function(premium){
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>'+(premium?'Checking Ad-Free / Real-Debrid...':'Loading embed servers...')+'</span></div>';
+    return api('/details/'+id+'/'+type).then(function(det){
+      var imdb=null;
+      if(det&&det.success){
+        fillDet(det.data,id,type);
+        imdb=det.data.imdbId||null;
+        if(S.item){
+          S.item.imdbId=imdb;
+          S.item.title=det.data.title||S.item.title;
+          S.item.poster=det.data.poster||S.item.poster;
+          S.item.backdrop=det.data.backdrop||S.item.backdrop;
+          S.item.year=det.data.year||S.item.year;
+          S.item.rating=det.data.rating||S.item.rating;
+          S.item.overview=det.data.overview||S.item.overview;
+          saveContinue(S.item,S.sn,S.ep);
+        }
       }
-    }
-    // Free → embeds only (no debrid). Paying → Real-Debrid + embed backups.
-    if(!premium){
-      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading embed servers...</span></div>';
-      return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
-        if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
-          handleSrc(emb.data);
-          setSt('sok','▶ Free · embed servers');
-        }else showPE('No embed servers right now. Try again, or unlock Ad-Free £1 for Real-Debrid.');
-      });
-    }
-    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding Real-Debrid streams...</span></div>';
-    return fetchDebridStreams(imdb,type,S.sn,S.ep,id).then(function(rd){
-      if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
-        S.siteRd=true;refreshRdBtn();
-        handleSrc({sources:rd.data.streams,debrid:true});
-        setSt('sok','▶ Real-Debrid · Ad-Free');
-        return;
+      // Re-read after details in case /me finished mid-flight
+      premium=isAdFreeUser();
+      if(!premium){
+        $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading embed servers...</span></div>';
+        return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
+          if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
+            handleSrc(emb.data);
+            setSt('sok','▶ Free · embed servers');
+          }else showPE('No embed servers right now. Try again, or unlock Ad-Free £1 for Real-Debrid.');
+        });
       }
-      return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
-        if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
-          handleSrc(emb.data);
-          setSt('sok','▶ Embed backup · Ad-Free');
-        }else showPE('No streams yet. Try another title.');
+      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding Real-Debrid streams...</span></div>';
+      return fetchDebridStreams(imdb,type,S.sn,S.ep,id).then(function(rd){
+        if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+          S.siteRd=true;refreshRdBtn();
+          handleSrc({sources:rd.data.streams,debrid:true});
+          setSt('sok','▶ Real-Debrid · Ad-Free');
+          return;
+        }
+        var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no RD links';
+        return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
+          if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
+            handleSrc(emb.data);
+            setSt('sok','▶ Embed backup · Ad-Free ('+why+')');
+          }else showPE('No streams yet ('+why+'). Try another title or Player → External.');
+        });
       });
     });
   }).catch(function(e){
@@ -2124,13 +2154,9 @@ api('/genres/movie').then(function(d){
   $('fgenres').innerHTML=d.data.slice(0,18).map(function(g){return'<a href="#" onclick="byG('+g.id+',\'movie\');return false">'+he(g.name)+'</a>';}).join('');
 }).catch(function(){});
 if(S.token){
-  uapi('/me').then(function(d){
-    if(d.success){
-      S.user={username:d.data.username,adFree:!!d.data.adFree};
-      if(d.data.adFree&&window.FlixExtra)FlixExtra.setAdFree(true);
-      refreshAuthBtn();
-      if(window.FlixExtra){FlixExtra.loadProfiles();FlixExtra.loadPayStatus();}
-    }else{S.token='';localStorage.removeItem('fn_token');}
+  ensureAdFreeReady().then(function(){
+    refreshAuthBtn();
+    if(window.FlixExtra){FlixExtra.loadProfiles();FlixExtra.loadPayStatus();}
   }).catch(function(){});
 }
 refreshAuthBtn();
