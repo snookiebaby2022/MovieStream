@@ -28,9 +28,10 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
 .steps li{font-size:13px;color:var(--t2);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px;border:1px solid rgba(255,255,255,.06)}
 .steps b{color:#fff}
 .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:10px;background:var(--red);color:#fff;text-decoration:none;font-weight:700;font-size:13px;border:0;cursor:pointer;font-family:inherit}
-.btn.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)}
+.btn.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#fff}
 .note{margin-top:22px;font-size:12px;color:var(--t3);line-height:1.5}
 .kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
+.code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:rgba(255,255,255,.06);padding:8px 10px;border-radius:8px;word-break:break-all;color:#ddd;margin-top:8px}
 </style>
 </head>
 <body>
@@ -42,45 +43,67 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
     </div>
     <div class="kicker">Install</div>
     <h1>Watch on phone, tablet &amp; TV</h1>
-    <p class="lead">Use the same FlixNova account everywhere. Android &amp; Fire Stick get a native app shell. iPhone/iPad install the site as a Home Screen app (Apple’s supported path without the App Store).</p>
+    <p class="lead">Same FlixNova account everywhere. Android &amp; Fire Stick use the APK. iPhone/iPad install via Safari Home Screen.</p>
 
     <div class="grid">
       <section class="card">
         <h2>Android phone / tablet</h2>
-        <p>Install the FlixNova APK (sideload). It opens the live site in a full-screen app.</p>
+        <p>Download the FlixNova APK and install it (sideload). It opens the live site fullscreen.</p>
         <ol class="steps">
-          <li><b>1.</b> Download the latest APK from your admin / GitHub Releases (or build with Android Studio).</li>
+          <li><b>1.</b> Tap <b>Download APK</b> below.</li>
           <li><b>2.</b> Allow “Install unknown apps” for your browser/Files.</li>
-          <li><b>3.</b> Open FlixNova → Sign in → Watch.</li>
+          <li><b>3.</b> Open FlixNova → Sign Up / Log In → Watch.</li>
         </ol>
-        <a class="btn" href="https://github.com/snookiebaby2022/MovieStream/releases" target="_blank" rel="noopener">Get Android APK</a>
+        <a class="btn" id="apkBtn" href="/downloads/FlixNova-android.apk" download>Download Android APK</a>
+        <div class="code" id="apkUrl"></div>
       </section>
 
       <section class="card">
         <h2>Fire Stick / Fire TV</h2>
-        <p>Same Android APK, installed via Downloader or ADB. Optimized for leanback / remote.</p>
+        <p>Install the same APK with Downloader (or ADB).</p>
         <ol class="steps">
-          <li><b>1.</b> On Fire Stick: Settings → My Fire TV → Developer Options → <b>Apps from Unknown Sources</b> ON.</li>
-          <li><b>2.</b> Install the <b>Downloader</b> app from Amazon Store.</li>
-          <li><b>3.</b> Enter your APK download URL → Install → Launch FlixNova.</li>
+          <li><b>1.</b> Settings → My Fire TV → Developer Options → <b>Apps from Unknown Sources</b> ON.</li>
+          <li><b>2.</b> Install <b>Downloader</b> from the Amazon store.</li>
+          <li><b>3.</b> Paste the APK URL below → Download → Install → Open FlixNova.</li>
         </ol>
-        <a class="btn ghost" href="https://developer.amazon.com/docs/fire-tv/accessing-development-tools.html" target="_blank" rel="noopener">Fire TV sideload help</a>
+        <button class="btn ghost" type="button" id="copyApk">Copy APK URL for Downloader</button>
+        <div class="code" id="apkUrl2"></div>
       </section>
 
       <section class="card" id="ios">
         <h2>iPhone / iPad</h2>
-        <p>Apple doesn’t allow easy sideload of streaming wrappers. Install FlixNova as a Home Screen web app — looks and feels like a native app.</p>
+        <p>Use Safari (required): Share → <b>Add to Home Screen</b>.</p>
         <ol class="steps">
-          <li><b>1.</b> Open <b>Safari</b> (required) → go to FlixNova.</li>
-          <li><b>2.</b> Tap the <b>Share</b> button.</li>
+          <li><b>1.</b> Open FlixNova in <b>Safari</b>.</li>
+          <li><b>2.</b> Tap Share.</li>
           <li><b>3.</b> Tap <b>Add to Home Screen</b> → Add.</li>
-          <li><b>4.</b> Open the FlixNova icon → Sign in &amp; watch fullscreen.</li>
+          <li><b>4.</b> Open the icon → Sign in &amp; watch fullscreen.</li>
         </ol>
-        <button class="btn" type="button" onclick="location.href='/'">Open FlixNova in Safari</button>
+        <a class="btn" href="/">Open FlixNova</a>
       </section>
     </div>
 
-    <p class="note">Developers: native project lives in <code>apps/flixnova</code> (Capacitor). Build Android/Fire TV with Android Studio; optional iOS target needs a Mac + Xcode + Apple Developer account. The apps load your live site at <b>snookiebaby.xyz:8443</b> so updates ship with the website.</p>
+    <p class="note">Get App from the site header opens this page. The Android button downloads <code>/downloads/FlixNova-android.apk</code> from this server. If the file is missing, rebuild from <code>apps/flixnova</code> and upload that APK.</p>
   </div>
+  <script>
+    (function () {
+      var url = location.origin + '/downloads/FlixNova-android.apk';
+      var a = document.getElementById('apkUrl');
+      var b = document.getElementById('apkUrl2');
+      if (a) a.textContent = url;
+      if (b) b.textContent = url;
+      var copy = document.getElementById('copyApk');
+      if (copy) copy.onclick = function () {
+        navigator.clipboard.writeText(url).then(function () { copy.textContent = 'Copied!'; }).catch(function () { prompt('Copy this URL:', url); });
+      };
+      // Soft check APK exists
+      fetch('/downloads/FlixNova-android.apk', { method: 'HEAD' }).then(function (r) {
+        if (!r.ok) {
+          var btn = document.getElementById('apkBtn');
+          if (btn) { btn.textContent = 'APK not uploaded yet'; btn.style.opacity = '.7'; }
+        }
+      }).catch(function () {});
+    })();
+  </script>
 </body>
 </html>

@@ -103,6 +103,13 @@
     };
   }
 
+  function syncAdultForKids() {
+    if (kidsActive() && localStorage.getItem('fn_adult') === '1') {
+      localStorage.setItem('fn_adult', '0');
+    }
+    if (typeof global.syncAdultUi === 'function') global.syncAdultUi();
+  }
+
   function fapi(path, opts) {
     opts = opts || {};
     var headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
@@ -121,8 +128,9 @@
       F.profiles = d.data.profiles || [];
       F.profile = F.profiles.find(function (p) { return p.id === d.data.activeProfileId; }) || F.profiles[0] || null;
       if (F.profile && F.profile.lang) setLang(F.profile.lang);
-      renderProfileBtn();
       localStorage.setItem('fn_kids', F.profile && F.profile.kids ? '1' : '0');
+      syncAdultForKids();
+      renderProfileBtn();
     }).catch(function () {});
   }
 
@@ -157,6 +165,7 @@
       if (!d.success) return;
       F.profile = d.data.profile;
       localStorage.setItem('fn_kids', F.profile && F.profile.kids ? '1' : '0');
+      syncAdultForKids();
       renderProfileBtn();
       closeProfiles();
       if (typeof goHome === 'function') goHome();

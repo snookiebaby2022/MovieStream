@@ -169,6 +169,8 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .auth-btn:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
 .auth-btn.primary{background:var(--red);border-color:var(--red);color:#fff}
 .auth-btn.primary:hover{filter:brightness(1.08);background:var(--red)}
+.auth-btn.xxx{border-color:rgba(255,80,120,.35);color:#ff8ab0}
+.auth-btn.xxx.on{background:rgba(255,40,90,.22);border-color:#ff2d6a;color:#fff}
 #authOv,#rdOv,#watchGateOv,#payPromoOv,#welcomeOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
 #authOv.on,#rdOv.on,#watchGateOv.on,#payPromoOv.on,#welcomeOv.on{display:flex}
 #rdBtn{display:none}
@@ -260,6 +262,7 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
         <button class="nb" id="nb-anime" onclick="go('anime',this);closeMoreNav()">Anime</button>
         <button class="nb" id="nb-genres" onclick="go('genres',this);closeMoreNav()">Genres</button>
         <button class="nb" id="nb-list" onclick="go('list',this);closeMoreNav()">Wishlist</button>
+        <button class="nb" id="nb-adult" onclick="go('adult',this);closeMoreNav()" style="display:none">XXX</button>
         <button class="nb" id="nb-request" onclick="closeMoreNav();FlixExtra.openRequest()">Request a title</button>
       </div>
     </div>
@@ -270,6 +273,7 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
       <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
     </select>
     <a class="auth-btn" id="getAppBtn" href="/get-app.html" title="Android, Fire Stick, iPhone">Get App</a>
+    <button class="auth-btn xxx" id="xxxBtn" onclick="toggleAdultMode()" title="Adult / XXX content (off by default)">XXX Off</button>
     <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Ad-Free + Real-Debrid">Ad-Free £1</button>
     <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
     <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
@@ -733,12 +737,47 @@ function $(id){return document.getElementById(id);}
 function imgp(p,s){s=s||'w500';return p?(p.indexOf('http')===0?p:IMGB+'/'+s+p):PH;}
 function nm(n){return n?String(Math.round(Number(n)*10)/10):'';}
 function he(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function adultModeOn(){
+  if(window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive())return false;
+  return localStorage.getItem('fn_adult')==='1';
+}
+function withAdult(path){
+  if(!adultModeOn())return path;
+  return path+(path.indexOf('?')>=0?'&':'?')+'adult=1';
+}
+function syncAdultUi(){
+  var on=adultModeOn();
+  var btn=$('xxxBtn');
+  if(btn){
+    var kids=window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive();
+    btn.style.display=kids?'none':'';
+    btn.classList.toggle('on',on);
+    btn.textContent=on?'XXX On':'XXX Off';
+    btn.title=on?'Adult content visible — click to hide':'Adult / XXX content (off by default)';
+  }
+  var nav=$('nb-adult');
+  if(nav)nav.style.display=on?'':'none';
+}
+function toggleAdultMode(){
+  if(window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive()){
+    alert('Adult mode is disabled on Kids profiles.');
+    return;
+  }
+  if(!adultModeOn()){
+    if(!confirm('Enable Adult / XXX content?\n\nYou must be 18+. Content may be explicit.'))return;
+    localStorage.setItem('fn_adult','1');
+  }else{
+    localStorage.setItem('fn_adult','0');
+  }
+  syncAdultUi();
+  go(S.section||'home',null);
+}
 function api(path){
   var headers={};
   if(S.token)headers['x-user-token']=S.token;
   var ctrl=typeof AbortController!=='undefined'?new AbortController():null;
   var timer=ctrl?setTimeout(function(){try{ctrl.abort();}catch(e){}},20000):null;
-  return fetch(API+path,{headers:headers,signal:ctrl?ctrl.signal:undefined,cache:'no-store'}).then(function(r){
+  return fetch(API+withAdult(path),{headers:headers,signal:ctrl?ctrl.signal:undefined,cache:'no-store'}).then(function(r){
     if(timer)clearTimeout(timer);
     if(r.status===401)throw new Error('Login required to watch');
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -942,6 +981,16 @@ function stopHeroMedia(){
 
 // ── NAV ────────────────────────────────────────────────────
 function goHome(){go('home',$('nb-home'));}
+function loadAdult(){
+  if(!adultModeOn()){go('home',$('nb-home'));return Promise.resolve();}
+  clearInterval(S.ht);$('hero').style.display='none';ld('Loading XXX...');
+  return api('/discover/adult').then(function(d){
+    clearStore();
+    var items=d&&d.data?d.data:[];
+    if(!items.length){setR('<div class="empty">No adult titles found</div>');return;}
+    renderBrowseGrid('XXX · Adult', 'movie', d);
+  }).catch(function(e){setR('<div class="empty">'+e.message+'</div>');});
+}
 function go(section,btn){
   S.section=section;S.year='';S.decade='';S.country='';S.animeMode=false;
   stopHeroMedia();
@@ -950,11 +999,11 @@ function go(section,btn){
   var cb=$('cbar');if(cb)cb.remove();
   closeMoreNav();
   document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});
-  var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',anime:'nb-anime',genres:'nb-genres',new:'nb-new',list:'nb-list'};
+  var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',anime:'nb-anime',genres:'nb-genres',new:'nb-new',list:'nb-list',adult:'nb-adult'};
   if(btn&&btn.id)btn.classList.add('on');
   else{var el=$(map[section]);if(el)el.classList.add('on');if(section==='new'){var n2=$('nb-new2');if(n2)n2.classList.add('on');}}
   sockEmit('page-view',{page:section});ld();S.rc=0;
-  var loader=section==='home'?loadHome:section==='movies'?loadMovies:section==='tv'?loadTV:section==='anime'?loadAnime:section==='genres'?loadGenresPage:section==='list'?loadList:loadNew;
+  var loader=section==='home'?loadHome:section==='movies'?loadMovies:section==='tv'?loadTV:section==='anime'?loadAnime:section==='genres'?loadGenresPage:section==='list'?loadList:section==='adult'?loadAdult:loadNew;
   loader().catch(function(e){setR('<div class="empty">Failed: '+e.message+'</div>');});
 }
 function loadList(){
@@ -1067,7 +1116,8 @@ function loadHome(){
     api('/discover/tv/top').catch(function(){return {success:false,data:[]};}),
     api('/discover/tv/airing').catch(function(){return {success:false,data:[]};}),
     api('/discover/movie/upcoming').catch(function(){return {success:false,data:[]};}),
-    contP.catch(function(){return [];})
+    contP.catch(function(){return [];}),
+    adultModeOn()?api('/discover/adult').catch(function(){return {success:false,data:[]};}):Promise.resolve({success:true,data:[]})
   ];
   return Promise.all(calls).then(function(rs){
     var g=function(r){try{return r&&r.data&&r.data.length?r.data:[];}catch(e){return[];}};
@@ -1078,10 +1128,12 @@ function loadHome(){
     else $('hero').style.display='none';
     var cont=S.token?(Array.isArray(rs[10])?rs[10]:[]).filter(isValidContinueItem):[];
     if(S.token&&!cont.length)cont=cleanContinueLocal();
+    var adult=g(rs[11]);
     var secs=[
       {title:(window.FlixExtra?FlixExtra.t('continueWatching'):'Continue Watching'),items:cont.slice(0,12),ap:'',cw:true},
       {title:(window.FlixExtra?FlixExtra.t('trendingToday'):'Trending Today'),items:day.slice(0,24),ap:'/trending/day'},
       {title:'Trending This Week',items:week.slice(0,24),ap:'/trending/browse'},
+      {title:'XXX · Adult',items:adult.slice(0,24),ap:'/discover/adult'},
       {title:'Now in Cinemas',items:now.slice(0,24),ap:'/browse/movie?pages=3'},
       {title:'Popular Movies',items:g(rs[4]).slice(0,24),ap:'/browse/movie?pages=5'},
       {title:'Popular TV Shows',items:g(rs[5]).slice(0,24),ap:'/browse/tv?pages=5'},
@@ -1712,6 +1764,7 @@ if(S.token){
 refreshAuthBtn();
 checkSiteRd();
 if(window.FlixExtra)FlixExtra.init();
+syncAdultUi();
 if(!routeFromLocation())go('home',$('nb-home'));
 maybeShowWelcome();
 </script>

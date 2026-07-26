@@ -141,20 +141,32 @@ function mapItem(r) {
     overview: r.overview || '',
     rating:   Math.round((r.vote_average || 0) * 10) / 10,
     popularity: r.popularity || 0,
-    voteCount:  r.vote_count  || 0
+    voteCount:  r.vote_count  || 0,
+    adult:    !!r.adult
   };
+}
+
+function wantAdult(req) {
+  const v = req?.query?.adult;
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function filterAdult(list, allow) {
+  if (allow) return list || [];
+  return (list || []).filter(x => !x.adult);
 }
 
 // ─── Discover helper ──────────────────────────────────────
 async function discRoute(req, res, path, type, ck, ttl = 3600, extra = {}) {
   try {
     const page = req.query.page || 1;
-    const k = `${ck}:${page}`;
+    const adult = wantAdult(req);
+    const k = `${ck}:${page}:a${adult ? 1 : 0}`;
     const c = await getC(k);
     if (c) return res.json({ success: true, data: c.r, totalPages: c.tp });
-    const d = await tmdb(path, { page, ...extra });
+    const d = await tmdb(path, { page, include_adult: adult, ...extra });
     if (!d) return res.json({ success: true, data: [] });
-    const r = d.results.map(x => mapItem({ ...x, media_type: type }));
+    const r = filterAdult(d.results.map(x => mapItem({ ...x, media_type: type })), adult);
     await setC(k, { r, tp: d.total_pages }, ttl);
     res.json({ success: true, data: r, totalPages: d.total_pages });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
@@ -173,39 +185,55 @@ app.get('/api/online', (req, res) => res.json({ success: true, count: online.siz
 
 app.get('/api/trending', async (req, res) => {
   try {
-    const c = await getC('trending:week:v2');
+    const adult = wantAdult(req);
+    const ck = `trending:week:v3:a${adult ? 1 : 0}`;
+    const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
     const d = await tmdb('/trending/all/week');
     if (!d) return res.json({ success: true, data: [] });
-    const r = d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem);
-    await setC('trending:week:v2', r, 900);
+    const r = filterAdult(
+      d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem),
+      adult
+    );
+    await setC(ck, r, 900);
     res.json({ success: true, data: r });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.get('/api/trending/day', async (req, res) => {
   try {
-    const c = await getC('trending:day:v2');
+    const adult = wantAdult(req);
+    const ck = `trending:day:v3:a${adult ? 1 : 0}`;
+    const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
     const d = await tmdb('/trending/all/day');
     if (!d) return res.json({ success: true, data: [] });
-    const r = d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem);
-    await setC('trending:day:v2', r, 600);
+    const r = filterAdult(
+      d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem),
+      adult
+    );
+    await setC(ck, r, 600);
     res.json({ success: true, data: r });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.get('/api/trending/browse', async (req, res) => {
   try {
-    const c = await getC('trending:browse:v2');
+    const adult = wantAdult(req);
+    const ck = `trending:browse:v3:a${adult ? 1 : 0}`;
+    const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
     const all = [];
     for (let p = 1; p <= 3; p++) {
       const d = await tmdb('/trending/all/week', { page: p });
       if (d?.results) all.push(...d.results.filter(x=>x.media_type==='movie'||x.media_type==='tv').map(mapItem));
     }
-    const seen = new Set(); const u = all.filter(x => { if(seen.has(x.id))return false; seen.add(x.id); return true; });
-    await setC('trending:browse:v2', u, 900);
+    const seen = new Set();
+    const u = filterAdult(
+      all.filter(x => { if(seen.has(x.id))return false; seen.add(x.id); return true; }),
+      adult
+    );
+    await setC(ck, u, 900);
     res.json({ success: true, data: u });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
@@ -213,7 +241,8 @@ app.get('/api/trending/browse', async (req, res) => {
 /** Cinema hero: trending titles that have YouTube trailers */
 app.get('/api/hero', async (req, res) => {
   try {
-    const c = await getC('hero:trailers:v1');
+    const adult = wantAdult(req);
+    const c = await getC(`hero:trailers:v2:a${adult ? 1 : 0}`);
     if (c) return res.json({ success: true, data: c });
     const [day, week, now] = await Promise.all([
       tmdb('/trending/all/day'),
@@ -233,6 +262,7 @@ app.get('/api/hero', async (req, res) => {
       });
     };
     push(day); push(week); push(now, 'movie');
+    if (!adult) pool.splice(0, pool.length, ...pool.filter(r => !r.adult));
     pool.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     const candidates = pool.slice(0, 14);
     const out = [];
@@ -248,8 +278,40 @@ app.get('/api/hero', async (req, res) => {
     }));
     out.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     const data = out.slice(0, 8);
-    await setC('hero:trailers:v1', data, 1200);
+    await setC(`hero:trailers:v2:a${adult ? 1 : 0}`, data, 1200);
     res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** Adult / XXX catalog (only returned when adult=1) */
+app.get('/api/discover/adult', async (req, res) => {
+  try {
+    if (!wantAdult(req)) {
+      return res.json({ success: true, data: [], note: 'Adult mode is off' });
+    }
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const ck = `adult:cat:v1:${page}`;
+    const c = await getC(ck);
+    if (c) return res.json({ success: true, data: c.r, totalPages: c.tp });
+    const all = [];
+    let totalPages = 1;
+    for (let p = page; p < page + 3; p++) {
+      const d = await tmdb('/discover/movie', {
+        page: p,
+        include_adult: true,
+        sort_by: 'popularity.desc',
+        'vote_count.gte': 10
+      });
+      if (!d?.results) break;
+      all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
+      if (d.total_pages) totalPages = d.total_pages;
+    }
+    const seen = new Set();
+    const r = all.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+    await setC(ck, { r, tp: totalPages }, 1800);
+    res.json({ success: true, data: r, totalPages });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -274,10 +336,11 @@ app.get('/api/browse/:type', async (req, res) => {
   try {
     const { type } = req.params;
     const { genre, sort, pages, year, page, country, decade, anime, kids } = req.query;
+    const adult = wantAdult(req) && kids !== '1' && kids !== 'true';
     const pageNum = Math.max(1, parseInt(page) || 1);
     const n = Math.min(parseInt(pages) || (page ? 1 : 3), 10);
     const s = sort || 'popularity.desc';
-    const ck = `browse4:${type}:${genre||'all'}:${s}:${year||'any'}:${decade||''}:${country||''}:${anime||''}:${kids||''}:${page||'m'}:${n}`;
+    const ck = `browse5:${type}:${genre||'all'}:${s}:${year||'any'}:${decade||''}:${country||''}:${anime||''}:${kids||''}:a${adult?1:0}:${page||'m'}:${n}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.data, totalPages: c.tp, page: pageNum });
     const all = [];
@@ -285,8 +348,9 @@ app.get('/api/browse/:type', async (req, res) => {
     const start = page ? pageNum : 1;
     const end = page ? pageNum : n;
     for (let p = start; p <= end; p++) {
-      const params = { page: p, sort_by: s, include_adult: false };
+      const params = { page: p, sort_by: s, include_adult: adult };
       if (kids === '1' || kids === 'true') {
+        params.include_adult = false;
         params.certification_country = 'US';
         if (type === 'movie') params['certification.lte'] = 'PG-13';
         else {
@@ -319,7 +383,10 @@ app.get('/api/browse/:type', async (req, res) => {
       if (d?.total_pages) totalPages = d.total_pages;
     }
     const seen = new Set();
-    const u = all.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+    const u = filterAdult(
+      all.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; }),
+      adult
+    );
     await setC(ck, { data: u, tp: totalPages }, 3600);
     res.json({ success: true, data: u, totalPages, page: pageNum });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
@@ -351,13 +418,17 @@ app.get('/api/search/:query', async (req, res) => {
   try {
     const q = req.params.query.trim();
     const page = req.query.page || 1;
-    const ck = `search:${q.toLowerCase()}:${page}`;
+    const adult = wantAdult(req);
+    const ck = `search:v2:${q.toLowerCase()}:${page}:a${adult ? 1 : 0}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
     if (!KEY) return res.json({ success: false, error: 'TMDB_API_KEY not set' });
-    const d = await tmdb('/search/multi', { query: q, page, include_adult: false });
+    const d = await tmdb('/search/multi', { query: q, page, include_adult: adult });
     if (!d) return res.json({ success: true, data: [] });
-    const r = d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem);
+    const r = filterAdult(
+      d.results.filter(x => x.media_type==='movie'||x.media_type==='tv').map(mapItem),
+      adult
+    );
     await setC(ck, r, 1800);
     res.json({ success: true, data: r, total: d.total_results });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
@@ -366,11 +437,16 @@ app.get('/api/search/:query', async (req, res) => {
 app.get('/api/details/:tmdbId/:type', async (req, res) => {
   try {
     const { tmdbId, type } = req.params;
-    const ck = `det:${tmdbId}:${type}`;
+    const adult = wantAdult(req);
+    const ck = `det:v2:${tmdbId}:${type}`;
     const c = await getC(ck);
-    if (c) return res.json({ success: true, data: c });
+    if (c) {
+      if (c.adult && !adult) return res.status(404).json({ success: false, error: 'Adult content hidden' });
+      return res.json({ success: true, data: c });
+    }
     const d = await tmdb(`/${type}/${tmdbId}`, { append_to_response: 'credits,videos,external_ids,similar,recommendations' });
     if (!d) return res.status(404).json({ success: false, error: 'Not found' });
+    if (d.adult && !adult) return res.status(404).json({ success: false, error: 'Adult content hidden' });
     const result = {
       ...mapItem({ ...d, media_type: type }),
       tagline: d.tagline || '',
