@@ -292,26 +292,33 @@ app.get('/api/discover/adult', async (req, res) => {
       return res.json({ success: true, data: [], note: 'Adult mode is off' });
     }
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const ck = `adult:cat:v1:${page}`;
+    const ck = `adult:cat:v2:${page}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.r, totalPages: c.tp });
     const all = [];
-    let totalPages = 1;
-    for (let p = page; p < page + 3; p++) {
+    // TMDB buries adult=true titles in normal discover; mix discover pages + targeted searches
+    const queries = ['adult', 'erotic', 'xxx', 'pornographic', 'softcore'];
+    await Promise.all(queries.map(async (q) => {
+      const d = await tmdb('/search/movie', { query: q, page, include_adult: true });
+      if (d?.results) {
+        all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
+      }
+    }));
+    for (let p = page; p < page + 6; p++) {
       const d = await tmdb('/discover/movie', {
         page: p,
         include_adult: true,
-        sort_by: 'popularity.desc',
-        'vote_count.gte': 10
+        sort_by: 'popularity.desc'
       });
       if (!d?.results) break;
       all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-      if (d.total_pages) totalPages = d.total_pages;
     }
     const seen = new Set();
-    const r = all.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
-    await setC(ck, { r, tp: totalPages }, 1800);
-    res.json({ success: true, data: r, totalPages });
+    const r = all
+      .filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; })
+      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    await setC(ck, { r, tp: Math.max(20, page + 5) }, 1800);
+    res.json({ success: true, data: r, totalPages: Math.max(20, page + 5) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
