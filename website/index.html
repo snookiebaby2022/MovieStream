@@ -45,7 +45,7 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
 .hdr-scroll{flex:1;min-width:0;display:flex;align-items:center;gap:8px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;touch-action:pan-x;overscroll-behavior-x:contain}
 .hdr-scroll::-webkit-scrollbar{display:none}
 .nav{display:flex;align-items:center;gap:2px;flex-shrink:0}.nb{padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--t2);cursor:pointer;background:none;border:none;transition:all .2s;white-space:nowrap}.nb:hover{color:#fff;background:rgba(255,255,255,.07)}.nb.on{color:#fff;background:rgba(255,255,255,.1)}
-.nav-more{position:relative}.nav-drop{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:160px;padding:6px;background:rgba(18,18,18,.98);border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.55);z-index:950}
+.nav-more{position:relative}.nav-drop{display:none;position:fixed;min-width:180px;padding:6px;background:rgba(18,18,18,.98);border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.55);z-index:2000}
 .nav-more.open .nav-drop{display:flex;flex-direction:column;gap:2px}.nav-drop .nb{text-align:left;width:100%}
 .sbar{flex:1;min-width:120px;max-width:420px;margin-left:auto;display:flex;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:22px;overflow:hidden;transition:all .2s}
 .sbar:focus-within{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.28);box-shadow:0 0 0 3px rgba(229,9,20,.14)}
@@ -664,8 +664,26 @@ function fetchDebridStreams(imdbId,type,sn,ep,tmdbId){
     });
   }).catch(function(){return null;});
 }
-function toggleMoreNav(e){if(e)e.stopPropagation();$('navMore').classList.toggle('open');}
+function positionMoreNav(){
+  var n=$('navMore'),drop=$('navDrop'),btn=n&&n.querySelector('button.nb');
+  if(!n||!drop||!btn||!n.classList.contains('open'))return;
+  var r=btn.getBoundingClientRect();
+  var top=r.bottom+6;
+  var left=Math.min(Math.max(8,r.left), Math.max(8, window.innerWidth-196));
+  // If near bottom of screen, open upward
+  if(top+220>window.innerHeight)top=Math.max(8,r.top-226);
+  drop.style.top=top+'px';
+  drop.style.left=left+'px';
+}
+function toggleMoreNav(e){
+  if(e){e.preventDefault();e.stopPropagation();}
+  var n=$('navMore'); if(!n)return;
+  n.classList.toggle('open');
+  if(n.classList.contains('open'))positionMoreNav();
+}
 function closeMoreNav(){var n=$('navMore');if(n)n.classList.remove('open');}
+window.addEventListener('resize',function(){if($('navMore')&&$('navMore').classList.contains('open')positionMoreNav();},{passive:true});
+window.addEventListener('scroll',function(){if($('navMore')&&$('navMore').classList.contains('open')positionMoreNav();},true);
 
 // ── AD / POPUP BLOCKER ─────────────────────────────────────
 (function(){
@@ -1904,19 +1922,8 @@ function dropSrcUrls(badUrls, reason){
   return removed;
 }
 function pruneInfringingRd(){
-  if(!S.debridMode||!S.src||!S.src.length||!S.token)return;
-  var gen=S.playGen;
-  var urls=S.src.slice(0,16).map(function(s){return s.embedUrl||s.url;}).filter(Boolean);
-  if(!urls.length)return;
-  fetch('/api/debrid/validate',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-user-token':S.token,'Authorization':'Bearer '+S.token},
-    body:JSON.stringify({urls:urls})
-  }).then(function(r){return r.json();}).then(function(d){
-    if(gen!==S.playGen)return;
-    if(!d||!d.success||!d.data||!d.data.bad||!d.data.bad.length)return;
-    dropSrcUrls(d.data.bad,'copyright');
-  }).catch(function(){});
+  // Disabled bulk pre-prune — it removed good links when probes were inconclusive.
+  // Copyright stubs are dropped only after a clear validate hit or ~30s stub playback.
 }
 function checkAndDropRd(url,idx){
   if(!S.debridMode||!url||!S.token)return Promise.resolve(false);
@@ -1938,11 +1945,8 @@ function isRdCopyrightStub(video, source){
   if(!S.debridMode||!video)return false;
   var d=video.duration;
   if(!isFinite(d)||d<=0)return false;
-  var sizeStr=String((source&&source.size)||'');
-  var bigLabel=/GB/i.test(sizeStr)||(/\d+(?:\.\d+)?\s*MB/i.test(sizeStr)&&parseFloat(sizeStr)>80);
-  // Known stub length from RD is ~30s; also reject tiny clips labeled as multi‑GB rips
-  if(d>0&&d<=45)return true;
-  if(bigLabel&&d<120)return true;
+  // RD's infringement placeholder is typically ~30 seconds (not every short clip)
+  if(d>=20&&d<=40)return true;
   return false;
 }
 function dropCopyrightStub(url,idx,gen){
@@ -2022,22 +2026,9 @@ function tryS(idx){
   }
   if(engine==='embed'){pEmb(url,idx,gen);return;}
 
-  var startEngine=function(){
-    if(gen!==S.playGen)return;
-    if(engine==='hls'||isHlsUrl(url,s))pHls(url,idx,gen);
-    else pDir(url,idx,gen);
-  };
-  // Pre-check RD links so the orange copyright stub never appears in the player
-  if(s.debrid&&S.token){
-    setSt('sld','Checking RD link for copyright blocks…');
-    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Checking Real-Debrid link...</span></div>';
-    checkAndDropRd(url,idx).then(function(dropped){
-      if(dropped||gen!==S.playGen)return;
-      startEngine();
-    });
-    return;
-  }
-  startEngine();
+  // Play immediately — copyright stubs (~30s) are removed on loadedmetadata, not by bulk pre-checks
+  if(engine==='hls'||isHlsUrl(url,s))pHls(url,idx,gen);
+  else pDir(url,idx,gen);
 }
 function loadEmbedFallback(){
   if(!S.item)return;

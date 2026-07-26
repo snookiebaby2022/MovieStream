@@ -123,11 +123,11 @@ async function probeStreamUrl(url) {
     const buf = Buffer.from(r.data || []);
     const text = buf.toString('utf8', 0, Math.min(buf.length, 4000));
 
-    // Content-Range: bytes 0-4095/TOTAL — copyright stubs are tiny videos (~100KB–5MB)
-    let totalBytes = parseInt(r.headers['content-length'] || '0', 10) || 0;
+    // ONLY trust total size from Content-Range (…/TOTAL).
+    // Content-Length on a Range request is often just the chunk size (e.g. 4096) and must NOT mark streams as stubs.
     const cr = String(r.headers['content-range'] || '');
     const crm = cr.match(/\/(\d+)\s*$/);
-    if (crm) totalBytes = parseInt(crm[1], 10) || totalBytes;
+    const totalBytes = crm ? (parseInt(crm[1], 10) || 0) : 0;
 
     if (status === 451 || INFRINGE_RE.test(text)) {
       return { url, ok: false, reason: 'copyright' };
@@ -144,7 +144,7 @@ async function probeStreamUrl(url) {
       }
     } catch {}
 
-    // RD serves a short orange "copyright infringement" MP4 stub — usually under ~8MB
+    // Tiny full-file videos via Content-Range total only (RD copyright stub MP4s)
     if (totalBytes > 0 && totalBytes < 8 * 1024 * 1024 && /video|octet-stream|mp4/i.test(ct)) {
       return { url, ok: false, reason: 'copyright_stub' };
     }
@@ -156,8 +156,8 @@ async function probeStreamUrl(url) {
     if (status >= 200 && status < 400 && !/text\/html/i.test(ct) && buf.length > 0) {
       return { url, ok: true, reason: 'ok', bytes: totalBytes || undefined };
     }
-    if (/text\/html/i.test(ct) && /real-?debrid|error|removed/i.test(text)) {
-      return { url, ok: false, reason: 'rd_error' };
+    if (/text\/html/i.test(ct) && INFRINGE_RE.test(text)) {
+      return { url, ok: false, reason: 'copyright' };
     }
     // Unknown — keep (don't over-prune)
     return { url, ok: true, reason: 'unknown' };
@@ -226,7 +226,10 @@ router.post('/validate', async (req, res) => {
     });
     await Promise.all(workers);
 
-    const bad = results.filter(r => !r.ok).map(r => r.url);
+    // Only remove clear copyright hits — never probe_error / unknown
+    const bad = results
+      .filter(r => !r.ok && (r.reason === 'copyright' || r.reason === 'copyright_stub'))
+      .map(r => r.url);
     res.json({
       success: true,
       data: {
