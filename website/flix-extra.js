@@ -511,26 +511,127 @@
       if (!d || !d.success) return;
       F.payConfigured = !!d.configured;
       F.payLabel = d.label || '£1.00';
+      F.promo = d.promo || null;
       // Always sync from server (clears forged localStorage)
       setAdFree(!!d.adFree);
       var btn = $('adfreeBtn');
       if (btn) {
         btn.style.display = isAdFree() ? 'none' : 'inline-flex';
-        btn.textContent = 'Ad-Free ' + F.payLabel;
+        if (!isAdFree() && d.promo && d.promo.active) {
+          btn.textContent = 'Free Ad-Free (' + d.promo.remaining + ' left)';
+        } else {
+          btn.textContent = 'Ad-Free ' + F.payLabel;
+        }
       }
+      renderPromoUi();
       renderAdUi();
     }).catch(function () {});
+  }
+
+  function renderPromoUi() {
+    var promo = F.promo;
+    var offer = $('promoOffer');
+    var claimBtn = $('promoClaimBtn');
+    var payBtn = $('promoPayBtn');
+    var kicker = $('promoKicker');
+    var price = $('promoPrice');
+    var blurb = $('promoBlurb');
+    var note = $('promoNote');
+    var active = !!(promo && promo.active && promo.remaining > 0);
+    if (offer) {
+      offer.style.display = active ? 'block' : 'none';
+      if (active) {
+        if ($('promoLimit')) $('promoLimit').textContent = String(promo.limit || 10);
+        if ($('promoRemain')) $('promoRemain').textContent = String(promo.remaining);
+      }
+    }
+    if (claimBtn) {
+      claimBtn.style.display = active ? 'block' : 'none';
+      claimBtn.disabled = false;
+      claimBtn.textContent = active
+        ? ('Claim free Ad-Free — ' + promo.remaining + ' of ' + promo.limit + ' left')
+        : 'Claim free Ad-Free';
+    }
+    if (kicker) kicker.textContent = active ? 'Limited launch offer' : 'One-time unlock';
+    if (price) price.style.display = active ? 'none' : 'block';
+    if (blurb) {
+      blurb.textContent = active
+        ? 'Sign up (or log in), then claim one of the free Ad-Free spots — Real-Debrid, no FlixNova ads, and XXX catalog.'
+        : 'One payment unlocks premium streams, no FlixNova ads, and the Adult/XXX catalog.';
+    }
+    if (note) {
+      note.textContent = active
+        ? 'Must be signed in. When free spots are gone, Ad-Free is £1 forever.'
+        : 'Sign in required. Free accounts keep embed servers with ads.';
+    }
+    if (payBtn) {
+      payBtn.textContent = 'Unlock Ad-Free for ' + (F.payLabel || '£1');
+      payBtn.style.display = active ? 'none' : 'block';
+    }
   }
 
   function openPayPromo(force) {
     if (isAdFree()) return;
     var ov = $('payPromoOv');
     if (!ov) return;
+    renderPromoUi();
     var label = F.payLabel || '£1';
     var btn = $('promoPayBtn');
-    if (btn) btn.textContent = 'Unlock Ad-Free for ' + label;
+    if (btn && !(F.promo && F.promo.active)) btn.textContent = 'Unlock Ad-Free for ' + label;
     ov.classList.add('on');
     if (force) localStorage.removeItem('fn_paypromo_dismiss');
+    // Refresh remaining slots when opening
+    loadPayStatus();
+  }
+
+  function claimFirst10Promo() {
+    if (isAdFree()) { alert('You already have Ad-Free.'); return; }
+    if (!(global.S && S.token)) {
+      if (global.S) S._pendingPromoClaim = true;
+      closePayPromo(false);
+      if (typeof openAuth === 'function') openAuth('register');
+      var err = $('authErr');
+      if (err) {
+        err.textContent = 'Create a free account (or log in), then claim your free Ad-Free spot.';
+        err.style.display = 'block';
+      }
+      return;
+    }
+    var claimBtn = $('promoClaimBtn');
+    if (claimBtn) { claimBtn.disabled = true; claimBtn.textContent = 'Claiming…'; }
+    fetch('/api/pay/promo/claim', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, { 'x-user-token': S.token }),
+      body: '{}'
+    }).then(function (r) { return r.json().then(function (d) { d._http = r.status; return d; }); })
+      .then(function (d) {
+        if (d.success && d.adFree) {
+          setAdFree(true);
+          F.promo = F.promo || {};
+          F.promo.active = false;
+          F.promo.remaining = d.remaining || 0;
+          F.promo.alreadyClaimed = true;
+          closePayPromo(false);
+          renderAdUi();
+          if (typeof refreshRdBtn === 'function') refreshRdBtn();
+          alert(d.message || 'Free Ad-Free unlocked — enjoy Real-Debrid streams!');
+          return;
+        }
+        if (d.code === 'PROMO_SOLD_OUT') {
+          F.promo = d.promo || { active: false, remaining: 0 };
+          renderPromoUi();
+          alert(d.error || 'Offer sold out. You can still unlock for £1.');
+          if (claimBtn) claimBtn.style.display = 'none';
+          var payBtn = $('promoPayBtn');
+          if (payBtn) payBtn.style.display = 'block';
+          return;
+        }
+        alert(d.error || 'Could not claim offer');
+        if (claimBtn) { claimBtn.disabled = false; renderPromoUi(); }
+      }).catch(function (e) {
+        alert(e.message || 'Claim failed');
+        if (claimBtn) { claimBtn.disabled = false; renderPromoUi(); }
+      });
   }
 
   function closePayPromo(persist) {
@@ -674,6 +775,7 @@
     kidsActive: kidsActive,
     openSubPicker: openSubPicker,
     startCheckout: startCheckout,
+    claimFirst10Promo: claimFirst10Promo,
     loadPayStatus: loadPayStatus,
     isAdFree: isAdFree,
     setAdFree: setAdFree,

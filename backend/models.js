@@ -19,6 +19,8 @@ const UserSchema = new mongoose.Schema({
   adFree: { type: Boolean, default: false },
   adFreeAt: { type: Date, default: null },
   stripeSessionId: { type: String, default: '' },
+  /** Set when user claims a launch promo (e.g. 'first10') */
+  promoClaim: { type: String, default: '', index: true },
   watchlist: [{
     tmdbId: Number, type: { type: String, enum: ['movie', 'tv'] },
     title: String, poster: String, year: String, rating: Number, addedAt: { type: Date, default: Date.now }
@@ -100,6 +102,19 @@ const ContactMessageSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now, index: true }
 });
 
+/** Launch / marketing promo counters (e.g. first 10 Ad-Free free) */
+const PromoSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true },
+  limit: { type: Number, default: 10 },
+  claimed: { type: Number, default: 0 },
+  claims: [{
+    userId: { type: String, default: '' },
+    username: { type: String, default: '' },
+    at: { type: Date, default: Date.now }
+  }],
+  updatedAt: { type: Date, default: Date.now }
+});
+
 module.exports = {
   User: mongoose.models.User || mongoose.model('User', UserSchema),
   Comment: mongoose.models.Comment || mongoose.model('Comment', CommentSchema),
@@ -107,5 +122,6 @@ module.exports = {
   Progress: mongoose.models.Progress || mongoose.model('Progress', ProgressSchema),
   TitleRequest: mongoose.models.TitleRequest || mongoose.model('TitleRequest', TitleRequestSchema),
   PlayEvent: mongoose.models.PlayEvent || mongoose.model('PlayEvent', PlayEventSchema),
-  ContactMessage: mongoose.models.ContactMessage || mongoose.model('ContactMessage', ContactMessageSchema)
+  ContactMessage: mongoose.models.ContactMessage || mongoose.model('ContactMessage', ContactMessageSchema),
+  Promo: mongoose.models.Promo || mongoose.model('Promo', PromoSchema)
 };

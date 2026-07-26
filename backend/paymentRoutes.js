@@ -1,13 +1,17 @@
 /**
  * One-time £1 "Remove ads" via Stripe Checkout.
+ * Plus launch promo: first N sign-ups can claim Ad-Free free.
  */
 const express = require('express');
-const { User } = require('./models');
+const { User, Promo } = require('./models');
 const { authRequired, authOptional, verifyToken } = require('./authRoutes');
 
 const router = express.Router();
 const PRICE_PENCE = Math.max(100, parseInt(process.env.ADFREE_PRICE_PENCE || '100', 10) || 100); // £1.00 default
 const CURRENCY = (process.env.ADFREE_CURRENCY || 'gbp').toLowerCase();
+const FIRST10_KEY = 'first10';
+const FIRST10_LIMIT = Math.max(1, parseInt(process.env.FIRST10_PROMO_LIMIT || '10', 10) || 10);
+const FIRST10_ENABLED = String(process.env.FIRST10_PROMO_ENABLED || '1') !== '0';
 
 function stripeClient() {
   const key = process.env.STRIPE_SECRET_KEY || '';
@@ -29,6 +33,43 @@ function dbReady(res) {
   return true;
 }
 
+async function getFirst10Promo(userId) {
+  const enabled = FIRST10_ENABLED;
+  if (!enabled || require('mongoose').connection.readyState !== 1) {
+    return {
+      key: FIRST10_KEY,
+      enabled: false,
+      active: false,
+      limit: FIRST10_LIMIT,
+      claimed: 0,
+      remaining: 0,
+      alreadyClaimed: false
+    };
+  }
+  await Promo.updateOne(
+    { key: FIRST10_KEY },
+    { $setOnInsert: { key: FIRST10_KEY, limit: FIRST10_LIMIT, claimed: 0, claims: [] } },
+    { upsert: true }
+  );
+  const promo = await Promo.findOne({ key: FIRST10_KEY }).lean();
+  const claimed = Math.min(FIRST10_LIMIT, Math.max(0, promo?.claimed || 0));
+  const remaining = Math.max(0, FIRST10_LIMIT - claimed);
+  let alreadyClaimed = false;
+  if (userId) {
+    const u = await User.findById(userId).select('promoClaim adFree').lean();
+    alreadyClaimed = u?.promoClaim === FIRST10_KEY;
+  }
+  return {
+    key: FIRST10_KEY,
+    enabled: true,
+    active: remaining > 0,
+    limit: FIRST10_LIMIT,
+    claimed,
+    remaining,
+    alreadyClaimed
+  };
+}
+
 router.get('/status', authOptional, async (req, res) => {
   const configured = !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY.startsWith('sk_'));
   let adFree = false;
@@ -40,14 +81,110 @@ router.get('/status', authOptional, async (req, res) => {
       }
     } catch {}
   }
+  const promo = await getFirst10Promo(req.user?.id).catch(() => null);
   res.json({
     success: true,
     configured,
     adFree,
     price: PRICE_PENCE,
     currency: CURRENCY,
-    label: `£${(PRICE_PENCE / 100).toFixed(2)}`
+    label: `£${(PRICE_PENCE / 100).toFixed(2)}`,
+    promo: promo || undefined
   });
+});
+
+/** Public promo status (remaining slots) */
+router.get('/promo', authOptional, async (req, res) => {
+  try {
+    if (!dbReady(res)) return;
+    const promo = await getFirst10Promo(req.user?.id);
+    res.json({ success: true, data: promo });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/**
+ * Claim launch offer: first N customers get Ad-Free free.
+ * Requires login. One claim per account. Atomically capped.
+ */
+router.post('/promo/claim', authRequired, async (req, res) => {
+  try {
+    if (!dbReady(res)) return;
+    if (!FIRST10_ENABLED) {
+      return res.status(410).json({ success: false, error: 'This offer is no longer available', code: 'PROMO_OFF' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(401).json({ success: false, error: 'Login required' });
+    if (user.adFree) {
+      return res.json({
+        success: true,
+        adFree: true,
+        already: true,
+        message: 'You already have Ad-Free on this account'
+      });
+    }
+    if (user.promoClaim === FIRST10_KEY) {
+      return res.json({
+        success: true,
+        adFree: true,
+        already: true,
+        message: 'You already claimed this offer'
+      });
+    }
+
+    await Promo.updateOne(
+      { key: FIRST10_KEY },
+      { $setOnInsert: { key: FIRST10_KEY, limit: FIRST10_LIMIT, claimed: 0, claims: [] } },
+      { upsert: true }
+    );
+
+    const promo = await Promo.findOneAndUpdate(
+      { key: FIRST10_KEY, claimed: { $lt: FIRST10_LIMIT } },
+      {
+        $inc: { claimed: 1 },
+        $push: {
+          claims: {
+            userId: String(user._id),
+            username: user.username,
+            at: new Date()
+          }
+        },
+        $set: { updatedAt: new Date(), limit: FIRST10_LIMIT }
+      },
+      { new: true }
+    );
+
+    if (!promo) {
+      const cur = await getFirst10Promo(user._id);
+      return res.status(410).json({
+        success: false,
+        error: 'Sorry — all 10 free Ad-Free spots are taken. You can still unlock for £1.',
+        code: 'PROMO_SOLD_OUT',
+        promo: cur
+      });
+    }
+
+    user.adFree = true;
+    user.adFreeAt = new Date();
+    user.promoClaim = FIRST10_KEY;
+    await user.save();
+
+    console.log('First10 promo claimed by', user.username, `(${promo.claimed}/${FIRST10_LIMIT})`);
+    res.json({
+      success: true,
+      adFree: true,
+      promoClaim: FIRST10_KEY,
+      remaining: Math.max(0, FIRST10_LIMIT - promo.claimed),
+      claimed: promo.claimed,
+      limit: FIRST10_LIMIT,
+      message: `You're in! Free Ad-Free unlocked (${promo.claimed} of ${FIRST10_LIMIT} claimed).`
+    });
+  } catch (e) {
+    console.error('Promo claim:', e.message);
+    res.status(500).json({ success: false, error: e.message || 'Claim failed' });
+  }
 });
 
 router.post('/checkout', authOptional, async (req, res) => {

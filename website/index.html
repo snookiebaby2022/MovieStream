@@ -243,6 +243,10 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .gate-actions .pbtn,.promo-actions .pbtn{width:100%;margin:0}
 .gate-actions .pbtn.ghost,.promo-actions .pbtn.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)}
 .gate-actions .pbtn.ghost:hover,.promo-actions .pbtn.ghost:hover{background:rgba(255,255,255,.12)}
+.promo-actions .pbtn.gold{background:var(--gold);color:#111}
+.promo-actions .pbtn.gold:hover{filter:brightness(1.06)}
+.promo-offer{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.35);color:var(--t2);font-size:12px;line-height:1.45}
+.promo-offer b{color:var(--gold)}
 .promo-perks{list-style:none;text-align:left;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:8px}
 .promo-perks li{font-size:13px;color:var(--t2);padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);display:flex;gap:10px;align-items:flex-start}
 .promo-perks li b{color:#fff;font-weight:700}
@@ -415,7 +419,7 @@ body.tv-mode .strip{scroll-snap-type:x mandatory}
   <div class="gate-box" role="dialog" aria-labelledby="welcomeTitle">
     <div class="gate-kicker">Welcome to FlixNova</div>
     <h2 id="welcomeTitle">Sign up or log in to continue</h2>
-    <p>Create a free account to watch movies &amp; TV. Guests can’t play titles — sign up takes a few seconds.</p>
+    <p>Create a free account to watch movies &amp; TV. <b style="color:var(--gold)">First 10 customers</b> can claim Ad-Free free after sign-up.</p>
     <div class="gate-actions">
       <button type="button" class="pbtn" onclick="closeWelcome(false);openAuth('register')">Sign Up — it’s free</button>
       <button type="button" class="pbtn ghost" onclick="closeWelcome(false);openAuth('login')">Log In</button>
@@ -427,7 +431,7 @@ body.tv-mode .strip{scroll-snap-type:x mandatory}
   <div class="gate-box" role="dialog" aria-labelledby="gateTitle">
     <div class="gate-kicker">Account required</div>
     <h2 id="gateTitle">Sign up or log in to watch</h2>
-    <p>You need a free account to play movies &amp; TV. Free members use embed players; Ad-Free £1 unlocks Real-Debrid.</p>
+    <p>You need a free account to play. Free = embeds; Ad-Free unlocks Real-Debrid. First 10 customers can claim Ad-Free free.</p>
     <div class="gate-actions">
       <button type="button" class="pbtn" onclick="closeWatchGate();openAuth('register')">Sign Up</button>
       <button type="button" class="pbtn ghost" onclick="closeWatchGate();openAuth('login')">Log In</button>
@@ -438,20 +442,25 @@ body.tv-mode .strip{scroll-snap-type:x mandatory}
 <div id="payPromoOv" onclick="if(event.target===this)FlixExtra.closePayPromo()">
   <div class="promo-box" role="dialog" aria-labelledby="promoTitle">
     <button type="button" class="promo-x" onclick="FlixExtra.closePayPromo()" aria-label="Close">✕</button>
-    <div class="promo-kicker">One-time unlock</div>
+    <div class="promo-kicker" id="promoKicker">One-time unlock</div>
     <h2 id="promoTitle">Ad-Free + Real-Debrid + XXX</h2>
-    <p class="promo-price">£1 <span>forever · no subscription</span></p>
-    <p>One payment unlocks premium streams, no FlixNova ads, and the Adult/XXX catalog.</p>
+    <div class="promo-offer" id="promoOffer" style="display:none">
+      <b>Launch offer</b> — first <span id="promoLimit">10</span> customers get Ad-Free <b>free</b>.
+      <span id="promoRemainWrap"><span id="promoRemain">10</span> spots left.</span>
+    </div>
+    <p class="promo-price" id="promoPrice">£1 <span>forever · no subscription</span></p>
+    <p id="promoBlurb">One payment unlocks premium streams, no FlixNova ads, and the Adult/XXX catalog.</p>
     <ul class="promo-perks">
       <li><span>▶</span><span><b>Real-Debrid links</b> — direct HD streams, not iframe embeds</span></li>
       <li><span>✕</span><span><b>Ad-Free player</b> — no FlixNova ads while you watch</span></li>
       <li><span>✕</span><span><b>Adult / XXX catalog</b> — toggle in the header (off by default)</span></li>
     </ul>
     <div class="promo-actions">
+      <button type="button" class="pbtn gold" id="promoClaimBtn" style="display:none" onclick="FlixExtra.claimFirst10Promo()">Claim free Ad-Free</button>
       <button type="button" class="pbtn" id="promoPayBtn" onclick="FlixExtra.startCheckout()">Unlock Ad-Free for £1</button>
       <button type="button" class="pbtn ghost" onclick="FlixExtra.closePayPromo()">Continue with free embeds</button>
     </div>
-    <div class="promo-note">Sign in required. Free accounts keep embed servers with ads.</div>
+    <div class="promo-note" id="promoNote">Sign in required. Free accounts keep embed servers with ads.</div>
   </div>
 </div>
 <div id="authOv">
@@ -776,6 +785,7 @@ function submitAuth(){
   var body=S.authMode==='register'?{username:u,password:p,email:e}:{username:u,password:p};
   uapi(path,{method:'POST',body:body}).then(function(d){
     if(!d.success){err.textContent=d.error||'Failed';err.style.display='block';return;}
+    var wasRegister=S.authMode==='register';
     S.token=d.token;S.user={username:d.username,adFree:!!(d.adFree)};S._userSynced=true;localStorage.setItem('fn_token',d.token);
     if(window.FlixExtra)FlixExtra.setAdFree(!!d.adFree);
     closeAuth();closeWatchGate();refreshAuthBtn();syncWatchlistUp();
@@ -787,6 +797,12 @@ function submitAuth(){
     }else if(S._pendingPay){
       S._pendingPay=false;
       setTimeout(function(){if(window.FlixExtra)FlixExtra.startCheckout();},250);
+    }else if(S._pendingPromoClaim){
+      S._pendingPromoClaim=false;
+      setTimeout(function(){if(window.FlixExtra)FlixExtra.claimFirst10Promo();},250);
+    }else if(wasRegister&&!d.adFree&&window.FlixExtra){
+      // New sign-ups: show launch offer so they can claim one of the first-10 free slots
+      setTimeout(function(){FlixExtra.openPayPromo(true);},350);
     }
   }).catch(function(ex){err.textContent=ex.message;err.style.display='block';});
 }
