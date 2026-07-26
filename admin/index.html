@@ -756,7 +756,9 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
 
       <div class="nav-sec">Content</div>
       <div class="nav-item" data-nav="debrid" onclick="showPage('debrid',this)"><span class="nav-icon">▶️</span><span class="nav-text">Real-Debrid</span></div>
-      <div class="nav-item" data-nav="requests" onclick="showPage('requests',this)"><span class="nav-icon">📨</span><span class="nav-text">Requests</span></div>
+      <div class="nav-item" data-nav="users" onclick="showPage('users',this)"><span class="nav-icon">👤</span><span class="nav-text">Users</span></div>
+      <div class="nav-item" data-nav="catalog" onclick="showPage('catalog',this)"><span class="nav-icon">🎞️</span><span class="nav-text">Catalog</span></div>
+      <div class="nav-item" data-nav="apps" onclick="showPage('apps',this)"><span class="nav-icon">📱</span><span class="nav-text">Apps</span></div>
       <div class="nav-item" data-nav="analytics" onclick="showPage('analytics',this)"><span class="nav-icon">📈</span><span class="nav-text">Analytics</span></div>
       <div class="nav-item" data-nav="scrapers" onclick="showPage('scrapers',this)"><span class="nav-icon">🔍</span><span class="nav-text">Scrapers</span></div>
       <div class="nav-item" data-nav="tester" onclick="showPage('tester',this)"><span class="nav-icon">🧪</span><span class="nav-text">API Tester</span></div>
@@ -851,6 +853,8 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
                   <button class="btn btn-secondary" onclick="showPage('logs',null);loadLogs('out')">📋 View Logs</button>
                   <button class="btn btn-secondary" onclick="nginxAction('reload')">🌐 Reload Nginx</button>
                   <button class="btn btn-secondary" onclick="showPage('tester',null)">🧪 API Test</button>
+                  <button class="btn btn-blue" onclick="refreshCatalog()">🎞️ Refresh Home/Trending</button>
+                  <button class="btn btn-secondary" onclick="showPage('users',null)">👤 Manage Users</button>
                 </div>
                 <div class="callout">
                   <div class="icon">🎬</div>
@@ -908,28 +912,91 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         </div>
       </div>
 
-      <div class="page" id="page-requests">
+      <div class="page" id="page-users">
+        <div class="stat-grid" style="margin-bottom:16px">
+          <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">👤</div><div class="stat-label">Total Users</div><div class="stat-value" id="u-total">0</div><div class="stat-sub">registered accounts</div></div>
+          <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">✨</div><div class="stat-label">Ad-Free</div><div class="stat-value" id="u-adfree">0</div><div class="stat-sub">£1 paying members</div></div>
+          <div class="stat-card" style="--ac:var(--yellow)"><div class="stat-icon">🎟️</div><div class="stat-label">Free</div><div class="stat-value" id="u-free">0</div><div class="stat-sub">embed-only accounts</div></div>
+        </div>
         <div class="panel">
           <div class="panel-head">
             <div>
-              <div class="panel-title">📨 Title Requests</div>
-              <div class="panel-sub">User asks for movies / shows</div>
+              <div class="panel-title">👤 Users</div>
+              <div class="panel-sub">Grant / revoke Ad-Free and review accounts</div>
             </div>
             <div class="panel-actions">
-              <select class="form-input" id="reqFilter" style="width:auto" onchange="loadRequests()">
-                <option value="open">Open</option>
-                <option value="done">Done</option>
-                <option value="rejected">Rejected</option>
-                <option value="all">All</option>
-              </select>
-              <button class="btn btn-secondary btn-sm" onclick="loadRequests()">⟳ Refresh</button>
+              <input class="form-input" id="userSearch" placeholder="Search username / email" style="width:220px" onkeydown="if(event.key==='Enter')loadUsers()">
+              <button class="btn btn-secondary btn-sm" onclick="loadUsers()">⟳ Refresh</button>
             </div>
           </div>
           <div class="panel-body">
             <table class="tbl">
-              <thead><tr><th>When</th><th>User</th><th>Title</th><th>Type</th><th>Note</th><th>Status</th><th></th></tr></thead>
-              <tbody id="reqTable"><tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
+              <thead><tr><th>User</th><th>Email</th><th>Joined</th><th>List</th><th>Plan</th><th></th></tr></thead>
+              <tbody id="usersTable"><tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-catalog">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">🎞️ Homepage &amp; Trending</div>
+              <div class="panel-sub">TMDB live data with short Redis cache</div>
+            </div>
+            <button class="btn btn-blue btn-sm" onclick="refreshCatalog()">⟳ Refresh catalog now</button>
+          </div>
+          <div class="panel-body">
+            <div class="callout" style="margin-bottom:14px">
+              <div class="icon">ℹ️</div>
+              <div>
+                <h3>Does home / New &amp; Hot update?</h3>
+                <p><b>Yes.</b> Trending Today refreshes about every <b>10 minutes</b>, Trending This Week every <b>15 minutes</b>, and the cinema hero every <b>20 minutes</b> from TMDB. Use the button above to force a fresh pull immediately.</p>
+              </div>
+            </div>
+            <div id="catalogMsg" style="color:var(--muted);font-size:13px">Click refresh to clear homepage caches.</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">
+              <a class="btn btn-secondary" href="/api/trending/day" target="_blank" rel="noreferrer">Open /api/trending/day</a>
+              <a class="btn btn-secondary" href="/api/trending" target="_blank" rel="noreferrer">Open /api/trending</a>
+              <a class="btn btn-secondary" href="/api/hero" target="_blank" rel="noreferrer">Open /api/hero</a>
+              <a class="btn btn-secondary" href="/" target="_blank" rel="noreferrer">View homepage</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-apps">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">📱 Apps &amp; installs</div>
+              <div class="panel-sub">Android / Fire Stick APK and iOS Home Screen</div>
+            </div>
+            <a class="btn btn-secondary btn-sm" href="/get-app.html" target="_blank" rel="noreferrer">Open Get App page</a>
+          </div>
+          <div class="panel-body">
+            <div class="stack">
+              <div class="callout">
+                <div class="icon">🤖</div>
+                <div>
+                  <h3>Android / Fire Stick APK</h3>
+                  <p>Direct download for phones and Fire TV (sideload). Same build loads your live site.</p>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                    <a class="btn btn-green" href="/downloads/FlixNova-android.apk">⬇ Download APK</a>
+                    <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(location.origin+'/downloads/FlixNova-android.apk');toast('APK URL copied','success')">Copy APK URL</button>
+                  </div>
+                </div>
+              </div>
+              <div class="callout">
+                <div class="icon">🍎</div>
+                <div>
+                  <h3>iPhone / iPad</h3>
+                  <p>Safari → Share → <b>Add to Home Screen</b>. There is no App Store IPA without a Mac + Apple Developer account.</p>
+                  <a class="btn btn-secondary" href="/get-app.html#ios" target="_blank" rel="noreferrer" style="margin-top:10px">iOS install steps</a>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1357,7 +1424,9 @@ function showPage(id,navEl){
     dashboard:'Dashboard',
     online:'Live Users',
     debrid:'Real-Debrid',
-    requests:'Title Requests',
+    users:'Users',
+    catalog:'Catalog',
+    apps:'Apps',
     analytics:'Analytics',
     scrapers:'Scraper Management',
     tester:'API Tester',
@@ -1372,7 +1441,9 @@ function showPage(id,navEl){
     dashboard:'System overview and live operational controls',
     online:'Track current viewers and active sessions',
     debrid:'Site-wide Real-Debrid token and stream tests',
-    requests:'Review and resolve user title requests',
+    users:'Accounts, Ad-Free grants, and member stats',
+    catalog:'Force-refresh homepage / trending TMDB caches',
+    apps:'Android APK, Fire Stick, and iOS install links',
     analytics:'Play counts, RD hit rate, top titles',
     scrapers:'Monitor scraper coverage and source health',
     tester:'Probe search and source endpoints',
@@ -1387,7 +1458,7 @@ function showPage(id,navEl){
   document.getElementById('pageSubtitle').textContent=subtitles[id]||'';
   if(id==='online')loadOnline();
   if(id==='debrid')loadDebrid();
-  if(id==='requests')loadRequests();
+  if(id==='users')loadUsers();
   if(id==='analytics')loadAnalytics();
   if(id==='scrapers')loadScrapers();
   if(id==='cache')loadCacheStats();
@@ -1402,7 +1473,7 @@ function refreshPage(){
   if(curPage==='logs')loadLogs(curLogType);
   if(curPage==='online')loadOnline();
   if(curPage==='debrid')loadDebrid();
-  if(curPage==='requests')loadRequests();
+  if(curPage==='users')loadUsers();
   if(curPage==='analytics')loadAnalytics();
   if(curPage==='cache')loadCacheStats();
   if(curPage==='process')loadProcStatus();
@@ -1621,29 +1692,66 @@ async function nginxAction(action){
   }
 }
 
-async function loadRequests(){
-  const status=document.getElementById('reqFilter')?.value||'open';
-  const d=await af('/requests?status='+encodeURIComponent(status));
-  const tbody=document.getElementById('reqTable');
-  if(!d?.success){tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">Failed to load</td></tr>';return;}
-  if(!d.data.length){tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">No requests</td></tr>';return;}
-  tbody.innerHTML=d.data.map(r=>`
+async function loadUsers(){
+  const q=document.getElementById('userSearch')?.value?.trim()||'';
+  const d=await af('/users'+(q?('?q='+encodeURIComponent(q)):''));
+  const tbody=document.getElementById('usersTable');
+  if(!d?.success){tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">'+(d?.error||'Failed to load')+'</td></tr>';return;}
+  document.getElementById('u-total').textContent=d.total??d.data.length;
+  const adFree=d.data.filter(u=>u.adFree).length;
+  document.getElementById('u-adfree').textContent=adFree;
+  document.getElementById('u-free').textContent=Math.max(0,(d.total??d.data.length)-adFree);
+  if(!d.data.length){tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">No users found</td></tr>';return;}
+  tbody.innerHTML=d.data.map(u=>`
     <tr>
-      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${esc(new Date(r.createdAt).toLocaleString())}</td>
-      <td>${esc(r.username||'guest')}</td>
-      <td><b>${esc(r.title)}</b></td>
-      <td>${esc(r.mediaType)}</td>
-      <td style="font-size:12px;color:var(--muted)">${esc(r.note||'')}</td>
-      <td><span class="badge badge-blue">${esc(r.status)}</span></td>
+      <td><b>${esc(u.username)}</b></td>
+      <td style="font-size:12px;color:var(--muted)">${esc(u.email||'—')}</td>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${u.createdAt?esc(new Date(u.createdAt).toLocaleDateString()):'—'}</td>
+      <td style="font-size:12px">${u.watchlistCount||0} · hist ${u.historyCount||0}</td>
+      <td>${u.adFree?'<span class="badge badge-green">Ad-Free</span>':'<span class="badge badge-blue">Free</span>'}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-green btn-sm" onclick="setRequest('${r._id}','done')">Done</button>
-        <button class="btn btn-secondary btn-sm" onclick="setRequest('${r._id}','rejected')">Reject</button>
+        <button class="btn btn-blue btn-sm" onclick="editUser('${u.id}','${esc(u.username)}','${esc(u.email||'')}')">Edit</button>
+        ${u.adFree
+          ?`<button class="btn btn-secondary btn-sm" onclick="setUserAdFree('${u.id}',false)">Revoke</button>`
+          :`<button class="btn btn-green btn-sm" onclick="setUserAdFree('${u.id}',true)">Grant Ad-Free</button>`}
+        <button class="btn btn-secondary btn-sm" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
       </td>
     </tr>`).join('');
 }
-async function setRequest(id,status){
-  const d=await af('/requests/'+id,{method:'PATCH',body:{status}});
-  if(d?.success){toast('Updated','success');loadRequests();}else toast(d?.error||'Failed','error');
+async function setUserAdFree(id,on){
+  const d=await af('/users/'+id,{method:'PATCH',body:{adFree:!!on}});
+  if(d?.success){toast(on?'Ad-Free granted':'Ad-Free revoked','success');loadUsers();}
+  else toast(d?.error||'Failed','error');
+}
+async function editUser(id,curUser,curEmail){
+  const username=prompt('Username',curUser||'');
+  if(username===null)return;
+  const email=prompt('Email (optional)',curEmail||'');
+  if(email===null)return;
+  const password=prompt('New password (leave blank to keep current)','')||'';
+  const body={username:username.trim(),email:email.trim()};
+  if(password)body.password=password;
+  const d=await af('/users/'+id,{method:'PATCH',body});
+  if(d?.success){toast('User updated','success');loadUsers();}
+  else toast(d?.error||'Failed','error');
+}
+async function deleteUser(id,name){
+  if(!confirm('Delete user "'+name+'"? This cannot be undone.'))return;
+  const d=await af('/users/'+id,{method:'DELETE'});
+  if(d?.success){toast('User deleted','success');loadUsers();}
+  else toast(d?.error||'Failed','error');
+}
+async function refreshCatalog(){
+  const msg=document.getElementById('catalogMsg');
+  if(msg)msg.textContent='Refreshing…';
+  const d=await af('/catalog/refresh',{method:'POST'});
+  if(d?.success){
+    toast(d.message||'Catalog refreshed','success');
+    if(msg)msg.textContent=d.message+' (cleared '+ (d.cleared||0) +' keys)';
+  }else{
+    toast(d?.error||'Failed','error');
+    if(msg)msg.textContent=d?.error||'Failed';
+  }
 }
 async function loadAnalytics(){
   const d=await af('/analytics?days=7');

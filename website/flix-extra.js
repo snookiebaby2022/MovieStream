@@ -457,6 +457,9 @@
           currentTime: p.currentTime, duration: p.duration,
           progressPct: p.duration ? Math.round((p.currentTime / p.duration) * 100) : 0
         };
+      }).filter(function (p) {
+        var t = String(p.title || '').trim();
+        return p.tmdbId && t && !/^loading/i.test(t);
       });
     }).catch(function () { return []; });
   }

@@ -17,7 +17,7 @@ const { router: authRouter, verifyToken } = require('./authRoutes');
 const debridRouter = require('./debridRoutes');
 const { router: featureRouter } = require('./featureRoutes');
 const { router: payRouter, handleWebhook } = require('./paymentRoutes');
-const { TitleRequest, PlayEvent } = require('./models');
+const { PlayEvent, User } = require('./models');
 
 function requireUser(req, res) {
   const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -783,27 +783,120 @@ app.post('/api/admin/test/sources', adminAuth, async (req, res) => {
   res.json({ success: true, data: result, elapsed: `${Date.now()-t}ms` });
 });
 
-app.get('/api/admin/requests', adminAuth, async (req, res) => {
+app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {
-    const status = req.query.status || 'open';
-    const q = status === 'all' ? {} : { status };
-    const list = await TitleRequest.find(q).sort({ createdAt: -1 }).limit(100).lean();
-    res.json({ success: true, data: list });
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const filter = q
+      ? { $or: [{ username: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }, { email: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }] }
+      : {};
+    const users = await User.find(filter)
+      .select('username email adFree adFreeAt createdAt watchlist history')
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+    res.json({
+      success: true,
+      data: users.map(u => ({
+        id: String(u._id),
+        username: u.username,
+        email: u.email || '',
+        adFree: !!u.adFree,
+        adFreeAt: u.adFreeAt || null,
+        createdAt: u.createdAt,
+        watchlistCount: (u.watchlist || []).length,
+        historyCount: (u.history || []).length
+      })),
+      total: await User.countDocuments({})
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-app.patch('/api/admin/requests/:id', adminAuth, async (req, res) => {
+app.patch('/api/admin/users/:id', adminAuth, async (req, res) => {
   try {
-    const { status, adminNote } = req.body || {};
-    const doc = await TitleRequest.findById(req.params.id);
-    if (!doc) return res.status(404).json({ success: false, error: 'Not found' });
-    if (status && ['open', 'done', 'rejected'].includes(status)) doc.status = status;
-    if (adminNote !== undefined) doc.adminNote = String(adminNote).slice(0, 500);
-    doc.updatedAt = new Date();
-    await doc.save();
-    res.json({ success: true, data: doc });
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+    const { adFree, email, username, password } = req.body || {};
+    if (typeof adFree === 'boolean') {
+      user.adFree = adFree;
+      user.adFreeAt = adFree ? (user.adFreeAt || new Date()) : null;
+    }
+    if (email !== undefined) user.email = String(email || '').trim().toLowerCase().slice(0, 120);
+    if (username !== undefined) {
+      const next = String(username || '').trim().toLowerCase().slice(0, 32);
+      if (next.length < 3) return res.status(400).json({ success: false, error: 'Username too short' });
+      const taken = await User.findOne({ username: next, _id: { $ne: user._id } });
+      if (taken) return res.status(400).json({ success: false, error: 'Username already taken' });
+      user.username = next;
+    }
+    if (password) {
+      if (String(password).length < 6) return res.status(400).json({ success: false, error: 'Password min 6 chars' });
+      const bcrypt = require('bcryptjs');
+      user.passHash = await bcrypt.hash(String(password), 10);
+    }
+    await user.save();
+    res.json({
+      success: true,
+      data: {
+        id: String(user._id),
+        username: user.username,
+        email: user.email || '',
+        adFree: !!user.adFree,
+        adFreeAt: user.adFreeAt
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.delete('/api/admin/users/:id', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+    res.json({ success: true, message: 'User deleted' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/catalog/refresh', adminAuth, async (req, res) => {
+  try {
+    const keys = [
+      'trending:week:v2', 'trending:day:v2', 'trending:browse:v2',
+      'hero:trailers:v1', 'hero:trailers:v2'
+    ];
+    let cleared = 0;
+    if (rok && rc) {
+      for (const k of keys) {
+        try { await rc.del(k); cleared++; } catch {}
+      }
+      // Also wipe discover/browse caches commonly used on home
+      try {
+        const all = await rc.keys('browse:*');
+        if (all?.length) { await rc.del(all); cleared += all.length; }
+      } catch {}
+      try {
+        const disc = await rc.keys('discover:*');
+        if (disc?.length) { await rc.del(disc); cleared += disc.length; }
+      } catch {}
+    }
+    for (const k of keys) mem.delete(k);
+    res.json({
+      success: true,
+      message: 'Homepage / trending / hero caches cleared. Next visit fetches fresh TMDB data.',
+      cleared
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
