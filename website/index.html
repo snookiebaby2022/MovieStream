@@ -682,8 +682,8 @@ function toggleMoreNav(e){
   if(n.classList.contains('open'))positionMoreNav();
 }
 function closeMoreNav(){var n=$('navMore');if(n)n.classList.remove('open');}
-window.addEventListener('resize',function(){if($('navMore')&&$('navMore').classList.contains('open')positionMoreNav();},{passive:true});
-window.addEventListener('scroll',function(){if($('navMore')&&$('navMore').classList.contains('open')positionMoreNav();},true);
+window.addEventListener('resize',function(){if($('navMore')&&$('navMore').classList.contains('open'))positionMoreNav();},{passive:true});
+window.addEventListener('scroll',function(){if($('navMore')&&$('navMore').classList.contains('open'))positionMoreNav();},true);
 
 // ── AD / POPUP BLOCKER ─────────────────────────────────────
 (function(){
