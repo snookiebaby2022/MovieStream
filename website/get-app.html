@@ -54,7 +54,7 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
           <li><b>2.</b> Allow “Install unknown apps” for your browser/Files.</li>
           <li><b>3.</b> Open FlixNova → Sign Up / Log In → Watch.</li>
         </ol>
-        <a class="btn" id="apkBtn" href="/downloads/FlixNova-android.apk" download>Download Android APK</a>
+        <a class="btn" id="apkBtn" href="https://od.lk/d/MzJfNTAzNzkxNjVf/FlixNova-android-debug.apk" rel="noopener">Download Android APK</a>
         <div class="code" id="apkUrl"></div>
       </section>
 
@@ -83,26 +83,21 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
       </section>
     </div>
 
-    <p class="note">Get App from the site header opens this page. The Android button downloads <code>/downloads/FlixNova-android.apk</code> from this server. If the file is missing, rebuild from <code>apps/flixnova</code> and upload that APK.</p>
+    <p class="note">Get App from the site header opens this page. The Android APK downloads from the hosted link below (OpenDrive).</p>
   </div>
   <script>
     (function () {
-      var url = location.origin + '/downloads/FlixNova-android.apk';
+      var url = 'https://od.lk/d/MzJfNTAzNzkxNjVf/FlixNova-android-debug.apk';
       var a = document.getElementById('apkUrl');
       var b = document.getElementById('apkUrl2');
       if (a) a.textContent = url;
       if (b) b.textContent = url;
+      var btn = document.getElementById('apkBtn');
+      if (btn) btn.href = url;
       var copy = document.getElementById('copyApk');
       if (copy) copy.onclick = function () {
         navigator.clipboard.writeText(url).then(function () { copy.textContent = 'Copied!'; }).catch(function () { prompt('Copy this URL:', url); });
       };
-      // Soft check APK exists
-      fetch('/downloads/FlixNova-android.apk', { method: 'HEAD' }).then(function (r) {
-        if (!r.ok) {
-          var btn = document.getElementById('apkBtn');
-          if (btn) { btn.textContent = 'APK not uploaded yet'; btn.style.opacity = '.7'; }
-        }
-      }).catch(function () {});
     })();
   </script>
 </body>
