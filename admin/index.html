@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FlixNova Admin</title>
+<style>
+:root{
+  --bg:#060608;--s1:#0d0d10;--s2:#12121a;--s3:#1a1a24;--s4:#22222e;--s5:#2e2e3e;--s6:#3a3a4e;
+  --red:#e50914;--red2:#b20710;--blue:#3b82f6;--green:#22c55e;--yellow:#f59e0b;--purple:#a855f7;--cyan:#06b6d4;
+  --text:#f1f1f3;--t2:#9999aa;--t3:#55556a;--t4:#333344;
+  --r:8px;--r2:12px;--r3:18px;
+  --card-bg:linear-gradient(135deg,#12121a,#0d0d18);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;overflow:hidden}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--s4);border-radius:3px}
+
+/* ═══ LOGIN ═══ */
+.login-wrap{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999;background-image:radial-gradient(ellipse at 20% 50%,rgba(59,130,246,.06) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(229,9,20,.06) 0%,transparent 60%)}
+.login-box{background:var(--s1);border:1px solid var(--s4);border-radius:var(--r3);padding:36px;width:380px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.login-logo-icon{width:36px;height:36px;background:var(--red);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff}
+.login-logo-text{font-size:22px;font-weight:800}.login-logo-text b{color:var(--red)}
+.login-sub{color:var(--t2);font-size:12px;margin-bottom:26px}
+.login-err{background:rgba(229,9,20,.1);border:1px solid rgba(229,9,20,.3);color:var(--red);padding:10px 12px;border-radius:var(--r);font-size:12px;margin-bottom:14px;display:none}
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:11px;font-weight:600;color:var(--t2);margin-bottom:6px;letter-spacing:.4px;text-transform:uppercase}
+.form-input{width:100%;padding:10px 13px;border:1px solid var(--s4);border-radius:var(--r);background:var(--s2);color:var(--text);font-size:13px;outline:none;transition:border-color .2s}
+.form-input:focus{border-color:var(--blue)}
+.btn-login{width:100%;padding:11px;border:none;border-radius:var(--r);background:var(--red);color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;margin-top:6px}
+.btn-login:hover{background:var(--red2)}
+
+/* ═══ SIDEBAR ═══ */
+.sidebar{width:220px;flex-shrink:0;background:var(--s1);border-right:1px solid var(--s3);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s}
+.sb-head{padding:18px 16px;border-bottom:1px solid var(--s3)}
+.sb-logo{display:flex;align-items:center;gap:8px}
+.sb-logo-i{width:28px;height:28px;background:var(--red);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff}
+.sb-logo-t{font-size:16px;font-weight:800}.sb-logo-t b{color:var(--red)}
+.sb-badge{font-size:9px;color:var(--t3);margin-top:1px}
+.sb-nav{flex:1;overflow-y:auto;padding:8px 0}
+.nav-sec{padding:12px 14px 4px;font-size:9px;font-weight:700;letter-spacing:1px;color:var(--t3);text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 14px;font-size:12px;color:var(--t2);cursor:pointer;transition:all .15s;border-left:3px solid transparent;margin:1px 0;border-radius:0 var(--r) var(--r) 0}
+.nav-item:hover{background:var(--s2);color:var(--text)}
+.nav-item.on{background:rgba(229,9,20,.08);color:var(--red);border-left-color:var(--red)}
+.nav-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+.nav-badge{margin-left:auto;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700;background:var(--red);color:#fff}
+.sb-foot{padding:12px 14px;border-top:1px solid var(--s3)}
+.sb-user{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.sb-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--red),var(--purple));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.sb-uname{font-size:12px;font-weight:600}.sb-role{font-size:10px;color:var(--t3)}
+.btn-logout{width:100%;padding:7px;border:1px solid var(--s4);border-radius:var(--r);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;transition:all .2s}
+.btn-logout:hover{border-color:var(--red);color:var(--red)}
+
+/* ═══ MAIN ═══ */
+.main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh;overflow:hidden}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:var(--s1);border-bottom:1px solid var(--s3);position:sticky;top:0;z-index:50;flex-shrink:0}
+.page-title{font-size:16px;font-weight:700}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.status-indicator{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;border:1px solid;font-size:10px;font-weight:600}
+.status-indicator.ok{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.25);color:var(--green)}
+.status-indicator.err{background:rgba(229,9,20,.1);border-color:rgba(229,9,20,.25);color:var(--red)}
+.status-dot{width:5px;height:5px;border-radius:50%;animation:pulse 2s infinite}
+.ok .status-dot{background:var(--green)}.err .status-dot{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.topbar-btn{padding:6px 12px;border:1px solid var(--s4);border-radius:var(--r);background:var(--s2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .2s}
+.topbar-btn:hover{border-color:#444;color:var(--text)}
+
+/* ═══ PAGES ═══ */
+.content{flex:1;overflow-y:auto;padding:20px 24px}
+.page{display:none}.page.on{display:block}
+
+/* ═══ STAT CARDS ═══ */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-bottom:20px}
+.stat-card{background:var(--card-bg);border:1px solid var(--s4);border-radius:var(--r2);padding:16px;position:relative;overflow:hidden;transition:border-color .2s}
+.stat-card:hover{border-color:var(--s5)}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--ac,var(--red))}
+.stat-icon{position:absolute;top:14px;right:14px;font-size:22px;opacity:.15}
+.stat-label{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;font-weight:600}
+.stat-value{font-size:26px;font-weight:800;line-height:1;color:var(--ac,var(--text))}
+.stat-sub{font-size:10px;color:var(--t3);margin-top:5px}
+.stat-bar{height:3px;background:var(--s4);border-radius:2px;margin-top:8px;overflow:hidden}
+.stat-bar-fill{height:100%;border-radius:2px;background:var(--ac,var(--red));transition:width .6s}
+
+/* ═══ PANELS ═══ */
+.panel{background:var(--card-bg);border:1px solid var(--s4);border-radius:var(--r2);overflow:hidden;margin-bottom:16px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--s3)}
+.panel-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px}
+.panel-body{padding:16px}
+.panel-actions{display:flex;gap:7px}
+
+/* ═══ TABLE ═══ */
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;padding:8px 12px;color:var(--t3);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--s3)}
+.tbl td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:rgba(255,255,255,.02)}
+
+/* ═══ BADGES ═══ */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}
+.badge-green{background:rgba(34,197,94,.15);color:var(--green)}
+.badge-red{background:rgba(229,9,20,.15);color:var(--red)}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--blue)}
+.badge-yellow{background:rgba(245,158,11,.15);color:var(--yellow)}
+.badge-purple{background:rgba(168,85,247,.15);color:var(--purple)}
+.badge-gray{background:rgba(255,255,255,.08);color:var(--t2)}
+
+/* ═══ BUTTONS ═══ */
+.btn{padding:7px 14px;border:none;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px}
+.btn-primary{background:var(--red);color:#fff}.btn-primary:hover{background:var(--red2)}
+.btn-secondary{background:var(--s3);color:var(--t2);border:1px solid var(--s4)}.btn-secondary:hover{color:var(--text);border-color:var(--s5)}
+.btn-green{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.25)}.btn-green:hover{background:rgba(34,197,94,.25)}
+.btn-red{background:rgba(229,9,20,.15);color:var(--red);border:1px solid rgba(229,9,20,.25)}.btn-red:hover{background:rgba(229,9,20,.25)}
+.btn-blue{background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.25)}.btn-blue:hover{background:rgba(59,130,246,.25)}
+.btn-yellow{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.25)}
+.btn-sm{padding:4px 10px;font-size:10px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ═══ PROGRESS ═══ */
+.prog{height:5px;background:var(--s4);border-radius:3px;overflow:hidden;margin-top:5px}
+.prog-fill{height:100%;border-radius:3px;transition:width .5s}
+
+/* ═══ LOG BOX ═══ */
+.logbox{background:#050508;border:1px solid var(--s3);border-radius:var(--r);padding:12px;font-family:'Courier New',monospace;font-size:11px;line-height:1.65;max-height:380px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#ccc}
+.logbox::-webkit-scrollbar{width:4px}.logbox::-webkit-scrollbar-thumb{background:var(--s4);border-radius:2px}
+.log-err{color:#f87171}.log-warn{color:#fbbf24}.log-ok{color:#4ade80}.log-info{color:#60a5fa}
+
+/* ═══ FORM ═══ */
+.form-row{display:flex;gap:10px;align-items:flex-end}
+.form-row .form-group{flex:1;margin:0}
+.form-select{width:100%;padding:9px 12px;border:1px solid var(--s4);border-radius:var(--r);background:var(--s2);color:var(--text);font-size:12px;outline:none}
+.form-select:focus{border-color:var(--blue)}
+
+/* ═══ SCRAPER CARDS ═══ */
+.scraper-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.scraper-card{background:var(--s2);border:1px solid var(--s3);border-radius:var(--r);padding:12px;transition:border-color .2s}
+.scraper-card:hover{border-color:var(--s4)}
+.sc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.sc-name{font-size:13px;font-weight:700}
+.sc-url{font-size:10px;color:var(--t3);margin-top:1px}
+.sc-result{font-size:10px;padding:5px 8px;border-radius:5px;background:var(--s3);margin-top:6px;min-height:24px}
+.sc-ok{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.sc-fail{background:rgba(229,9,20,.1);color:var(--red);border:1px solid rgba(229,9,20,.2)}
+.sc-testing{color:var(--blue)}
+
+/* ═══ ONLINE TABLE ═══ */
+.watching-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:600;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.watching-badge::before{content:'▶';font-size:7px}
+
+/* ═══ TOAST ═══ */
+.toast-wrap{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:7px;z-index:9999}
+.toast{padding:10px 14px;border-radius:var(--r);font-size:12px;display:flex;align-items:center;gap:8px;animation:toastIn .3s ease;box-shadow:0 4px 20px rgba(0,0,0,.5);min-width:240px}
+.toast-success{background:#14532d;border:1px solid rgba(34,197,94,.3);color:#86efac}
+.toast-error{background:#450a0a;border:1px solid rgba(229,9,20,.3);color:#fca5a5}
+.toast-info{background:#1e3a5f;border:1px solid rgba(59,130,246,.3);color:#93c5fd}
+@keyframes toastIn{from{transform:translateX(100%);opacity:0}to{transform:none;opacity:1}}
+
+/* ═══ CHART ═══ */
+.mini-chart{display:flex;align-items:flex-end;gap:3px;height:36px;margin-top:8px}
+.mini-bar{flex:1;border-radius:2px 2px 0 0;min-height:4px;opacity:.7;transition:height .4s}
+
+/* ═══ ACTIVITY FEED ═══ */
+.activity-item{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.activity-item:last-child{border-bottom:none}
+.activity-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.activity-body{flex:1;min-width:0}
+.activity-text{font-size:11px;font-weight:500}
+.activity-time{font-size:10px;color:var(--t3);margin-top:2px}
+
+/* ═══ CONFIG ═══ */
+.config-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.config-key{font-family:monospace;font-size:11px;color:var(--t2);width:180px;flex-shrink:0}
+.config-val{flex:1}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-icon">F</div>
+      <div class="login-logo-text">Flix<b>Nova</b></div>
+    </div>
+    <div class="login-sub">Admin Dashboard — Sign in to continue</div>
+    <div class="login-err" id="loginErr"></div>
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input class="form-input" id="lu" type="text" placeholder="admin" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input class="form-input" id="lp" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-login" onclick="doLogin()">Sign In →</button>
+  </div>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sb-head">
+    <div class="sb-logo">
+      <div class="sb-logo-i">F</div>
+      <div>
+        <div class="sb-logo-t">Flix<b>Nova</b></div>
+        <div class="sb-badge">Admin Panel v2.0</div>
+      </div>
+    </div>
+  </div>
+  <nav class="sb-nav">
+    <div class="nav-sec">Overview</div>
+    <div class="nav-item on" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
+    <div class="nav-item" onclick="showPage('online',this)"><span class="nav-icon">👥</span>Live Users<span class="nav-badge" id="sb-online">0</span></div>
+
+    <div class="nav-sec">Content</div>
+    <div class="nav-item" onclick="showPage('scrapers',this)"><span class="nav-icon">🔍</span>Scrapers</div>
+    <div class="nav-item" onclick="showPage('tester',this)"><span class="nav-icon">🧪</span>API Tester</div>
+
+    <div class="nav-sec">System</div>
+    <div class="nav-item" onclick="showPage('cache',this)"><span class="nav-icon">⚡</span>Cache</div>
+    <div class="nav-item" onclick="showPage('logs',this)"><span class="nav-icon">📋</span>Logs</div>
+    <div class="nav-item" onclick="showPage('process',this)"><span class="nav-icon">⚙️</span>Process</div>
+    <div class="nav-item" onclick="showPage('nginx',this)"><span class="nav-icon">🌐</span>Nginx</div>
+
+    <div class="nav-sec">Config</div>
+    <div class="nav-item" onclick="showPage('config',this)"><span class="nav-icon">🔧</span>Settings</div>
+    <div class="nav-item" onclick="showPage('activity',this)"><span class="nav-icon">📝</span>Activity</div>
+  </nav>
+  <div class="sb-foot">
+    <div class="sb-user">
+      <div class="sb-avatar" id="sbAv">A</div>
+      <div>
+        <div class="sb-uname" id="sbName">Admin</div>
+        <div class="sb-role">Administrator</div>
+      </div>
+    </div>
+    <button class="btn-logout" onclick="doLogout()">Sign Out</button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="page-title" id="pageTitle">Dashboard</div>
+    <div class="topbar-right">
+      <div class="status-indicator ok" id="appStatus">
+        <div class="status-dot"></div>
+        <span id="appStatusText">Online</span>
+      </div>
+      <button class="topbar-btn" onclick="refreshPage()">⟳ Refresh</button>
+      <a href="/" target="_blank" class="topbar-btn">↗ View Site</a>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="page on" id="page-dashboard">
+      <div class="stat-grid" id="statGrid">
+        <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">🟢</div><div class="stat-label">App Status</div><div class="stat-value" id="s-status">...</div><div class="stat-sub" id="s-uptime">loading</div></div>
+        <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">👥</div><div class="stat-label">Online Now</div><div class="stat-value" id="s-online">0</div><div class="stat-sub" id="s-views">0 total views</div></div>
+        <div class="stat-card" style="--ac:var(--red)"><div class="stat-icon">🎬</div><div class="stat-label">Watching</div><div class="stat-value" id="s-watching">0</div><div class="stat-sub" id="s-watches">0 total streams</div></div>
+        <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">🧠</div><div class="stat-label">Memory</div><div class="stat-value" id="s-mem">...</div><div class="stat-sub" id="s-mem-sub">loading</div><div class="stat-bar"><div class="stat-bar-fill" id="s-mem-bar" style="width:0%"></div></div></div>
+        <div class="stat-card" style="--ac:var(--yellow)"><div class="stat-icon">💾</div><div class="stat-label">Disk Used</div><div class="stat-value" id="s-disk">...</div><div class="stat-sub" id="s-disk-sub">loading</div><div class="stat-bar"><div class="stat-bar-fill" id="s-disk-bar" style="width:0%;background:var(--yellow)"></div></div></div>
+        <div class="stat-card" style="--ac:var(--purple)"><div class="stat-icon">⚡</div><div class="stat-label">Redis Keys</div><div class="stat-value" id="s-redis">...</div><div class="stat-sub" id="s-redis-sub">cache entries</div></div>
+        <div class="stat-card" style="--ac:var(--cyan)"><div class="stat-icon">🔄</div><div class="stat-label">Restarts</div><div class="stat-value" id="s-restarts">...</div><div class="stat-sub">since deploy</div></div>
+        <div class="stat-card" style="--ac:var(--text)"><div class="stat-icon">⚡</div><div class="stat-label">CPU Load</div><div class="stat-value" id="s-load">...</div><div class="stat-sub" id="s-load-sub">1m avg</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">⚡ Quick Actions</div></div>
+          <div class="panel-body" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn btn-green" onclick="procAction('restart')" style="justify-content:center">♻️ Restart App</button>
+            <button class="btn btn-blue"  onclick="showPage('cache',null);clearCache()" style="justify-content:center">🗑️ Clear Cache</button>
+            <button class="btn btn-yellow" onclick="showPage('scrapers',null);testAll()" style="justify-content:center">🔍 Test Scrapers</button>
+            <button class="btn btn-secondary" onclick="showPage('logs',null);loadLogs('out')" style="justify-content:center">📋 View Logs</button>
+            <button class="btn btn-secondary" onclick="nginxAction('reload')" style="justify-content:center">🌐 Reload Nginx</button>
+            <button class="btn btn-secondary" onclick="showPage('tester',null)" style="justify-content:center">🧪 API Test</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">🖥️ System Info</div></div>
+          <div class="panel-body">
+            <table class="tbl">
+              <tr><td style="color:var(--t3)">Node.js</td><td id="si-node">...</td></tr>
+              <tr><td style="color:var(--t3)">Platform</td><td id="si-platform">...</td></tr>
+              <tr><td style="color:var(--t3)">Hostname</td><td id="si-host">...</td></tr>
+              <tr><td style="color:var(--t3)">CPUs</td><td id="si-cpu">...</td></tr>
+              <tr><td style="color:var(--t3)">Sys Uptime</td><td id="si-uptime">...</td></tr>
+              <tr><td style="color:var(--t3)">PID</td><td id="si-pid">...</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LIVE USERS -->
+    <div class="page" id="page-online">
+      <div class="stat-grid">
+        <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">👥</div><div class="stat-label">Online Now</div><div class="stat-value" id="o-count">0</div></div>
+        <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">👁️</div><div class="stat-label">Total Views</div><div class="stat-value" id="o-views">0</div></div>
+        <div class="stat-card" style="--ac:var(--red)"><div class="stat-icon">▶️</div><div class="stat-label">Watching</div><div class="stat-value" id="o-watching">0</div></div>
+        <div class="stat-card" style="--ac:var(--purple)"><div class="stat-icon">📱</div><div class="stat-label">Mobile</div><div class="stat-value" id="o-mobile">0</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">👥 Live Users</div><button class="btn btn-secondary btn-sm" onclick="loadOnline()">⟳ Refresh</button></div>
+        <div class="panel-body">
+          <table class="tbl">
+            <thead><tr><th>User</th><th>IP</th><th>Device</th><th>Page</th><th>Watching</th><th>Duration</th></tr></thead>
+            <tbody id="onlineTable"><tr><td colspan="6" style="color:var(--t3);text-align:center;padding:20px">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCRAPERS -->
+    <div class="page" id="page-scrapers">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">🔍 Scraper Management</div>
+          <div class="panel-actions">
+            <button class="btn btn-yellow btn-sm" onclick="testAll()" id="testAllBtn">⚡ Test All</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadScrapers()">⟳ Refresh</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:12px">Testing against Inception (TMDB: 27205). Green = working source found.</div>
+          <div class="scraper-grid" id="scraperGrid"><div style="color:var(--t3);font-size:12px">Loading scrapers...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- API TESTER -->
+    <div class="page" id="page-tester">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">🔍 Search Test</div></div>
+          <div class="panel-body">
+            <div class="form-row" style="margin-bottom:10px">
+              <div class="form-group"><label class="form-label">Query</label><input class="form-input" id="tq" value="inception" placeholder="Movie name..."></div>
+              <button class="btn btn-primary" onclick="testSearch()" style="flex-shrink:0;margin-top:21px">Test</button>
+            </div>
+            <div class="logbox" id="tsOut">Results here...</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">🎬 Source Test</div></div>
+          <div class="panel-body">
+            <div class="form-group"><label class="form-label">TMDB ID</label><input class="form-input" id="ttid" value="27205"></div>
+            <div class="form-row" style="margin-bottom:10px">
+              <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="ttype"><option value="movie">Movie</option><option value="tv">TV</option></select></div>
+              <div class="form-group"><label class="form-label">Season</label><input class="form-input" id="tseason" placeholder="1"></div>
+              <div class="form-group"><label class="form-label">Episode</label><input class="form-input" id="tep" placeholder="1"></div>
+            </div>
+            <button class="btn btn-primary" onclick="testSources()" style="width:100%;justify-content:center;margin-bottom:10px">▶ Test Sources</button>
+            <div class="logbox" id="tsrcOut">Results here...</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">📡 Raw API Request</div></div>
+        <div class="panel-body">
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Endpoint</label><input class="form-input" id="rawEp" value="/api/health" placeholder="/api/..."></div>
+            <button class="btn btn-primary" onclick="rawReq()" style="flex-shrink:0;margin-top:21px">Send</button>
+          </div>
+          <div class="logbox" id="rawOut" style="margin-top:10px">Response here...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CACHE -->
+    <div class="page" id="page-cache">
+      <div class="stat-grid">
+        <div class="stat-card" style="--ac:var(--purple)"><div class="stat-icon">🗄️</div><div class="stat-label">Cached Keys</div><div class="stat-value" id="c-keys">...</div></div>
+        <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">💾</div><div class="stat-label">Redis Memory</div><div class="stat-value" id="c-mem">...</div></div>
+        <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">✅</div><div class="stat-label">Redis Status</div><div class="stat-value" id="c-status">...</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">⚡ Cache Management</div><button class="btn btn-red btn-sm" onclick="clearCache()">🗑️ Clear All</button></div>
+        <div class="panel-body">
+          <div class="form-row" style="margin-bottom:14px">
+            <div class="form-group"><label class="form-label">Delete Key</label><input class="form-input" id="ckey" placeholder="e.g. src:27205:movie:0:0"></div>
+            <button class="btn btn-red" onclick="delKey()" style="flex-shrink:0;margin-top:21px">Delete</button>
+          </div>
+          <div style="font-size:11px;color:var(--t3);line-height:1.8">
+            <strong style="color:var(--t2)">Key patterns:</strong><br>
+            <code style="color:var(--blue)">trending</code> &nbsp;·&nbsp;
+            <code style="color:var(--blue)">pop:movie:1</code> &nbsp;·&nbsp;
+            <code style="color:var(--blue)">src:TMDBID:movie:0:0</code> &nbsp;·&nbsp;
+            <code style="color:var(--blue)">det:TMDBID:movie</code> &nbsp;·&nbsp;
+            <code style="color:var(--blue)">season:TMDBID:1</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGS -->
+    <div class="page" id="page-logs">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">📋 Application Logs</div>
+          <div class="panel-actions">
+            <button class="btn btn-secondary btn-sm" onclick="loadLogs('out')" id="lb-out">Output</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadLogs('error')" id="lb-err">Errors</button>
+            <select class="form-select" id="logLines" style="width:70px;padding:4px 8px;font-size:11px"><option>50</option><option selected>100</option><option>200</option><option>500</option></select>
+            <button class="btn btn-red btn-sm" onclick="clearLogs()">Clear</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div style="font-size:10px;color:var(--t3);margin-bottom:8px" id="logFile"></div>
+          <div class="logbox" id="logBox">Select log type above...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROCESS -->
+    <div class="page" id="page-process">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">⚙️ Process Control — moviestream</div></div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">
+            <button class="btn btn-green" onclick="procAction('restart')" style="justify-content:center;padding:12px">♻️ Restart</button>
+            <button class="btn btn-blue"  onclick="procAction('reload')"  style="justify-content:center;padding:12px">🔄 Reload</button>
+            <button class="btn btn-secondary" onclick="procAction('stop')" style="justify-content:center;padding:12px">⏹ Stop</button>
+            <button class="btn btn-yellow" onclick="procAction('start')" style="justify-content:center;padding:12px">▶️ Start</button>
+          </div>
+          <div class="panel" style="margin:0"><div class="panel-head"><div class="panel-title">Process Status</div></div><div class="panel-body"><table class="tbl" id="procTable"><tr><td style="color:var(--t3)">Loading...</td></tr></table></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NGINX -->
+    <div class="page" id="page-nginx">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">🌐 Nginx Control</div></div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
+            <button class="btn btn-green"    onclick="nginxAction('restart')" style="justify-content:center;padding:12px">♻️ Restart</button>
+            <button class="btn btn-blue"     onclick="nginxAction('reload')"  style="justify-content:center;padding:12px">🔄 Reload</button>
+            <button class="btn btn-secondary"onclick="nginxAction('start')"   style="justify-content:center;padding:12px">▶️ Start</button>
+            <button class="btn btn-secondary"onclick="nginxAction('stop')"    style="justify-content:center;padding:12px">⏹ Stop</button>
+            <button class="btn btn-yellow"   onclick="nginxAction('test')"    style="justify-content:center;padding:12px">🧪 Test</button>
+          </div>
+          <div class="logbox" id="nginxOut">Click an action...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONFIG -->
+    <div class="page" id="page-config">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">🔧 Configuration (.env)</div><button class="btn btn-secondary btn-sm" onclick="loadConfig()">⟳ Refresh</button></div>
+        <div class="panel-body">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:14px">⚠️ Restart app after saving changes. Secrets are hidden.</div>
+          <div id="configBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVITY -->
+    <div class="page" id="page-activity">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">📝 Admin Activity</div><button class="btn btn-secondary btn-sm" onclick="loadActivity()">⟳ Refresh</button></div>
+        <div class="panel-body">
+          <table class="tbl">
+            <thead><tr><th>Time</th><th>Action</th><th>Details</th></tr></thead>
+            <tbody id="actTable"><tr><td colspan="3" style="color:var(--t3);text-align:center;padding:20px">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+const AAPI='/api/admin';
+let token=localStorage.getItem('adminToken');
+let curPage='dashboard';
+let curLogType='out';
+let statsTimer;
+const actLog=[];
+
+// ─── AUTH ─────────────────────────────────────────────────
+async function doLogin(){
+  const u=document.getElementById('lu').value.trim();
+  const p=document.getElementById('lp').value;
+  const err=document.getElementById('loginErr');
+  err.style.display='none';
+  try{
+    const r=await fetch(`${AAPI}/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const d=await r.json();
+    if(d.success){
+      token=d.token;
+      localStorage.setItem('adminToken',token);
+      document.getElementById('sbName').textContent=d.username;
+      document.getElementById('sbAv').textContent=d.username[0].toUpperCase();
+      document.getElementById('loginWrap').style.display='none';
+      initAdmin();
+      toast('Welcome back, '+d.username,'success');
+    }else{
+      err.textContent=d.error||'Login failed';
+      err.style.display='block';
+    }
+  }catch(e){err.textContent='Connection failed: '+e.message;err.style.display='block';}
+}
+
+async function doLogout(){
+  try{await af('/logout',{method:'POST'});}catch{}
+  localStorage.removeItem('adminToken');token=null;location.reload();
+}
+
+async function af(path,opts={}){
+  const r=await fetch(AAPI+path,{...opts,headers:{'Content-Type':'application/json','x-admin-token':token,...(opts.headers||{})},body:opts.body?JSON.stringify(opts.body):undefined});
+  if(r.status===401){localStorage.removeItem('adminToken');location.reload();return;}
+  return r.json();
+}
+
+// ─── TOAST ────────────────────────────────────────────────
+function toast(msg,type='info',dur=3000){
+  const w=document.getElementById('toasts');
+  const el=document.createElement('div');
+  el.className=`toast toast-${type}`;
+  el.innerHTML=`<span>${type==='success'?'✅':type==='error'?'❌':'ℹ️'}</span>${msg}`;
+  w.appendChild(el);
+  setTimeout(()=>el.remove(),dur);
+}
+
+// ─── NAV ──────────────────────────────────────────────────
+function showPage(id,navEl){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
+  document.getElementById(`page-${id}`)?.classList.add('on');
+  if(navEl)navEl.classList.add('on');
+  curPage=id;
+  const titles={dashboard:'Dashboard',online:'Live Users',scrapers:'Scraper Management',tester:'API Tester',cache:'Cache Management',logs:'Application Logs',process:'Process Control',nginx:'Nginx Control',config:'Configuration',activity:'Activity Log'};
+  document.getElementById('pageTitle').textContent=titles[id]||id;
+  if(id==='online')    loadOnline();
+  if(id==='scrapers')  loadScrapers();
+  if(id==='cache')     loadCacheStats();
+  if(id==='process')   loadProcStatus();
+  if(id==='config')    loadConfig();
+  if(id==='activity')  loadActivity();
+}
+
+function refreshPage(){showPage(curPage,null);}
+
+// ─── DASHBOARD ────────────────────────────────────────────
+async function loadStats(){
+  try{
+    const d=await af('/stats');
+    if(!d?.success)return;
+    const{process:proc,system:sys,disk,redis:ri,node,online}=d.data;
+
+    // Status
+    const st=proc.status||'unknown';
+    const sv=document.getElementById('s-status');
+    sv.textContent=st.toUpperCase();
+    sv.style.color=st==='online'?'var(--green)':'var(--red)';
+    const asi=document.getElementById('appStatus');
+    asi.className=`status-indicator ${st==='online'?'ok':'err'}`;
+    document.getElementById('appStatusText').textContent=st==='online'?'Online':'Offline';
+
+    // Uptime
+    const ups=proc.uptime?Math.floor((Date.now()-proc.uptime)/1000):node.uptime;
+    document.getElementById('s-uptime').textContent='Uptime: '+fmtUp(ups);
+
+    // Online
+    document.getElementById('s-online').textContent=online.count;
+    document.getElementById('s-views').textContent=(online.totalViews||0)+' total views';
+    document.getElementById('s-watching').textContent=online.totalWatches||0;
+    document.getElementById('s-watches').textContent=(online.totalWatches||0)+' total streams';
+    document.getElementById('sb-online').textContent=online.count;
+
+    // Memory
+    const mp=sys.memPercent;
+    document.getElementById('s-mem').textContent=sys.usedMem+'MB';
+    document.getElementById('s-mem-sub').textContent=mp+'% of '+sys.totalMem+'MB';
+    document.getElementById('s-mem-bar').style.width=mp+'%';
+
+    // Disk
+    document.getElementById('s-disk').textContent=disk.used||'N/A';
+    document.getElementById('s-disk-sub').textContent=(disk.percent||'?')+' of '+(disk.total||'?');
+    document.getElementById('s-disk-bar').style.width=(parseInt(disk.percent)||0)+'%';
+
+    // Redis
+    document.getElementById('s-redis').textContent=ri.keys||'0';
+    document.getElementById('s-redis-sub').textContent='Memory: '+(ri.memory||'N/A');
+
+    // Restarts
+    document.getElementById('s-restarts').textContent=proc.restarts??'N/A';
+
+    // Load
+    document.getElementById('s-load').textContent=sys.loadAvg[0];
+    document.getElementById('s-load-sub').textContent='5m: '+sys.loadAvg[1]+' 15m: '+sys.loadAvg[2];
+
+    // Sys info
+    document.getElementById('si-node').textContent=node.version;
+    document.getElementById('si-platform').textContent=sys.platform;
+    document.getElementById('si-host').textContent=sys.hostname;
+    document.getElementById('si-cpu').textContent=sys.cpuCount+' cores';
+    document.getElementById('si-uptime').textContent=fmtUp(sys.uptime);
+    document.getElementById('si-pid').textContent=proc.pid||'N/A';
+  }catch(e){console.error('Stats:',e);}
+}
+
+function fmtUp(sec){
+  const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60);
+  if(h>24)return Math.floor(h/24)+'d '+h%24+'h';
+  return h+'h '+m+'m';
+}
+
+// ─── SCRAPERS ─────────────────────────────────────────────
+async function loadScrapers(){
+  const grid=document.getElementById('scraperGrid');
+  grid.innerHTML='<div style="color:var(--t3);font-size:12px">Loading...</div>';
+  const d=await af('/scrapers');
+  if(!d?.success)return;
+  grid.innerHTML=d.data.map(s=>`
+    <div class="scraper-card" id="sc-${s.name}">
+      <div class="sc-top">
+        <div><div class="sc-name">${s.name}</div><div class="sc-url">${s.baseUrl}</div></div>
+        <span class="badge badge-gray">P${s.priority}</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-blue btn-sm" onclick="testScraper('${s.name}')">🧪 Test</button>
+      </div>
+      <div class="sc-result" id="scr-${s.name}">Not tested</div>
+    </div>`).join('');
+}
+
+async function testScraper(name){
+  const el=document.getElementById(`scr-${name}`);
+  el.className='sc-result sc-testing';el.textContent='⏳ Testing...';
+  const d=await af('/scrapers/test',{method:'POST',body:{scraperName:name}});
+  if(d?.success){
+    const r=d.data;
+    el.className=`sc-result ${r.working?'sc-ok':'sc-fail'}`;
+    el.textContent=r.working?`✅ Working (${r.elapsed})`:`❌ Failed (${r.elapsed}) — ${r.error||'No source'}`;
+  }
+}
+
+async function testAll(){
+  const btn=document.getElementById('testAllBtn');
+  btn.disabled=true;btn.textContent='Testing...';
+  toast('Testing all scrapers...','info',8000);
+  document.querySelectorAll('[id^="scr-"]').forEach(el=>{el.className='sc-result sc-testing';el.textContent='⏳ Testing...';});
+  const d=await af('/scrapers/test-all',{method:'POST'});
+  btn.disabled=false;btn.textContent='⚡ Test All';
+  if(!d?.success){toast('Test failed','error');return;}
+  let ok=0;
+  d.data.forEach(r=>{
+    const el=document.getElementById(`scr-${r.name}`);if(!el)return;
+    if(r.working){ok++;el.className='sc-result sc-ok';el.textContent=`✅ Working (${r.elapsed})`;}
+    else{el.className='sc-result sc-fail';el.textContent=`❌ Failed (${r.elapsed}) — ${r.error||'No source'}`;}
+  });
+  toast(`${ok}/${d.data.length} scrapers working`,ok>0?'success':'error');
+}
+
+// ─── ONLINE USERS ─────────────────────────────────────────
+async function loadOnline(){
+  const d=await af('/online');
+  if(!d?.success)return;
+  document.getElementById('o-count').textContent=d.count||0;
+  document.getElementById('o-views').textContent=d.totalViews||0;
+  const watching=d.data.filter(u=>u.watching).length;
+  const mobile=d.data.filter(u=>u.device==='Mobile').length;
+  document.getElementById('o-watching').textContent=watching;
+  document.getElementById('o-mobile').textContent=mobile;
+  const tbody=document.getElementById('onlineTable');
+  if(!d.data.length){tbody.innerHTML='<tr><td colspan="6" style="color:var(--t3);text-align:center;padding:20px">No users online</td></tr>';return;}
+  tbody.innerHTML=d.data.map(u=>{
+    const dur=u.duration;
+    const ds=dur>3600?Math.floor(dur/3600)+'h '+Math.floor((dur%3600)/60)+'m':dur>60?Math.floor(dur/60)+'m'+(dur%60)+'s':dur+'s';
+    return `<tr>
+      <td><span class="badge badge-purple">${u.id.slice(0,6)}</span></td>
+      <td style="font-family:monospace;font-size:10px">${u.ip}</td>
+      <td><span class="badge ${u.device==='Mobile'?'badge-yellow':'badge-blue'}">${u.device}</span></td>
+      <td style="font-size:11px">${u.page||'home'}</td>
+      <td>${u.watching?`<span class="watching-badge">${u.watching.title}${u.watching.season?' S'+u.watching.season+'E'+u.watching.episode:''}</span>`:'<span style="color:var(--t3);font-size:10px">Browsing</span>'}</td>
+      <td style="color:var(--t3);font-size:10px">${ds}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── CACHE ────────────────────────────────────────────────
+async function loadCacheStats(){
+  const d=await af('/cache/stats');
+  if(!d?.success)return;
+  document.getElementById('c-keys').textContent=d.data.keys||'0';
+  document.getElementById('c-mem').textContent=d.data.memory||'N/A';
+  document.getElementById('c-status').textContent=d.data.connected?'Connected':'Memory Mode';
+}
+
+async function clearCache(){
+  if(!confirm('Clear all cached data?'))return;
+  const d=await af('/cache/clear',{method:'DELETE'});
+  if(d?.success){toast('Cache cleared','success');loadCacheStats();}
+  else toast('Failed','error');
+}
+
+async function delKey(){
+  const k=document.getElementById('ckey').value.trim();
+  if(!k)return toast('Enter a key','error');
+  const d=await af('/cache/key',{method:'DELETE',body:{key:k}});
+  if(d?.success){toast('Deleted: '+k,'success');document.getElementById('ckey').value='';loadCacheStats();}
+  else toast('Failed','error');
+}
+
+// ─── LOGS ─────────────────────────────────────────────────
+async function loadLogs(type){
+  curLogType=type;
+  const lines=document.getElementById('logLines').value;
+  const box=document.getElementById('logBox');
+  box.textContent='Loading...';
+  document.getElementById('lb-out').className=`btn btn-sm ${type==='out'?'btn-blue':'btn-secondary'}`;
+  document.getElementById('lb-err').className=`btn btn-sm ${type==='error'?'btn-red':'btn-secondary'}`;
+  const d=await af(`/logs/${type}?lines=${lines}`);
+  if(d?.success){
+    document.getElementById('logFile').textContent=d.file;
+    box.innerHTML=d.data.split('\n').map(ln=>{
+      if(/error|err|fatal/i.test(ln)) return`<span class="log-err">${esc(ln)}</span>`;
+      if(/warn/i.test(ln)) return`<span class="log-warn">${esc(ln)}</span>`;
+      if(/✅|connected|started|running/i.test(ln)) return`<span class="log-ok">${esc(ln)}</span>`;
+      return esc(ln);
+    }).join('\n');
+    box.scrollTop=box.scrollHeight;
+  }
+}
+
+async function clearLogs(){
+  if(!confirm('Clear log files?'))return;
+  const d=await af('/logs/clear',{method:'DELETE'});
+  if(d?.success){toast('Logs cleared','success');loadLogs(curLogType);}
+  else toast('Failed','error');
+}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ─── PROCESS ──────────────────────────────────────────────
+async function procAction(action){
+  if(['stop','restart'].includes(action)&&!confirm(`${action} the app?`))return;
+  toast(`${action}ing...`,'info');
+  const d=await af(`/process/${action}`,{method:'POST'});
+  if(d?.success){toast(d.message,'success');setTimeout(()=>{loadStats();loadProcStatus();},2000);}
+  else toast(d?.error||'Failed','error');
+}
+
+async function loadProcStatus(){
+  const d=await af('/stats');
+  if(!d?.success)return;
+  const{process:proc,node}=d.data;
+  document.getElementById('procTable').innerHTML=`
+    <tr><td style="color:var(--t3)">Name</td><td>moviestream</td></tr>
+    <tr><td style="color:var(--t3)">Status</td><td><span class="badge ${proc.status==='online'?'badge-green':'badge-red'}">${proc.status||'N/A'}</span></td></tr>
+    <tr><td style="color:var(--t3)">PID</td><td>${proc.pid||'N/A'}</td></tr>
+    <tr><td style="color:var(--t3)">Restarts</td><td>${proc.restarts??'N/A'}</td></tr>
+    <tr><td style="color:var(--t3)">Memory</td><td>${proc.memory?Math.round(proc.memory/1048576)+'MB':node.memory.used+'MB'}</td></tr>
+    <tr><td style="color:var(--t3)">CPU</td><td>${proc.cpu??'N/A'}%</td></tr>
+    <tr><td style="color:var(--t3)">Node</td><td>${node.version}</td></tr>
+    <tr><td style="color:var(--t3)">Uptime</td><td>${fmtUp(node.uptime)}</td></tr>`;
+}
+
+// ─── NGINX ────────────────────────────────────────────────
+async function nginxAction(action){
+  const box=document.getElementById('nginxOut');
+  box.textContent=`Running nginx ${action}...`;
+  const d=await af(`/nginx/${action}`,{method:'POST'});
+  if(d?.success){box.textContent=d.message||'OK';toast(`Nginx ${action}: OK`,'success');}
+  else{box.textContent=d?.error||'Failed';toast(`Nginx ${action} failed`,'error');}
+}
+
+// ─── CONFIG ───────────────────────────────────────────────
+async function loadConfig(){
+  const d=await af('/config');
+  if(!d?.success)return;
+  document.getElementById('configBody').innerHTML=Object.entries(d.data).map(([k,v])=>`
+    <div class="config-row">
+      <div class="config-key">${k}</div>
+      <div class="config-val">
+        <div class="form-row">
+          <input class="form-input" id="cfg-${k}" value="${esc(v)}" ${v==='***'?'disabled':''} style="font-family:monospace;font-size:11px;flex:1">
+          ${v!=='***'?`<button class="btn btn-blue btn-sm" onclick="saveConfig('${k}')" style="flex-shrink:0">Save</button>`:''}
+        </div>
+      </div>
+    </div>`).join('')+`<div style="margin-top:12px;font-size:11px;color:var(--t3)">Restart app after changes: <code style="color:var(--blue)">pm2 restart moviestream --update-env</code></div>`;
+}
+
+async function saveConfig(key){
+  const val=document.getElementById(`cfg-${key}`)?.value;
+  const d=await af('/config',{method:'PUT',body:{key,value:val}});
+  if(d?.success) toast(d.message,'success'); else toast(d?.error||'Failed','error');
+}
+
+// ─── API TESTER ───────────────────────────────────────────
+async function testSearch(){
+  const q=document.getElementById('tq').value.trim();
+  const box=document.getElementById('tsOut');
+  box.textContent='Searching...';
+  const d=await af(`/test/search/${encodeURIComponent(q)}`);
+  box.textContent=JSON.stringify(d,null,2);
+}
+
+async function testSources(){
+  const box=document.getElementById('tsrcOut');
+  box.textContent='Scraping sources...';
+  const d=await af('/test/sources',{method:'POST',body:{tmdbId:document.getElementById('ttid').value||'27205',type:document.getElementById('ttype').value||'movie',season:document.getElementById('tseason').value||null,episode:document.getElementById('tep').value||null}});
+  box.textContent=JSON.stringify(d,null,2);
+}
+
+async function rawReq(){
+  const ep=document.getElementById('rawEp').value.trim();
+  const box=document.getElementById('rawOut');
+  box.textContent='Sending...';
+  try{const r=await fetch(ep,{headers:{'x-admin-token':token}});const d=await r.json();box.textContent=JSON.stringify(d,null,2);}
+  catch(e){box.textContent='Error: '+e.message;}
+}
+
+// ─── ACTIVITY ─────────────────────────────────────────────
+function loadActivity(){
+  const tbody=document.getElementById('actTable');
+  if(!actLog.length){tbody.innerHTML='<tr><td colspan="3" style="color:var(--t3);text-align:center;padding:20px">No activity recorded yet</td></tr>';return;}
+  tbody.innerHTML=actLog.slice(-30).reverse().map(a=>`
+    <tr>
+      <td style="color:var(--t3);white-space:nowrap;font-size:10px">${new Date(a.time).toLocaleTimeString()}</td>
+      <td><span class="badge badge-blue">${a.action}</span></td>
+      <td style="font-size:10px;color:var(--t3)">${JSON.stringify(a.data||{})}</td>
+    </tr>`).join('');
+}
+
+// Track admin actions
+const _af=af;
+// af is already defined and used
+
+// ─── INIT ─────────────────────────────────────────────────
+function initAdmin(){
+  loadStats();
+  statsTimer=setInterval(loadStats,10000);
+  setInterval(()=>{if(curPage==='online')loadOnline();},8000);
+}
+
+// Auto-login if token
+if(token){
+  af('/stats').then(d=>{
+    if(d?.success){
+      document.getElementById('loginWrap').style.display='none';
+      initAdmin();
+    }else{localStorage.removeItem('adminToken');token=null;}
+  }).catch(()=>{localStorage.removeItem('adminToken');token=null;});
+}
+
+document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+</script>
+</body>
+</html>
