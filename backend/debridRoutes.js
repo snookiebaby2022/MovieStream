@@ -52,9 +52,12 @@ function parseSeeders(title) {
 }
 
 /** Higher = more likely to play in Chrome/Safari <video> */
-function browserScore(title, url) {
-  const t = `${title || ''} ${url || ''}`.toLowerCase();
+function browserScore(title, url, name) {
+  const t = `${name || ''} ${title || ''} ${url || ''}`.toLowerCase();
   let score = 40;
+  // [RD+] = already cached on Real-Debrid (instant). [RD download] often becomes failed_* stubs.
+  if (/\[rd\+\]/.test(t)) score += 90;
+  if (/\[rd download\]/.test(t)) score -= 60;
   if (/\.mp4(\?|$)|[\s.\-_]mp4[\s.\-_]/i.test(t)) score += 50;
   if (/x264|h\.?264|avc/.test(t)) score += 35;
   if (/web-?dl|webrip|hdtv/.test(t)) score += 8;
@@ -69,8 +72,8 @@ function browserScore(title, url) {
   return score;
 }
 
-function isLikelyBrowserPlayable(title, url) {
-  return browserScore(title, url) >= 55;
+function isLikelyBrowserPlayable(title, url, name) {
+  return browserScore(title, url, name) >= 55;
 }
 
 const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?code[_\s-]?35|"error_code"\s*:\s*35|unavailable for legal reasons|file was removed from debrid/i;
@@ -369,13 +372,15 @@ router.post('/streams', async (req, res) => {
         if (!/^https?:\/\//i.test(playUrl)) return null;
         if (/magnet:/i.test(playUrl)) return null;
         const title = s.title || s.name || `Stream ${i + 1}`;
+        const name = s.name || '';
         // Skip links torrentio already flagged as removed / infringing
-        if (INFRINGE_RE.test(title) || INFRINGE_RE.test(s.name || '')) return null;
-        const quality = parseQuality(title + ' ' + (s.name || ''));
+        if (INFRINGE_RE.test(title) || INFRINGE_RE.test(name)) return null;
+        const quality = parseQuality(title + ' ' + name);
         const isHls = /\.m3u8(\?|$)/i.test(playUrl) || /hls/i.test(playUrl);
-        const bScore = browserScore(title, playUrl);
+        const bScore = browserScore(title, playUrl, name);
+        const cached = /\[RD\+\]/i.test(name + ' ' + title);
         return {
-          source: (s.name || 'RD').replace(/\n/g, ' ').slice(0, 40),
+          source: name.replace(/\n/g, ' ').slice(0, 40) || 'RD',
           title: title.split('\n')[0].slice(0, 80),
           quality,
           size: parseSize(title),
@@ -384,20 +389,26 @@ router.post('/streams', async (req, res) => {
           url: playUrl,
           embedUrl: playUrl,
           debrid: true,
-          browserOk: isLikelyBrowserPlayable(title, playUrl),
+          cached,
+          browserOk: isLikelyBrowserPlayable(title, playUrl, name),
           browserScore: bScore,
           priority: i + 1
         };
       })
       .filter(Boolean);
 
-    // Prefer browser-friendly (mp4/x264/720-1080) over 4K HEVC/MKV that <video> can't play
+    // Prefer cached [RD+] + browser-friendly (mp4/x264) over downloads / 4K HEVC
     streams.sort((a, b) =>
+      ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
       (b.browserScore - a.browserScore) ||
       (b.seeders || 0) - (a.seeders || 0)
     );
 
-    // Check redirects and drop Torrentio failed_* stubs before client sees them
+    // If enough cached [RD+] links exist, skip [RD download] (those often become failed_* stubs)
+    const cachedOnly = streams.filter(s => s.cached);
+    if (cachedOnly.length >= 6) streams = cachedOnly;
+
+    // Prefer probing cached links first
     const candidates = streams.slice(0, 48);
     const filtered = await filterFailedResolves(candidates, { need: 16, concurrency: 8, maxCheck: 28 });
     streams = filtered.streams;
