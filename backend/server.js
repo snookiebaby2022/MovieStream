@@ -14,6 +14,7 @@ const { createServer }= require('http');
 const { Server }      = require('socket.io');
 const ScraperManager  = require('./scrapers/ScraperManager');
 const { router: authRouter } = require('./authRoutes');
+const debridRouter = require('./debridRoutes');
 
 dotenv.config();
 
@@ -379,6 +380,9 @@ app.post('/api/cache/clear', async (req, res) => {
 
 // User accounts, watchlist, history, comments, ratings
 app.use('/api/auth', authRouter);
+
+// Real-Debrid (Torrentio) — token sent per-request via x-rd-token
+app.use('/api/debrid', debridRouter);
 
 // SEO
 app.get('/sitemap.xml', async (req, res) => {

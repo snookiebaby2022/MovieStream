@@ -153,8 +153,9 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .adtip.on{display:block}.adtip b{color:var(--gold)}.adtip button{margin-left:8px;background:none;border:0;color:var(--t3);cursor:pointer;font-size:12px}
 .auth-btn{padding:6px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0}
 .auth-btn:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
-#authOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px}
-#authOv.on{display:flex}
+#authOv,#rdOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px}
+#authOv.on,#rdOv.on{display:flex}
+#rdBtn.on{border-color:var(--green);color:var(--green);background:rgba(70,211,105,.12)}
 .auth-box{width:100%;max-width:380px;background:var(--s1);border:1px solid var(--s4);border-radius:14px;padding:22px}
 .auth-box h2{font-size:18px;margin-bottom:6px}.auth-box p{font-size:12px;color:var(--t3);margin-bottom:14px}
 .auth-box input{width:100%;padding:10px 12px;margin-bottom:10px;border-radius:8px;border:1px solid var(--s5);background:var(--s2);color:#fff;font-size:13px}
@@ -185,11 +186,12 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     <button class="nb"    id="nb-list"   onclick="go('list',this)">My List</button>
   </nav>
   <div class="sbar"><input id="q" type="text" placeholder="Search movies, shows..." autocomplete="off"><button onclick="doSearch()">&#128269;</button></div>
+  <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid">RD</button>
   <button class="auth-btn" id="authBtn" onclick="openAuth()">Sign In</button>
   <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
 </header>
 <div class="adtip on" id="adtip">
-  <b>Clean mode is on</b> — we use quieter players by default. If a title won’t play, tap <b>More servers</b>. For zero popups long-term, a debrid key (Real-Debrid) is the real fix.
+  <b>Want no popups?</b> Tap <b>RD</b>, paste your Real-Debrid API key — we play direct streams in our player. Without RD, clean embed servers are used.
   <button type="button" onclick="dismissAdTip()">Dismiss</button>
 </div>
 <div id="hero">
@@ -259,6 +261,18 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     <div class="auth-switch" id="authSwitch">No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="closeAuth()">Close</a></div>
   </div>
 </div>
+<div id="rdOv">
+  <div class="auth-box">
+    <h2>Real-Debrid</h2>
+    <p>Paste your API token for ad-free direct playback. Get it from <a href="https://real-debrid.com/apitoken" target="_blank" rel="noopener" style="color:var(--gold)">real-debrid.com/apitoken</a></p>
+    <div id="rdErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+    <div id="rdOk" style="display:none;color:var(--green);font-size:12px;margin-bottom:8px"></div>
+    <input id="rdToken" type="password" placeholder="RD API token" autocomplete="off">
+    <button class="pbtn" onclick="saveRd()">Save &amp; Verify</button>
+    <button class="pbtn" style="background:var(--s4);margin-top:8px" onclick="clearRd()">Remove key</button>
+    <div class="auth-switch"><a onclick="closeRd()">Close</a></div>
+  </div>
+</div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 'use strict';
@@ -275,6 +289,50 @@ function clearStore(){STORE={};STOREKEY=0;}
 var S={section:'home',hl:[],hi:0,ht:null,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0'};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
 if(localStorage.getItem('fn_adtip')==='1'){var _at=$('adtip');if(_at)_at.classList.remove('on');}
+function getRdToken(){return (localStorage.getItem('fn_rd')||'').trim();}
+function refreshRdBtn(){
+  var b=$('rdBtn');if(!b)return;
+  var on=!!getRdToken();
+  b.classList.toggle('on',on);
+  b.textContent=on?'RD ✓':'RD';
+}
+function openRd(){
+  $('rdErr').style.display='none';$('rdOk').style.display='none';
+  $('rdToken').value=getRdToken();
+  $('rdOv').classList.add('on');
+  if(getRdToken())verifyRd();
+}
+function closeRd(){$('rdOv').classList.remove('on');}
+function clearRd(){localStorage.removeItem('fn_rd');refreshRdBtn();$('rdToken').value='';$('rdOk').style.display='none';$('rdErr').style.display='none';}
+function saveRd(){
+  var t=$('rdToken').value.trim();
+  if(!t){clearRd();return;}
+  localStorage.setItem('fn_rd',t);
+  refreshRdBtn();
+  verifyRd();
+}
+function verifyRd(){
+  var t=getRdToken();if(!t)return;
+  $('rdErr').style.display='none';$('rdOk').textContent='Checking…';$('rdOk').style.display='block';
+  fetch('/api/debrid/status',{headers:{'x-rd-token':t}}).then(function(r){return r.json();}).then(function(d){
+    if(d.success&&d.configured){
+      $('rdOk').textContent='Connected as '+d.data.username+(d.data.premium?' (Premium)':'')+' — ad-free streams enabled';
+      $('rdOk').style.display='block';$('rdErr').style.display='none';
+    }else{
+      $('rdOk').style.display='none';
+      $('rdErr').textContent=d.error||'Invalid token';$('rdErr').style.display='block';
+    }
+  }).catch(function(e){$('rdOk').style.display='none';$('rdErr').textContent=e.message;$('rdErr').style.display='block';});
+}
+function fetchDebridStreams(imdbId,type,sn,ep,tmdbId){
+  var token=getRdToken();
+  if(!token)return Promise.resolve(null);
+  return fetch('/api/debrid/streams',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-rd-token':token},
+    body:JSON.stringify({imdbId:imdbId||'',type:type==='tv'?'tv':'movie',season:sn||1,episode:ep||1,tmdbId:tmdbId})
+  }).then(function(r){return r.json();}).catch(function(){return null;});
+}
 
 // ── AD / POPUP BLOCKER ─────────────────────────────────────
 (function(){
@@ -787,10 +845,27 @@ function openModal(item){
   document.title=(item.title||'')+' - FlixNova';
   S.cleanMode=localStorage.getItem('fn_clean')!=='0';
   var sp=sourcesPath(id,type,S.sn,S.ep);
-  Promise.all([api('/details/'+id+'/'+type),api(sp)]).then(function(res){
-    if(res[0]&&res[0].success)fillDet(res[0].data,id,type);
-    if(res[1]&&res[1].success)handleSrc(res[1].data);
-    else showPE('No sources available for this title. Try again or pick another title.');
+  api('/details/'+id+'/'+type).then(function(det){
+    var imdb=null;
+    if(det&&det.success){
+    fillDet(det.data,id,type);
+    imdb=det.data.imdbId||null;
+    if(S.item)S.item.imdbId=imdb;
+  }
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>'+(getRdToken()?'Finding Real-Debrid streams...':'Finding servers...')+'</span></div>';
+    return Promise.all([
+      fetchDebridStreams(imdb,type,S.sn,S.ep,id),
+      api(sp)
+    ]).then(function(res){
+      var rd=res[0],emb=res[1];
+      if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+        handleSrc({sources:rd.data.streams,debrid:true});
+        setSt('sok','▶ Real-Debrid · no iframe ads');
+        return;
+      }
+      if(emb&&emb.success)handleSrc(emb.data);
+      else showPE('No sources available. '+(getRdToken()?'RD found nothing — try More servers or another title.':'Add Real-Debrid (RD) for best results, or try again.'));
+    });
   }).catch(function(e){showPE('Error: '+e.message);});
 }
 
@@ -917,9 +992,24 @@ function pEp(tid,sn,ep,el){
   try{history.replaceState(null,'','/watch/tv/'+tid+'/'+sn+'/'+ep);}catch(ex){}
   sockEmit('watching',{title:S.item&&S.item.title,tmdbId:tid,type:'tv',season:sn,episode:ep});
   if(S.item)saveContinue(S.item,sn,ep);
-  api(sourcesPath(tid,'tv',sn,ep)).then(function(d){
-    if(d.success)handleSrc(d.data);else showPE('No sources for this episode.');
-  }).catch(function(e){showPE(e.message);});
+  var imdb=S.item&&S.item.imdbId;
+  var loadEmb=function(){
+    return api(sourcesPath(tid,'tv',sn,ep)).then(function(d){
+      if(d.success)handleSrc(d.data);else showPE('No sources for this episode.');
+    });
+  };
+  if(getRdToken()){
+    var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
+    imdbP.then(function(idb){
+      return fetchDebridStreams(idb,'tv',sn,ep,tid).then(function(rd){
+        if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+          handleSrc({sources:rd.data.streams,debrid:true});
+          return;
+        }
+        return loadEmb();
+      });
+    }).catch(function(e){showPE(e.message);});
+  }else loadEmb().catch(function(e){showPE(e.message);});
 }
 function sourcesPath(id,type,sn,ep){
   var qs=[];
@@ -979,10 +1069,13 @@ function bTrail(videos){$('tpTrail').innerHTML='<div class="tb"><iframe src="'+Y
 // ── SOURCES & PLAYER ───────────────────────────────────────
 function handleSrc(data){
   S.src=(data&&data.sources)?data.sources:[];
+  S.debridMode=!!(data&&data.debrid);
   if(!S.src.length){showPE('No sources found. External providers may be down.');return;}
+  var moreBtn=$('moreSrvBtn');if(moreBtn)moreBtn.style.display=S.debridMode?'none':'inline-flex';
   $('schips').innerHTML=S.src.map(function(s,i){
     var q=s.quality||'Auto';
-    return'<button class="sc'+(i===0?' on':'')+'" id="sc'+i+'" onclick="tryS('+i+')">'+he(s.source)+'<span class="qbadge q-'+q+'">'+q+'</span></button>';
+    var label=s.debrid?(he(s.quality||'HD')+(s.size?' · '+he(s.size):'')):he(s.source);
+    return'<button class="sc'+(i===0?' on':'')+'" id="sc'+i+'" onclick="tryS('+i+')" title="'+he(s.title||s.source)+'">'+(s.debrid?'RD ':'')+label+'<span class="qbadge q-'+(q==='1080p'||q==='4K'||q==='720p'?'HD':q)+'">'+he(q)+'</span></button>';
   }).join('');
   $('srcbar').style.display='flex';
   tryS(0);
@@ -998,13 +1091,30 @@ function setSt(c,m){$('srcst').className='srcst '+c;$('srcst').textContent=m;}
 function nextSrc(){tryS(S.si+1);}
 function tryS(idx){
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-  if(idx>=S.src.length){showPE('All '+S.src.length+' servers failed. Tap Try Again or pick another title.');return;}
+  if(idx>=S.src.length){
+    if(S.debridMode&&!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
+    showPE('All '+S.src.length+' streams failed. Try another quality or More servers.');
+    return;
+  }
   S.si=idx;document.querySelectorAll('#schips .sc').forEach(function(c,i){c.classList.toggle('on',i===idx);});
-  var s=S.src[idx],url=s.embedUrl||s.url||'';setSt('sld','Loading '+s.source+'...');
+  var s=S.src[idx],url=s.embedUrl||s.url||'';setSt('sld','Loading '+(s.debrid?s.quality:s.source)+'...');
   if(!url){mFail(idx);tryS(idx+1);return;}
-  if(s.type==='hls'||url.indexOf('.m3u8')!==-1)pHLS(url,idx);
-  else if(s.type==='direct'||url.match(/\.(mp4|mkv|webm)/i))pDir(url,idx);
-  else pEmb(url,idx);
+  // Real-Debrid / direct always use native player (no iframe ads)
+  if(s.debrid||s.type==='direct'||s.type==='hls'||/\.(m3u8|mp4|mkv|webm)(\?|$)/i.test(url)){
+    if(s.type==='hls'||/\.m3u8(\?|$)/i.test(url))pHLS(url,idx);
+    else pDir(url,idx);
+    return;
+  }
+  pEmb(url,idx);
+}
+function loadEmbedFallback(){
+  if(!S.item)return;
+  var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
+  setSt('sld','Trying embed servers…');
+  api(sourcesPath(id,type,S.sn,S.ep)).then(function(d){
+    if(d.success&&d.data&&d.data.sources&&d.data.sources.length)handleSrc(d.data);
+    else showPE('No working streams for this title.');
+  });
 }
 function withAutoplay(url){
   if(!url)return url;
@@ -1037,17 +1147,25 @@ function openDirectEmbed(){
   setSt('sok','▶ Direct embed');
 }
 function pHLS(url,idx){
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button></div><video id="hv" controls autoplay playsinline></video>';
+  var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
+  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline style="width:100%;height:100%;background:#000"></video>';
   var v=document.getElementById('hv');
-  if(window.Hls&&Hls.isSupported()){var h=new Hls({enableWorker:true});h.loadSource(url);h.attachMedia(v);h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:''));});h.on(Hls.Events.ERROR,function(_,d){if(d.fatal){mFail(idx);tryS(idx+1);}});}
-  else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=url;v.play().catch(function(){});setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:''));}
-  else{mFail(idx);tryS(idx+1);}
+  if(window.Hls&&Hls.isSupported()){
+    var h=new Hls({enableWorker:true,xhrSetup:function(xhr){xhr.withCredentials=false;}});
+    h.loadSource(url);h.attachMedia(v);
+    h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));});
+    h.on(Hls.Events.ERROR,function(_,d){if(d.fatal){mFail(idx);tryS(idx+1);}});
+  }else if(v.canPlayType('application/vnd.apple.mpegurl')){
+    v.src=url;v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
+  }else{mFail(idx);tryS(idx+1);}
 }
 function pDir(url,idx){
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button></div><video controls autoplay playsinline><source src="'+url+'" type="video/mp4"></video>';
-  var v=$('pw').querySelector('video');
-  v.oncanplay=function(){setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:''));};
-  v.onerror=function(){mFail(idx);tryS(idx+1);};v.play().catch(function(){});
+  var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
+  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
+  var v=$('dv');
+  v.oncanplay=function(){setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':''));};
+  v.onerror=function(){mFail(idx);tryS(idx+1);};
+  v.play().catch(function(){});
 }
 function mFail(idx){S.failed[idx]=1;var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');}
 function showPE(msg){setSt('sfl','Failed');$('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p>'+msg+'</p><button class="pbtn" onclick="retryAll()">Try Again</button><button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button></div>';}
@@ -1077,9 +1195,10 @@ function routeFromLocation(){
   openModal(item);
   return true;
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
 $('ov').addEventListener('click',function(e){if(e.target===e.currentTarget)closeModal();});
 $('authOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeAuth();});
+$('rdOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeRd();});
 $('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
 window.addEventListener('popstate',function(){if(!routeFromLocation())closeModal();});
 var hs=document.createElement('script');hs.src='https://cdn.jsdelivr.net/npm/hls.js@latest';document.head.appendChild(hs);
@@ -1092,6 +1211,7 @@ if(S.token){
   uapi('/me').then(function(d){if(d.success){S.user={username:d.data.username};refreshAuthBtn();}else{S.token='';localStorage.removeItem('fn_token');}}).catch(function(){});
 }
 refreshAuthBtn();
+refreshRdBtn();
 if(!routeFromLocation())go('home',$('nb-home'));
 </script>
 </body>
