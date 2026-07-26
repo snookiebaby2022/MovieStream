@@ -112,6 +112,7 @@ router.get('/me', authRequired, async (req, res) => {
         email: user.email,
         adFree: !!user.adFree,
         adFreeAt: user.adFreeAt,
+        promoClaim: user.promoClaim || '',
         watchlist: user.watchlist,
         history: user.history,
         profiles: user.profiles,
