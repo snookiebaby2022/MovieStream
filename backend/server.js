@@ -1052,8 +1052,22 @@ app.put('/api/admin/integrations', adminAuth, (req, res) => {
     let saved = 0;
     for (const key of allowed) {
       if (body[key] === undefined || body[key] === null) continue;
-      const val = String(body[key]).trim();
+      let val = String(body[key]).trim();
       if (!val || val === '***') continue;
+      if (key === 'STRIPE_SECRET_KEY' && !val.startsWith('sk_')) {
+        return res.status(400).json({ success: false, error: 'STRIPE_SECRET_KEY must start with sk_test_ or sk_live_' });
+      }
+      if (key === 'STRIPE_WEBHOOK_SECRET') {
+        // Common mistake: pasting the webhook endpoint URL instead of the signing secret
+        if (/^https?:\/\//i.test(val) || !val.startsWith('whsec_')) {
+          return res.status(400).json({
+            success: false,
+            error: 'Webhook secret must start with whsec_ (Signing secret from Stripe → Webhooks → endpoint). Do not paste the https:// URL.'
+          });
+        }
+      }
+      if (key === 'SMTP_HOST') val = val.replace(/^host\s+/i, '').trim();
+      if (key === 'SMTP_PASS') val = val.replace(/\s+/g, '');
       upsertEnvKey(key, val);
       saved++;
     }
