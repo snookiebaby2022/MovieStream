@@ -1,0 +1,39 @@
+{
+  "appId": "xyz.snookiebaby.flixnova",
+  "appName": "FlixNova",
+  "webDir": "www",
+  "server": {
+    "url": "https://snookiebaby.xyz:8443",
+    "cleartext": false,
+    "androidScheme": "https",
+    "allowNavigation": [
+      "snookiebaby.xyz",
+      "*.snookiebaby.xyz",
+      "image.tmdb.org",
+      "*.tmdb.org",
+      "www.youtube-nocookie.com",
+      "*.stripe.com",
+      "checkout.stripe.com"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0a0a0a",
+    "buildOptions": {
+      "keystorePath": "",
+      "keystoreAlias": ""
+    }
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#0a0a0a",
+      "showSpinner": false,
+      "androidSplashResourceName": "splash"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0a0a0a"
+    }
+  }
+}

@@ -1,7 +1,7 @@
-# 
+# FlixNova / MovieStream
 
 ## Project Overview
-This is a JavaScript/TypeScript project for MovieStream.
+Streaming site (website + Express API) with Capacitor apps for Android / Fire Stick and iOS Home Screen install.
 
 ## Tech Stack
 - **Language:** TypeScript/JavaScript

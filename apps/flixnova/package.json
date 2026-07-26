@@ -1,0 +1,20 @@
+{
+  "name": "flixnova",
+  "version": "1.0.0",
+  "description": "FlixNova Android / Fire TV / Fire Stick app (Capacitor shell for the live website)",
+  "private": true,
+  "scripts": {
+    "sync": "npx cap sync android",
+    "open": "npx cap open android",
+    "build:debug": "cd android && .\\gradlew.bat assembleDebug",
+    "build:release": "cd android && .\\gradlew.bat assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3"
+  }
+}

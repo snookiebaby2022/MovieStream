@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FlixNova</string>
+    <string name="title_activity_main">FlixNova</string>
+    <string name="package_name">xyz.snookiebaby.flixnova</string>
+    <string name="custom_url_scheme">xyz.snookiebaby.flixnova</string>
+</resources>

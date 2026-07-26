@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get FlixNova App — Android, Fire Stick, iPhone</title>
+<meta name="theme-color" content="#e50914">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FlixNova">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+:root{--bg:#0a0a0a;--card:#141414;--red:#e50914;--gold:#f5c518;--t2:#b3b3b3;--t3:#808080}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,rgba(229,9,20,.22),transparent),var(--bg);color:#fff;min-height:100vh;padding:28px 16px 48px}
+.wrap{max-width:860px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.brand .mark{width:44px;height:44px;border-radius:10px;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px}
+.brand a{color:var(--t2);text-decoration:none;font-size:13px;margin-left:auto}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
+.lead{color:var(--t2);font-size:15px;line-height:1.55;max-width:560px;margin-bottom:28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:linear-gradient(165deg,#1a1214,#121212);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 16px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--red),var(--gold),transparent)}
+.card h2{font-size:18px;margin-bottom:8px}
+.card p{font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:12px;min-height:60px}
+.steps{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.steps li{font-size:13px;color:var(--t2);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px;border:1px solid rgba(255,255,255,.06)}
+.steps b{color:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:10px;background:var(--red);color:#fff;text-decoration:none;font-weight:700;font-size:13px;border:0;cursor:pointer;font-family:inherit}
+.btn.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)}
+.note{margin-top:22px;font-size:12px;color:var(--t3);line-height:1.5}
+.kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">F</div>
+      <strong>FlixNova</strong>
+      <a href="/">← Back to site</a>
+    </div>
+    <div class="kicker">Install</div>
+    <h1>Watch on phone, tablet &amp; TV</h1>
+    <p class="lead">Use the same FlixNova account everywhere. Android &amp; Fire Stick get a native app shell. iPhone/iPad install the site as a Home Screen app (Apple’s supported path without the App Store).</p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Android phone / tablet</h2>
+        <p>Install the FlixNova APK (sideload). It opens the live site in a full-screen app.</p>
+        <ol class="steps">
+          <li><b>1.</b> Download the latest APK from your admin / GitHub Releases (or build with Android Studio).</li>
+          <li><b>2.</b> Allow “Install unknown apps” for your browser/Files.</li>
+          <li><b>3.</b> Open FlixNova → Sign in → Watch.</li>
+        </ol>
+        <a class="btn" href="https://github.com/snookiebaby2022/MovieStream/releases" target="_blank" rel="noopener">Get Android APK</a>
+      </section>
+
+      <section class="card">
+        <h2>Fire Stick / Fire TV</h2>
+        <p>Same Android APK, installed via Downloader or ADB. Optimized for leanback / remote.</p>
+        <ol class="steps">
+          <li><b>1.</b> On Fire Stick: Settings → My Fire TV → Developer Options → <b>Apps from Unknown Sources</b> ON.</li>
+          <li><b>2.</b> Install the <b>Downloader</b> app from Amazon Store.</li>
+          <li><b>3.</b> Enter your APK download URL → Install → Launch FlixNova.</li>
+        </ol>
+        <a class="btn ghost" href="https://developer.amazon.com/docs/fire-tv/accessing-development-tools.html" target="_blank" rel="noopener">Fire TV sideload help</a>
+      </section>
+
+      <section class="card" id="ios">
+        <h2>iPhone / iPad</h2>
+        <p>Apple doesn’t allow easy sideload of streaming wrappers. Install FlixNova as a Home Screen web app — looks and feels like a native app.</p>
+        <ol class="steps">
+          <li><b>1.</b> Open <b>Safari</b> (required) → go to FlixNova.</li>
+          <li><b>2.</b> Tap the <b>Share</b> button.</li>
+          <li><b>3.</b> Tap <b>Add to Home Screen</b> → Add.</li>
+          <li><b>4.</b> Open the FlixNova icon → Sign in &amp; watch fullscreen.</li>
+        </ol>
+        <button class="btn" type="button" onclick="location.href='/'">Open FlixNova in Safari</button>
+      </section>
+    </div>
+
+    <p class="note">Developers: native project lives in <code>apps/flixnova</code> (Capacitor). Build Android/Fire TV with Android Studio; optional iOS target needs a Mac + Xcode + Apple Developer account. The apps load your live site at <b>snookiebaby.xyz:8443</b> so updates ship with the website.</p>
+  </div>
+</body>
+</html>

@@ -8,12 +8,14 @@
 <meta name="theme-color" content="#e50914">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FlixNova">
 <link rel="manifest" href="/manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23e50914' width='100' height='100' rx='20'/><text x='50' y='72' text-anchor='middle' font-size='60' font-family='Arial' fill='white'>F</text></svg>">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23e50914' width='100' height='100' rx='20'/><text x='50' y='72' text-anchor='middle' font-size='60' font-family='Arial' fill='white'>F</text></svg>">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <style>
 :root{--bg:#0a0a0a;--s1:#0f0f0f;--s2:#141414;--s3:#1a1a1a;--s4:#222;--s5:#2e2e2e;--red:#e50914;--red2:#b20710;--gold:#f5c518;--green:#46d369;--text:#fff;--t2:#b3b3b3;--t3:#808080;--t4:#4d4d4d;--r:6px;--r2:8px;--r3:14px}
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -162,7 +164,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 #fgenres a{color:var(--t3);font-size:11px;text-decoration:none}#fgenres a:hover{color:var(--red)}
 .adtip{display:none;position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:880;max-width:min(640px,92vw);padding:10px 14px;border-radius:10px;background:rgba(20,16,6,.94);border:1px solid rgba(245,197,24,.3);color:var(--t2);font-size:12px;line-height:1.5;box-shadow:0 10px 28px rgba(0,0,0,.45)}
 .adtip.on{display:block}.adtip b{color:var(--gold)}.adtip button{margin-left:8px;background:none;border:0;color:var(--t3);cursor:pointer;font-size:12px}
-.auth-btn{padding:7px 12px;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0;font-family:inherit}
+.auth-btn{padding:7px 12px;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center}
 .auth-btn:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
 .auth-btn.primary{background:var(--red);border-color:var(--red);color:#fff}
 .auth-btn.primary:hover{filter:brightness(1.08);background:var(--red)}
@@ -230,6 +232,15 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .preroll-actions .pbtn{margin:0}
 .preroll-actions .pbtn.gold{background:var(--gold);color:#111}
 .preroll-actions .pbtn.ghost{background:rgba(255,255,255,.08)}
+/* TV / Fire Stick / app shell — clearer remote focus */
+body.tv-mode .nb:focus,body.tv-mode .auth-btn:focus,body.tv-mode .bplay:focus,body.tv-mode .binfo:focus,
+body.tv-mode .card:focus,body.tv-mode .sc:focus,body.tv-mode .pbtn:focus,body.tv-mode .epi:focus,
+body.tv-mode a:focus,body.tv-mode button:focus{
+  outline:3px solid var(--gold)!important;outline-offset:3px;transform:scale(1.03);
+}
+body.tv-mode .card{scroll-snap-align:start}
+body.tv-mode .strip{scroll-snap-type:x mandatory}
+body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
 </style>
 
 </head>
@@ -256,6 +267,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     <select class="lang-sel" id="langSel" title="Language" aria-label="Language">
       <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
     </select>
+    <a class="auth-btn" id="getAppBtn" href="/get-app.html" title="Android, Fire Stick, iPhone">Get App</a>
     <button class="auth-btn" id="reqBtn" onclick="FlixExtra.openRequest()" title="Request a title">Request</button>
     <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Ad-Free + Real-Debrid">Ad-Free £1</button>
     <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
@@ -299,6 +311,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     <a href="/" onclick="go('anime',null);return false">Anime</a>
     <a href="/" onclick="go('genres',null);return false">Genres</a>
     <a href="/" onclick="go('list',null);return false">My List</a>
+    <a href="/get-app.html">Get the App</a>
     <a href="/admin">Admin</a>
   </div>
   <p>FlixNova &copy; 2026 &mdash; Stream movies &amp; TV from TMDB catalog via third-party players. We do not host media files.</p>
@@ -415,6 +428,20 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 'use strict';
 var API='/api',IMGB='https://image.tmdb.org/t/p',YTN='https://www.youtube-nocookie.com/embed/';
 var PH='data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="300" height="450" fill="#1a1a1a"/><text x="150" y="230" text-anchor="middle" fill="#3d3d3d" font-family="sans-serif" font-size="12">No Image</text></svg>');
+(function detectAppShell(){
+  var q=new URLSearchParams(location.search);
+  var ua=navigator.userAgent||'';
+  var isApp=q.get('app')==='1'||/FlixNovaApp|wv\)|; wv/i.test(ua)||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  var isTv=/AFT|AFTT|AFTM|AFTN|AFTS|AFTB|Android TV|BRAVIA|MIBOX|GoogleTV|SmartTV|TV Stick|Fire TV/i.test(ua)||q.get('tv')==='1';
+  if(isApp)document.body.classList.add('app-shell');
+  if(isTv)document.body.classList.add('tv-mode');
+  // Make poster cards focusable for Fire Stick D-pad
+  if(isTv){
+    document.addEventListener('DOMContentLoaded',function(){
+      document.querySelectorAll('.card').forEach(function(c){if(!c.hasAttribute('tabindex'))c.setAttribute('tabindex','0');});
+    });
+  }
+})();
 
 // ── ITEM STORE (THE FIX - no JSON in HTML attributes) ──────
 var STORE={};var STOREKEY=0;
@@ -677,7 +704,7 @@ function cardHTML(item,wide){
   var tit=he(item.title||'');
   var listed=inList(item);
   var epLabel=(item.type==='tv'&&item.season)?' · S'+item.season+'E'+(item.episode||1):'';
-  return '<div class="card" onclick="cardClick(\''+k+'\')">'
+  return '<div class="card" tabindex="0" role="button" onclick="cardClick(\''+k+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();cardClick(\''+k+'\');}">'
     +'<div class="ci">'
     +'<img src="'+src+'" loading="lazy" onerror="this.src=\''+PH+'\'" alt="'+tit+'">'
     +'<div class="cpanel"><div class="cplay">&#9654;</div><div class="cpname">'+tit+epLabel+'</div>'
