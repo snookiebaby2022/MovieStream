@@ -37,11 +37,13 @@
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
 body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--s5);border-radius:4px}
-#hdr{position:fixed;top:0;left:0;right:0;z-index:900;height:64px;display:flex;align-items:center;gap:12px;padding:0 3.5%;background:linear-gradient(180deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.55) 70%,transparent);transition:background .35s,box-shadow .35s}
+#hdr{position:fixed;top:0;left:0;right:0;z-index:900;height:64px;display:flex;align-items:center;gap:10px;padding:0 3.5%;background:linear-gradient(180deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.55) 70%,transparent);transition:background .35s,box-shadow .35s}
 #hdr.bg{background:rgba(8,8,8,.97);border-bottom:1px solid rgba(255,255,255,.06);box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .logo{display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;margin-right:4px}
 .logo-i{width:32px;height:32px;background:var(--red);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;box-shadow:0 2px 10px rgba(229,9,20,.35)}
 .logo-t{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;line-height:1}.logo-t b{color:var(--red)}
+.hdr-scroll{flex:1;min-width:0;display:flex;align-items:center;gap:8px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;touch-action:pan-x;overscroll-behavior-x:contain}
+.hdr-scroll::-webkit-scrollbar{display:none}
 .nav{display:flex;align-items:center;gap:2px;flex-shrink:0}.nb{padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--t2);cursor:pointer;background:none;border:none;transition:all .2s;white-space:nowrap}.nb:hover{color:#fff;background:rgba(255,255,255,.07)}.nb.on{color:#fff;background:rgba(255,255,255,.1)}
 .nav-more{position:relative}.nav-drop{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:160px;padding:6px;background:rgba(18,18,18,.98);border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.55);z-index:950}
 .nav-more.open .nav-drop{display:flex;flex-direction:column;gap:2px}.nav-drop .nb{text-align:left;width:100%}
@@ -53,7 +55,7 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
 .opill{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:14px;background:rgba(70,211,105,.1);border:1px solid rgba(70,211,105,.22);font-size:10px;color:var(--green);font-weight:600;white-space:nowrap}
 .odot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-#hero{position:relative;height:92vh;min-height:520px;max-height:860px;display:flex;align-items:flex-end;overflow:hidden;background:#050505}
+#hero{position:relative;height:92vh;min-height:520px;max-height:860px;display:flex;align-items:flex-end;overflow:hidden;background:#050505;touch-action:pan-y}
 .hbg{position:absolute;inset:0;background-size:cover;background-position:center 18%;transition:opacity .7s;z-index:0}
 .hvid{position:absolute;inset:0;overflow:hidden;pointer-events:none;opacity:0;transition:opacity 1s ease;z-index:1}
 .hvid.on{opacity:1}
@@ -70,7 +72,10 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
 .binfo{display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:6px;background:rgba(109,109,110,.55);border:0;color:#fff;font-size:14px;font-weight:600;cursor:pointer;backdrop-filter:blur(6px);transition:all .2s;font-family:inherit}.binfo:hover{background:rgba(109,109,110,.8)}
 .bmute,.bpause{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.35);color:#fff;cursor:pointer;font-size:14px;backdrop-filter:blur(6px)}
 .bmute:hover,.bpause:hover{background:rgba(229,9,20,.55);border-color:var(--red)}
-.hdots{position:absolute;bottom:22px;right:4%;z-index:3;display:flex;gap:5px}.hdot{height:4px;border-radius:2px;background:rgba(255,255,255,.28);cursor:pointer;transition:all .4s}.hdot.on{background:#fff}
+.hdots{position:absolute;bottom:22px;right:4%;z-index:3;display:flex;gap:5px;max-width:55%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}.hdots::-webkit-scrollbar{display:none}
+.hdot{height:4px;border-radius:2px;background:rgba(255,255,255,.28);cursor:pointer;transition:all .4s;flex-shrink:0}.hdot.on{background:#fff}
+.har{position:absolute;top:50%;z-index:4;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.28);background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);-webkit-tap-highlight-color:transparent}
+.har:active{background:rgba(229,9,20,.7)}.har-l{left:10px}.har-r{right:10px}
 #gbar{display:none;gap:6px;padding:8px 4%;overflow-x:auto;scrollbar-width:none;background:linear-gradient(180deg,rgba(10,10,10,.4),transparent)}#gbar::-webkit-scrollbar{display:none}
 .gp{padding:5px 14px;border-radius:14px;font-size:11px;font-weight:600;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .2s}.gp:hover{background:rgba(255,255,255,.12);color:#fff}.gp.on{background:var(--red);border-color:var(--red);color:#fff}
 #rows{padding:0 0 20px}
@@ -157,8 +162,32 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
 .ccn{font-size:9px;font-weight:600;line-height:1.2;color:var(--t2)}.ccc{font-size:8px;color:var(--t3);margin-top:1px}
 .sg{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(95px,1fr))}
 .tb{border-radius:var(--r);overflow:hidden}.tb iframe{width:100%;aspect-ratio:16/9;border:none;display:block}
-@media(max-width:900px){.nav .nb-hide{display:none}.sbar{max-width:220px}}
-@media(max-width:680px){#hdr{padding:0 10px;height:56px;gap:6px}.nav{display:none}.hdr-actions .opill{display:none}.sbar{max-width:none;flex:1}.hc{padding:0 14px 40px}.htt{font-size:42px}.strip .card{width:120px}.ar{display:none}#modal{margin:0;border-radius:0;min-height:100vh}.mb{flex-direction:column}.mp{width:85px}.fgrid{grid-template-columns:repeat(auto-fill,minmax(115px,1fr))}#hero{min-height:420px;height:78vh}.adtip{top:64px}}
+@media(max-width:900px){.nav .nb-hide{display:none}.sbar{max-width:220px;flex:0 0 180px;margin-left:0}}
+@media(max-width:680px){
+  #hdr{padding:0 8px;height:56px;gap:6px}
+  .logo-t{font-size:22px}.logo-i{width:28px;height:28px;font-size:13px}
+  .hdr-scroll{gap:6px;padding-right:4px}
+  .nav{display:flex}
+  .nb{padding:6px 10px;font-size:12px}
+  .hdr-actions .opill,#getAppBtn,#langSel{display:none}
+  .sbar{flex:0 0 132px;max-width:132px;min-width:110px;margin-left:0}
+  .sbar input{padding:8px 10px;font-size:12px}
+  .auth-btn{padding:6px 9px;font-size:10px}
+  .hc{padding:0 14px 48px}.htt{font-size:42px}
+  .strip .card{width:120px}.ar{display:none}
+  #modal{margin:0;border-radius:0;min-height:100vh}.mb{flex-direction:column}.mp{width:85px}
+  .fgrid{grid-template-columns:repeat(auto-fill,minmax(115px,1fr))}
+  #hero{min-height:420px;height:78vh}.adtip{top:64px}
+  .har{display:flex}
+  .hdots{left:4%;right:auto;bottom:16px;max-width:70%}
+}
+body.app-shell #hdr{height:auto;min-height:56px;padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:8px}
+body.app-shell .hdr-scroll{gap:6px}
+body.app-shell .nav{display:flex}
+body.app-shell .hdr-actions .opill,body.app-shell #getAppBtn,body.app-shell #langSel{display:none}
+body.app-shell .sbar{flex:0 0 140px;max-width:140px;min-width:120px;margin-left:0}
+body.app-shell .har{display:flex}
+body.app-shell .hdots{left:4%;right:auto;max-width:70%}
 
 
 .ad-overlay,.popup-overlay,.ad-container,[class*="popunder"],
@@ -265,44 +294,45 @@ body.tv-mode a:focus,body.tv-mode button:focus{
 }
 body.tv-mode .card{scroll-snap-align:start}
 body.tv-mode .strip{scroll-snap-type:x mandatory}
-body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
 </style>
 
 </head>
 <body>
 <header id="hdr">
   <div class="logo" onclick="goHome()"><div class="logo-i">F</div><div class="logo-t">Flix<b>Nova</b></div></div>
-  <nav class="nav">
-    <button class="nb on" id="nb-home" onclick="go('home',this)">Home</button>
-    <button class="nb" id="nb-movies" onclick="go('movies',this)">Movies</button>
-    <button class="nb" id="nb-tv" onclick="go('tv',this)">TV Shows</button>
-    <button class="nb nb-hide" id="nb-new" onclick="go('new',this)">New &amp; Hot</button>
-    <div class="nav-more" id="navMore">
-      <button class="nb" type="button" onclick="toggleMoreNav(event)">More ▾</button>
-      <div class="nav-drop" id="navDrop">
-        <button class="nb" id="nb-new2" onclick="go('new',this);closeMoreNav()">New &amp; Hot</button>
-        <button class="nb" id="nb-anime" onclick="go('anime',this);closeMoreNav()">Anime</button>
-        <button class="nb" id="nb-genres" onclick="go('genres',this);closeMoreNav()">Genres</button>
-        <button class="nb" id="nb-list" onclick="go('list',this);closeMoreNav()">Wishlist</button>
-        <button class="nb" id="nb-adult" onclick="go('adult',this);closeMoreNav()" style="display:none">XXX</button>
-        <button class="nb" id="nb-request" onclick="closeMoreNav();FlixExtra.openRequest()">Request a title</button>
+  <div class="hdr-scroll" id="hdrScroll">
+    <nav class="nav">
+      <button class="nb on" id="nb-home" onclick="go('home',this)">Home</button>
+      <button class="nb" id="nb-movies" onclick="go('movies',this)">Movies</button>
+      <button class="nb" id="nb-tv" onclick="go('tv',this)">TV Shows</button>
+      <button class="nb nb-hide" id="nb-new" onclick="go('new',this)">New &amp; Hot</button>
+      <div class="nav-more" id="navMore">
+        <button class="nb" type="button" onclick="toggleMoreNav(event)">More ▾</button>
+        <div class="nav-drop" id="navDrop">
+          <button class="nb" id="nb-new2" onclick="go('new',this);closeMoreNav()">New &amp; Hot</button>
+          <button class="nb" id="nb-anime" onclick="go('anime',this);closeMoreNav()">Anime</button>
+          <button class="nb" id="nb-genres" onclick="go('genres',this);closeMoreNav()">Genres</button>
+          <button class="nb" id="nb-list" onclick="go('list',this);closeMoreNav()">Wishlist</button>
+          <button class="nb" id="nb-adult" onclick="go('adult',this);closeMoreNav()" style="display:none">XXX</button>
+          <button class="nb" id="nb-request" onclick="closeMoreNav();FlixExtra.openRequest()">Request a title</button>
+        </div>
       </div>
+    </nav>
+    <div class="sbar"><input id="q" type="text" placeholder="Search..." autocomplete="off"><button type="button" onclick="doSearch()" aria-label="Search">&#128269;</button></div>
+    <div class="hdr-actions">
+      <select class="lang-sel" id="langSel" title="Language" aria-label="Language">
+        <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
+      </select>
+      <a class="auth-btn" id="getAppBtn" href="/get-app.html" title="Android, Fire Stick, iPhone">Get App</a>
+      <button class="auth-btn xxx" id="xxxBtn" onclick="toggleAdultMode()" title="Adult / XXX content (off by default)">XXX Off</button>
+      <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Ad-Free + Real-Debrid">Ad-Free £1</button>
+      <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
+      <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
+      <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid" style="display:none">RD</button>
+      <button class="auth-btn primary" id="regBtn" onclick="openAuth('register')">Sign Up</button>
+      <button class="auth-btn" id="authBtn" onclick="openAuth('login')">Log In</button>
+      <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
     </div>
-  </nav>
-  <div class="sbar"><input id="q" type="text" placeholder="Search movies, shows..." autocomplete="off"><button type="button" onclick="doSearch()" aria-label="Search">&#128269;</button></div>
-  <div class="hdr-actions">
-    <select class="lang-sel" id="langSel" title="Language" aria-label="Language">
-      <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
-    </select>
-    <a class="auth-btn" id="getAppBtn" href="/get-app.html" title="Android, Fire Stick, iPhone">Get App</a>
-    <button class="auth-btn xxx" id="xxxBtn" onclick="toggleAdultMode()" title="Adult / XXX content (off by default)">XXX Off</button>
-    <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Ad-Free + Real-Debrid">Ad-Free £1</button>
-    <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
-    <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
-    <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid" style="display:none">RD</button>
-    <button class="auth-btn primary" id="regBtn" onclick="openAuth('register')">Sign Up</button>
-    <button class="auth-btn" id="authBtn" onclick="openAuth('login')">Log In</button>
-    <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
   </div>
 </header>
 <div class="adtip" id="adtip">
@@ -313,6 +343,8 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
   <div class="hbg" id="hbg"></div>
   <div class="hvid" id="hvid"></div>
   <div class="hg"></div>
+  <button type="button" class="har har-l" id="heroPrev" onclick="heroPrev()" aria-label="Previous trailer">‹</button>
+  <button type="button" class="har har-r" id="heroNext" onclick="heroNext()" aria-label="Next trailer">›</button>
   <div class="hc">
     <div class="hbadge" id="htb">NOW IN CINEMAS</div>
     <div class="htt" id="htt">Loading...</div>
@@ -999,7 +1031,7 @@ function initH(items){
   $('hero').style.display='flex';
   var dots='';S.hl.forEach(function(_,i){dots+='<div class="hdot'+(i===0?' on':'')+'" style="'+(i===0?'width:20px':'width:7px')+'" onclick="sH('+i+')"></div>';});
   $('hdd').innerHTML=dots;
-  rH(0);startHeroRotate();
+  rH(0);startHeroRotate();bindHeroSwipe();
 }
 function startHeroRotate(){
   clearInterval(S.ht);
@@ -1066,6 +1098,36 @@ function toggleHeroMute(){
 }
 function heroPlay(){if(S.hl[S.hi])openModal(S.hl[S.hi]);}
 function heroInfo(){heroPlay();}
+function heroPrev(){
+  if(!S.hl||!S.hl.length)return;
+  sH((S.hi-1+S.hl.length)%S.hl.length);
+  startHeroRotate();
+}
+function heroNext(){
+  if(!S.hl||!S.hl.length)return;
+  sH((S.hi+1)%S.hl.length);
+  startHeroRotate();
+}
+function bindHeroSwipe(){
+  var hero=$('hero'); if(!hero||hero._swipeBound)return;
+  hero._swipeBound=true;
+  var x0=0,y0=0,t0=0,tracking=false;
+  hero.addEventListener('touchstart',function(e){
+    if(!e.touches||!e.touches[0])return;
+    // Don't steal swipes from buttons/links
+    if(e.target&&e.target.closest&&e.target.closest('button,a,input,.hbtns,.hdots'))return;
+    tracking=true;
+    x0=e.touches[0].clientX;y0=e.touches[0].clientY;t0=Date.now();
+  },{passive:true});
+  hero.addEventListener('touchend',function(e){
+    if(!tracking)return;tracking=false;
+    var t=e.changedTouches&&e.changedTouches[0]; if(!t)return;
+    var dx=t.clientX-x0,dy=t.clientY-y0,dt=Date.now()-t0;
+    if(Math.abs(dx)<48||Math.abs(dx)<Math.abs(dy)*1.15||dt>800)return;
+    if(dx<0)heroNext(); else heroPrev();
+  },{passive:true});
+  hero.addEventListener('touchcancel',function(){tracking=false;},{passive:true});
+}
 function stopHeroMedia(){
   clearInterval(S.ht);S.ht=null;S.hPaused=false;
   var vid=$('hvid');if(vid){vid.classList.remove('on');vid.innerHTML='';}
