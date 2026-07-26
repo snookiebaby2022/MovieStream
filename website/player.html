@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}
+iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+</style>
+<script>
+(function () {
+  // Block window.open from this same-origin shell (stops some redirect chains)
+  var blocked = function () { return null; };
+  window.open = blocked;
+  try {
+    Object.defineProperty(window, 'open', { configurable: true, writable: true, value: blocked });
+  } catch (e) {}
+
+  var params = new URLSearchParams(location.search);
+  var src = params.get('u') || '';
+  try { src = decodeURIComponent(src); } catch (e) {}
+  if (!/^https?:\/\//i.test(src)) {
+    document.write('<p style="color:#aaa;font:14px sans-serif;padding:20px">Invalid source</p>');
+    return;
+  }
+
+  if (!/[?&](autoplay|autoPlay)=/i.test(src)) {
+    src += (src.indexOf('?') >= 0 ? '&' : '?') + 'autoplay=1&autoPlay=true';
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var f = document.createElement('iframe');
+    f.src = src;
+    f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; accelerometer; gyroscope';
+    f.setAttribute('allowfullscreen', '');
+    f.setAttribute('referrerpolicy', 'no-referrer');
+    // No sandbox — embed hosts refuse sandboxed players ("disable sandbox")
+    document.body.appendChild(f);
+    try { parent.postMessage({ type: 'fn-player-ready' }, '*'); } catch (e) {}
+  });
+})();
+</script>
+</head>
+<body></body>
+</html>

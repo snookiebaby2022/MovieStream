@@ -155,6 +155,8 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     <button class="nb on" id="nb-home"   onclick="go('home',this)">Home</button>
     <button class="nb"    id="nb-movies" onclick="go('movies',this)">Movies</button>
     <button class="nb"    id="nb-tv"     onclick="go('tv',this)">TV Shows</button>
+    <button class="nb"    id="nb-anime"  onclick="go('anime',this)">Anime</button>
+    <button class="nb"    id="nb-genres" onclick="go('genres',this)">Genres</button>
     <button class="nb"    id="nb-new"    onclick="go('new',this)">New &amp; Hot</button>
     <button class="nb"    id="nb-list"   onclick="go('list',this)">My List</button>
   </nav>
@@ -183,6 +185,8 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     <a href="/" onclick="goHome();return false">Home</a>
     <a href="/" onclick="go('movies',null);return false">Movies</a>
     <a href="/" onclick="go('tv',null);return false">TV Shows</a>
+    <a href="/" onclick="go('anime',null);return false">Anime</a>
+    <a href="/" onclick="go('genres',null);return false">Genres</a>
     <a href="/" onclick="go('list',null);return false">My List</a>
     <a href="/admin">Admin</a>
   </div>
@@ -220,18 +224,23 @@ function getItem(k){return STORE[k]||null;}
 function clearStore(){STORE={};STOREKEY=0;}
 
 // ── STATE ──────────────────────────────────────────────────
-var S={section:'home',hl:[],hi:0,ht:null,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',browsePage:1,browseType:'',failTimer:null};
+var S={section:'home',hl:[],hi:0,ht:null,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0};
 
 // ── AD / POPUP BLOCKER ─────────────────────────────────────
 (function(){
-  var _open=window.open;
-  window.open=function(){console.log('[FlixNova] Blocked popup');return null;};
+  var blockOpen=function(){console.log('[FlixNova] Blocked popup');return null;};
+  window.open=blockOpen;
+  try{Object.defineProperty(window,'open',{configurable:true,writable:true,value:blockOpen});}catch(ex){}
   window.addEventListener('click',function(e){
     var a=e.target&&e.target.closest?e.target.closest('a[target="_blank"]'):null;
     if(a&&a.href&&!/(youtube|imdb|tmdb)/i.test(a.href)){e.preventDefault();}
   },true);
-  try{Object.defineProperty(window,'open',{configurable:true,writable:true,value:function(){return null;}});}catch(ex){}
-  setInterval(function(){try{if(window.open!==null&&window.open.toString().indexOf('Blocked')===-1){window.open=function(){return null;};}}catch(ex){}},1500);
+  setInterval(function(){try{window.open=blockOpen;}catch(ex){}},800);
+  // Close stray popups opened as about:blank / same-tab tricks when possible
+  window.addEventListener('message',function(ev){
+    if(!ev.data||typeof ev.data!=='object')return;
+    if(ev.data.type==='fn-player-ready'){S.playerReadyAt=Date.now();}
+  });
 })();
 
 function lsGet(k,fb){try{var v=localStorage.getItem(k);return v?JSON.parse(v):(fb||[]);}catch(e){return fb||[];}}
@@ -388,17 +397,18 @@ function heroInfo(){heroPlay();}
 // ── NAV ────────────────────────────────────────────────────
 function goHome(){go('home',$('nb-home'));}
 function go(section,btn){
-  S.section=section;S.year='';clearInterval(S.ht);
+  S.section=section;S.year='';S.decade='';S.country='';S.animeMode=false;clearInterval(S.ht);
   $('hero').style.display='none';$('gbar').style.display='none';
   var yb=$('ybar');if(yb)yb.remove();
+  var cb=$('cbar');if(cb)cb.remove();
   if(btn){document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');}
   else{
-    var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',new:'nb-new',list:'nb-list'};
+    var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',anime:'nb-anime',genres:'nb-genres',new:'nb-new',list:'nb-list'};
     document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});
     var el=$(map[section]);if(el)el.classList.add('on');
   }
   sockEmit('page-view',{page:section});ld();S.rc=0;
-  var loader=section==='home'?loadHome:section==='movies'?loadMovies:section==='tv'?loadTV:section==='list'?loadList:loadNew;
+  var loader=section==='home'?loadHome:section==='movies'?loadMovies:section==='tv'?loadTV:section==='anime'?loadAnime:section==='genres'?loadGenresPage:section==='list'?loadList:loadNew;
   loader().catch(function(e){setR('<div class="empty">Failed: '+e.message+'</div>');});
 }
 function loadList(){
@@ -413,29 +423,79 @@ function loadList(){
 function renderYearBar(type){
   var old=$('ybar');if(old)old.remove();
   var bar=document.createElement('div');bar.className='ybar';bar.id='ybar';
-  var y=new Date().getFullYear(),h='<div class="yp on" data-y="" onclick="byYear(\'\',\''+type+'\',this)">All Years</div>';
-  for(var i=0;i<12;i++)h+='<div class="yp" data-y="'+(y-i)+'" onclick="byYear(\''+(y-i)+'\',\''+type+'\',this)">'+(y-i)+'</div>';
+  var y=new Date().getFullYear();
+  var h='<div class="yp on" data-y="" data-decade="" onclick="byYear(\'\',\''+type+'\',this)">All Years</div>';
+  for(var i=0;i<16;i++)h+='<div class="yp" data-y="'+(y-i)+'" onclick="byYear(\''+(y-i)+'\',\''+type+'\',this)">'+(y-i)+'</div>';
+  h+='<div class="yp" data-decade="2020" onclick="byDecade(2020,\''+type+'\',this)">2020s</div>';
+  h+='<div class="yp" data-decade="2010" onclick="byDecade(2010,\''+type+'\',this)">2010s</div>';
+  h+='<div class="yp" data-decade="2000" onclick="byDecade(2000,\''+type+'\',this)">2000s</div>';
+  h+='<div class="yp" data-decade="1990" onclick="byDecade(1990,\''+type+'\',this)">1990s</div>';
+  h+='<div class="yp" data-decade="1980" onclick="byDecade(1980,\''+type+'\',this)">1980s</div>';
+  h+='<div class="yp" data-decade="1970" onclick="byDecade(1970,\''+type+'\',this)">1970s</div>';
+  h+='<div class="yp" data-decade="1960" onclick="byDecade(1960,\''+type+'\',this)">1960s</div>';
   bar.innerHTML=h;
   $('gbar').after(bar);
+  renderCountryBar(type);
+}
+function renderCountryBar(type){
+  var old=$('cbar');if(old)old.remove();
+  var bar=document.createElement('div');bar.className='ybar';bar.id='cbar';
+  var countries=[['','All Countries'],['US','USA'],['GB','UK'],['CA','Canada'],['AU','Australia'],['IN','India'],['JP','Japan'],['KR','Korea'],['CN','China'],['FR','France'],['DE','Germany'],['ES','Spain'],['IT','Italy'],['BR','Brazil'],['MX','Mexico'],['TH','Thailand'],['NG','Nigeria'],['TR','Turkey']];
+  bar.innerHTML=countries.map(function(c,i){return'<div class="yp'+(i===0?' on':'')+'" data-c="'+c[0]+'" onclick="byCountry(\''+c[0]+'\',\''+type+'\',this)">'+c[1]+'</div>';}).join('');
+  var yb=$('ybar');if(yb)yb.after(bar);else $('gbar').after(bar);
+}
+function browseQuery(type){
+  var q='/browse/'+type+'?pages=3';
+  if(S.year)q+='&year='+S.year;
+  if(S.decade)q+='&decade='+S.decade;
+  if(S.country)q+='&country='+S.country;
+  if(S.animeMode)q+='&anime=1';
+  return q;
+}
+function renderBrowseGrid(title,type,d){
+  clearStore();
+  var cards=(d.data||[]).map(cardHTML).join('');
+  setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">'+he(title)+'</div><div class="gvcount">'+(d.data||[]).length+'+ titles</div></div><button class="gvback" onclick="go(\''+(S.animeMode?'anime':type)+'\',null)">&#8592; Back</button></div><div class="fgrid" id="browseGrid">'+cards+'</div><button class="loadmore" onclick="loadMoreBrowse()">Load More</button></div>');
 }
 function byYear(year,type,el){
-  S.year=year||'';
-  document.querySelectorAll('#ybar .yp').forEach(function(p){p.classList.toggle('on',(p.dataset.y||'')===(year||''));});
+  S.year=year||'';S.decade='';
+  document.querySelectorAll('#ybar .yp').forEach(function(p){p.classList.toggle('on',(p.dataset.y||'')===(year||'')&&!p.dataset.decade);});
+  if(!year){var first=document.querySelectorAll('#ybar .yp')[0];if(first)first.classList.add('on');}
   clearInterval(S.ht);$('hero').style.display='none';ld(year?'Loading '+year+'...':'Loading...');
   S.browsePage=1;S.browseType=type;
-  var q='/browse/'+type+'?pages=3'+(year?'&year='+year:'');
-  api(q).then(function(d){
-    if(d.success&&d.data&&d.data.length){
-      clearStore();
-      var cards=d.data.map(cardHTML).join('');
-      setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">'+(year||'All')+' · '+(type==='tv'?'TV':'Movies')+'</div><div class="gvcount">'+d.data.length+'+ titles</div></div><button class="gvback" onclick="go(\''+type+'\',null)">&#8592; Back</button></div><div class="fgrid" id="browseGrid">'+cards+'</div><button class="loadmore" onclick="loadMoreBrowse()">Load More</button></div>');
-    }else setR('<div class="empty">No results</div>');
+  api(browseQuery(type)).then(function(d){
+    if(d.success&&d.data&&d.data.length)renderBrowseGrid((year||'All')+' · '+(type==='tv'?'TV':'Movies'),type,d);
+    else setR('<div class="empty">No results</div>');
+  }).catch(function(e){setR('<div class="empty">'+e.message+'</div>');});
+}
+function byDecade(decade,type,el){
+  S.decade=String(decade);S.year='';
+  document.querySelectorAll('#ybar .yp').forEach(function(p){p.classList.toggle('on',p.dataset.decade===String(decade));});
+  clearInterval(S.ht);$('hero').style.display='none';ld('Loading '+decade+'s...');
+  S.browsePage=1;S.browseType=type;
+  api(browseQuery(type)).then(function(d){
+    if(d.success&&d.data&&d.data.length)renderBrowseGrid(decade+'s · '+(type==='tv'?'TV':'Movies'),type,d);
+    else setR('<div class="empty">No results</div>');
+  }).catch(function(e){setR('<div class="empty">'+e.message+'</div>');});
+}
+function byCountry(code,type,el){
+  S.country=code||'';
+  document.querySelectorAll('#cbar .yp').forEach(function(p){p.classList.toggle('on',(p.dataset.c||'')===(code||''));});
+  clearInterval(S.ht);$('hero').style.display='none';ld('Loading...');
+  S.browsePage=1;S.browseType=type;
+  api(browseQuery(type)).then(function(d){
+    if(d.success&&d.data&&d.data.length)renderBrowseGrid((code||'World')+' · '+(type==='tv'?'TV':'Movies'),type,d);
+    else setR('<div class="empty">No results</div>');
   }).catch(function(e){setR('<div class="empty">'+e.message+'</div>');});
 }
 function loadMoreBrowse(){
   if(!S.browseType)return;
   S.browsePage=(S.browsePage||1)+1;
-  var q='/browse/'+S.browseType+'?page='+S.browsePage+(S.year?'&year='+S.year:'');
+  var q='/browse/'+S.browseType+'?page='+S.browsePage;
+  if(S.year)q+='&year='+S.year;
+  if(S.decade)q+='&decade='+S.decade;
+  if(S.country)q+='&country='+S.country;
+  if(S.animeMode)q+='&anime=1';
   api(q).then(function(d){
     var g=$('browseGrid');if(!g||!d.data)return;
     g.insertAdjacentHTML('beforeend',d.data.map(cardHTML).join(''));
@@ -463,8 +523,32 @@ function loadHome(){
 }
 
 function loadMovies(){
-  loadGenres('movie');renderYearBar('movie');
-  var calls=[['/discover/movie','🎬 Popular Movies','/browse/movie?pages=5'],['/discover/movie/top','⭐ Top Rated','/browse/movie?sort=vote_average.desc&pages=5'],['/discover/movie/nowplaying','🎥 Now Playing','/browse/movie?pages=3'],['/discover/movie/upcoming','📅 Coming Soon',''],['/discover/genre/28/movie','💥 Action','/browse/movie?genre=28&pages=4'],['/discover/genre/35/movie','😂 Comedy','/browse/movie?genre=35&pages=4'],['/discover/genre/18/movie','🎭 Drama','/browse/movie?genre=18&pages=4'],['/discover/genre/27/movie','👻 Horror','/browse/movie?genre=27&pages=4'],['/discover/genre/878/movie','🚀 Sci-Fi','/browse/movie?genre=878&pages=4'],['/discover/genre/53/movie','🔫 Thriller','/browse/movie?genre=53&pages=4'],['/discover/genre/10749/movie','❤️ Romance','/browse/movie?genre=10749&pages=4'],['/discover/genre/16/movie','🎨 Animation','/browse/movie?genre=16&pages=4'],['/discover/genre/12/movie','Adventure','/browse/movie?genre=12&pages=4'],['/discover/genre/14/movie','Fantasy','/browse/movie?genre=14&pages=4'],['/discover/genre/80/movie','Crime','/browse/movie?genre=80&pages=3'],['/discover/genre/9648/movie','Mystery','/browse/movie?genre=9648&pages=3'],['/discover/genre/10752/movie','War','/browse/movie?genre=10752&pages=3'],['/discover/genre/37/movie','Western','/browse/movie?genre=37&pages=3']];
+  S.animeMode=false;loadGenres('movie');renderYearBar('movie');
+  var calls=[
+    ['/discover/movie','🎬 Popular / Featured','/browse/movie?pages=5'],
+    ['/discover/movie/top','⭐ Top Rated (IMDb-style)','/browse/movie?sort=vote_average.desc&pages=5'],
+    ['/discover/movie/nowplaying','🎥 Now Playing','/browse/movie?pages=3'],
+    ['/discover/movie/upcoming','📅 Upcoming','/browse/movie?pages=3'],
+    ['/discover/genre/28/movie','💥 Action','/browse/movie?genre=28&pages=4'],
+    ['/discover/genre/12/movie','🧭 Adventure','/browse/movie?genre=12&pages=4'],
+    ['/discover/genre/16/movie','🎨 Animation','/browse/movie?genre=16&pages=4'],
+    ['/discover/genre/35/movie','😂 Comedy','/browse/movie?genre=35&pages=4'],
+    ['/discover/genre/80/movie','🕵️ Crime','/browse/movie?genre=80&pages=3'],
+    ['/discover/genre/99/movie','🎥 Documentary','/browse/movie?genre=99&pages=3'],
+    ['/discover/genre/18/movie','🎭 Drama','/browse/movie?genre=18&pages=4'],
+    ['/discover/genre/10751/movie','👨‍👩‍👧 Family','/browse/movie?genre=10751&pages=3'],
+    ['/discover/genre/14/movie','🧙 Fantasy','/browse/movie?genre=14&pages=4'],
+    ['/discover/genre/36/movie','📜 History','/browse/movie?genre=36&pages=3'],
+    ['/discover/genre/27/movie','👻 Horror','/browse/movie?genre=27&pages=4'],
+    ['/discover/genre/10402/movie','🎵 Music','/browse/movie?genre=10402&pages=3'],
+    ['/discover/genre/9648/movie','🧩 Mystery','/browse/movie?genre=9648&pages=3'],
+    ['/discover/genre/10749/movie','❤️ Romance','/browse/movie?genre=10749&pages=4'],
+    ['/discover/genre/878/movie','🚀 Science Fiction','/browse/movie?genre=878&pages=4'],
+    ['/discover/genre/10770/movie','📺 TV Movie','/browse/movie?genre=10770&pages=3'],
+    ['/discover/genre/53/movie','🔫 Thriller','/browse/movie?genre=53&pages=4'],
+    ['/discover/genre/10752/movie','⚔️ War','/browse/movie?genre=10752&pages=3'],
+    ['/discover/genre/37/movie','🤠 Western','/browse/movie?genre=37&pages=3']
+  ];
   return Promise.all(calls.map(function(c){return api(c[0]);})).then(function(rs){
     var secs=calls.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,24):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
     if(secs[0]&&secs[0].items.length)initH(secs[0].items.filter(function(i){return!!i.backdrop;}));
@@ -473,12 +557,67 @@ function loadMovies(){
 }
 
 function loadTV(){
-  loadGenres('tv');renderYearBar('tv');
-  var calls=[['/discover/tv','📺 Popular TV Shows','/browse/tv?pages=5'],['/discover/tv/top','⭐ Top Rated TV','/browse/tv?sort=vote_average.desc&pages=5'],['/discover/tv/airing','📡 Airing Today','/browse/tv?pages=3'],['/discover/tv/ontheair','📻 On The Air','/browse/tv?pages=3'],['/discover/genre/18/tv','🎭 Drama','/browse/tv?genre=18&pages=4'],['/discover/genre/80/tv','Crime','/browse/tv?genre=80&pages=4'],['/discover/genre/10765/tv','🚀 Sci-Fi & Fantasy','/browse/tv?genre=10765&pages=4'],['/discover/genre/35/tv','😂 Comedy','/browse/tv?genre=35&pages=4'],['/discover/genre/16/tv','🎨 Animation','/browse/tv?genre=16&pages=4'],['/discover/genre/9648/tv','Mystery','/browse/tv?genre=9648&pages=4'],['/discover/genre/10759/tv','Action & Adventure','/browse/tv?genre=10759&pages=4'],['/discover/genre/10751/tv','Family','/browse/tv?genre=10751&pages=3'],['/discover/genre/99/tv','Documentary','/browse/tv?genre=99&pages=3'],['/discover/genre/10768/tv','War & Politics','/browse/tv?genre=10768&pages=3'],['/discover/genre/10762/tv','Kids','/browse/tv?genre=10762&pages=3'],['/discover/genre/10766/tv','Soap','/browse/tv?genre=10766&pages=3']];
+  S.animeMode=false;loadGenres('tv');renderYearBar('tv');
+  var calls=[
+    ['/discover/tv','📺 Popular TV Shows','/browse/tv?pages=5'],
+    ['/discover/tv/top','⭐ Top Rated TV','/browse/tv?sort=vote_average.desc&pages=5'],
+    ['/discover/tv/airing','📡 Airing Today','/browse/tv?pages=3'],
+    ['/discover/tv/ontheair','📻 On The Air','/browse/tv?pages=3'],
+    ['/discover/genre/10759/tv','💥 Action & Adventure','/browse/tv?genre=10759&pages=4'],
+    ['/discover/genre/16/tv','🎨 Animation','/browse/tv?genre=16&pages=4'],
+    ['/discover/genre/35/tv','😂 Comedy','/browse/tv?genre=35&pages=4'],
+    ['/discover/genre/80/tv','🕵️ Crime','/browse/tv?genre=80&pages=4'],
+    ['/discover/genre/99/tv','🎥 Documentary','/browse/tv?genre=99&pages=3'],
+    ['/discover/genre/18/tv','🎭 Drama','/browse/tv?genre=18&pages=4'],
+    ['/discover/genre/10751/tv','👨‍👩‍👧 Family','/browse/tv?genre=10751&pages=3'],
+    ['/discover/genre/10762/tv','🧒 Kids','/browse/tv?genre=10762&pages=3'],
+    ['/discover/genre/9648/tv','🧩 Mystery','/browse/tv?genre=9648&pages=4'],
+    ['/discover/genre/10763/tv','📰 News','/browse/tv?genre=10763&pages=2'],
+    ['/discover/genre/10764/tv','🎤 Reality','/browse/tv?genre=10764&pages=3'],
+    ['/discover/genre/10765/tv','🚀 Sci-Fi & Fantasy','/browse/tv?genre=10765&pages=4'],
+    ['/discover/genre/10766/tv','💗 Soap','/browse/tv?genre=10766&pages=3'],
+    ['/discover/genre/10767/tv','🎙️ Talk','/browse/tv?genre=10767&pages=2'],
+    ['/discover/genre/10768/tv','⚔️ War & Politics','/browse/tv?genre=10768&pages=3'],
+    ['/discover/genre/37/tv','🤠 Western','/browse/tv?genre=37&pages=2']
+  ];
   return Promise.all(calls.map(function(c){return api(c[0]);})).then(function(rs){
     var secs=calls.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,24):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
     if(secs[0]&&secs[0].items.length)initH(secs[0].items.filter(function(i){return!!i.backdrop;}));
     setR(secs.length?rowsH(secs):'<div class="empty">No TV shows</div>');initArr();
+  });
+}
+
+function loadAnime(){
+  S.animeMode=true;S.country='JP';
+  renderYearBar('tv');
+  return Promise.all([
+    api('/browse/tv?anime=1&pages=4'),
+    api('/browse/movie?anime=1&pages=3'),
+    api('/browse/tv?anime=1&sort=vote_average.desc&pages=3'),
+    api('/browse/tv?genre=16&country=JP&pages=3')
+  ]).then(function(rs){
+    var secs=[
+      {title:'🌸 Popular Anime',items:rs[0].data||[],ap:'/browse/tv?anime=1&pages=5'},
+      {title:'🎬 Anime Movies',items:rs[1].data||[],ap:'/browse/movie?anime=1&pages=4'},
+      {title:'⭐ Top Rated Anime',items:rs[2].data||[],ap:'/browse/tv?anime=1&sort=vote_average.desc&pages=4'},
+      {title:'🇯🇵 Japanese Animation',items:rs[3].data||[],ap:'/browse/tv?genre=16&country=JP&pages=4'}
+    ].filter(function(s){return s.items.length>0;});
+    if(secs[0]&&secs[0].items.length)initH(secs[0].items.filter(function(i){return!!i.backdrop;}));
+    setR(secs.length?rowsH(secs):'<div class="empty">No anime found</div>');initArr();
+  });
+}
+
+function loadGenresPage(){
+  S.animeMode=false;
+  return Promise.all([api('/genres/movie'),api('/genres/tv')]).then(function(rs){
+    var mg=rs[0].data||[],tg=rs[1].data||[];
+    var html='<div class="gv"><div class="gvhdr"><div><div class="gvtitle">Browse Genres</div><div class="gvcount">Movies &amp; TV · 123Movies-style categories</div></div></div>';
+    html+='<h3 style="padding:8px 0 10px;font-size:14px;color:var(--t2)">Movie Genres</h3><div class="fgrid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:24px">';
+    mg.forEach(function(g){html+='<button class="rowsa" style="padding:16px;width:100%;font-size:13px" onclick="byG('+g.id+',\'movie\')">'+he(g.name)+'</button>';});
+    html+='</div><h3 style="padding:8px 0 10px;font-size:14px;color:var(--t2)">TV Genres</h3><div class="fgrid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr))">';
+    tg.forEach(function(g){html+='<button class="rowsa" style="padding:16px;width:100%;font-size:13px" onclick="byG('+g.id+',\'tv\')">'+he(g.name)+'</button>';});
+    html+='</div></div>';
+    setR(html);
   });
 }
 
@@ -636,22 +775,35 @@ function tryS(idx){
   else if(s.type==='direct'||url.match(/\.(mp4|mkv|webm)/i))pDir(url,idx);
   else pEmb(url,idx);
 }
-function pEmb(url,idx,unlocked){
-  // Default: sandbox without allow-popups blocks most embed popunder ads
-  var sand=unlocked?'':' sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"';
-  var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button>'
-    +(unlocked?'':'<button type="button" onclick="pEmb(\''+url.replace(/'/g,'\\\'')+'\','+idx+',true)">Unlock if blank</button>')+'</div>';
-  $('pw').innerHTML=tools+'<iframe id="emb" src="'+url+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="origin" loading="eager"'+sand+'></iframe>';
-  var frame=$('emb');
-  var loaded=false;
+function withAutoplay(url){
+  if(!url)return url;
+  if(/[?&](autoplay|autoPlay)=/i.test(url))return url;
+  return url+(url.indexOf('?')>=0?'&':'?')+'autoplay=1&autoPlay=true';
+}
+function pEmb(url,idx){
+  // No sandbox — players show "disable sandbox" and refuse to play when sandboxed.
+  // Popups are handled by: clean servers first, player.html shell, blur→auto Next Server.
+  S.popupHits=0;S.playerReadyAt=Date.now();
+  var playUrl=withAutoplay(url);
+  var wrapped='/player.html?u='+encodeURIComponent(playUrl);
+  var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button><button type="button" onclick="openDirectEmbed()">Direct</button></div>';
+  $('pw').innerHTML=tools+'<iframe id="emb" src="'+wrapped+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
+  S._directUrl=playUrl;
+  var frame=$('emb'),loaded=false;
   if(frame){
-    frame.addEventListener('load',function(){loaded=true;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+(unlocked?'':' · ads blocked'));});
+    frame.addEventListener('load',function(){loaded=true;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');});
     frame.addEventListener('error',function(){mFail(idx);tryS(idx+1);});
   }
   S.failTimer=setTimeout(function(){
-    if(!loaded&&!S.failed[idx]){setSt('sld','Slow server — try Next or Unlock');}
-  },12000);
-  setTimeout(function(){if(!S.failed[idx])setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+(unlocked?'':' · ads blocked'));},5000);
+    if(!loaded&&!S.failed[idx]){setSt('sld','Slow server — tap Next Server');}
+  },14000);
+  setTimeout(function(){if(!S.failed[idx])setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');},4000);
+}
+function openDirectEmbed(){
+  if(!S._directUrl)return;
+  var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button></div>';
+  $('pw').innerHTML=tools+'<iframe id="emb" src="'+S._directUrl+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
+  setSt('sok','▶ Direct embed');
 }
 function pHLS(url,idx){
   $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button></div><video id="hv" controls autoplay playsinline></video>';

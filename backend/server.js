@@ -191,11 +191,11 @@ app.get('/api/discover/genre/:genreId/:type', (req, res) => {
 app.get('/api/browse/:type', async (req, res) => {
   try {
     const { type } = req.params;
-    const { genre, sort, pages, year, page, query } = req.query;
+    const { genre, sort, pages, year, page, country, decade, anime } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const n = Math.min(parseInt(pages) || (page ? 1 : 3), 10);
     const s = sort || 'popularity.desc';
-    const ck = `browse2:${type}:${genre||'all'}:${s}:${year||'any'}:${page||'m'}:${n}:${query||''}`;
+    const ck = `browse3:${type}:${genre||'all'}:${s}:${year||'any'}:${decade||''}:${country||''}:${anime||''}:${page||'m'}:${n}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.data, totalPages: c.tp, page: pageNum });
     const all = [];
@@ -205,11 +205,26 @@ app.get('/api/browse/:type', async (req, res) => {
     for (let p = start; p <= end; p++) {
       const params = { page: p, sort_by: s, include_adult: false };
       if (genre) params.with_genres = genre;
+      if (anime === '1') {
+        // Animation + Japanese / anime keyword blend
+        params.with_genres = type === 'movie' ? '16' : '16';
+        if (type === 'tv') params.with_keywords = '210024'; // anime keyword often used
+        params.with_origin_country = country || 'JP';
+      }
+      if (country && anime !== '1') params.with_origin_country = country;
       if (year) {
         if (type === 'movie') params.primary_release_year = year;
         else params.first_air_date_year = year;
+      } else if (decade) {
+        const d0 = parseInt(decade, 10);
+        if (type === 'movie') {
+          params['primary_release_date.gte'] = `${d0}-01-01`;
+          params['primary_release_date.lte'] = `${d0 + 9}-12-31`;
+        } else {
+          params['first_air_date.gte'] = `${d0}-01-01`;
+          params['first_air_date.lte'] = `${d0 + 9}-12-31`;
+        }
       }
-      if (query) params.with_keywords = undefined;
       const d = await tmdb(`/discover/${type}`, params);
       if (d?.results) all.push(...d.results.map(x => mapItem({ ...x, media_type: type })));
       if (d?.total_pages) totalPages = d.total_pages;
@@ -227,6 +242,20 @@ app.get('/api/years', (req, res) => {
   const years = [];
   for (let i = y; i >= 1950; i--) years.push(i);
   res.json({ success: true, data: years });
+});
+
+app.get('/api/countries', (req, res) => {
+  res.json({
+    success: true,
+    data: [
+      { code: 'US', name: 'USA' }, { code: 'GB', name: 'UK' }, { code: 'CA', name: 'Canada' },
+      { code: 'AU', name: 'Australia' }, { code: 'IN', name: 'India' }, { code: 'JP', name: 'Japan' },
+      { code: 'KR', name: 'South Korea' }, { code: 'CN', name: 'China' }, { code: 'FR', name: 'France' },
+      { code: 'DE', name: 'Germany' }, { code: 'ES', name: 'Spain' }, { code: 'IT', name: 'Italy' },
+      { code: 'BR', name: 'Brazil' }, { code: 'MX', name: 'Mexico' }, { code: 'NG', name: 'Nigeria' },
+      { code: 'TH', name: 'Thailand' }, { code: 'TR', name: 'Turkey' }, { code: 'RU', name: 'Russia' }
+    ]
+  });
 });
 
 app.get('/api/search/:query', async (req, res) => {
@@ -307,8 +336,8 @@ app.get('/api/sources/:tmdbId/:type', async (req, res) => {
   try {
     const { tmdbId, type } = req.params;
     const { season, episode, nocache } = req.query;
-    // v3 cache key — old health-checked source lists are stale
-    const ck = `src3:${tmdbId}:${type}:${season||0}:${episode||0}`;
+    // v4 cache key — expanded scraper list + autoplay URLs
+    const ck = `src4:${tmdbId}:${type}:${season||0}:${episode||0}`;
     if (!nocache) {
       const c = await getC(ck);
       if (c) { console.log(`Cache hit: ${ck}`); return res.json({ success: true, data: c, cached: true }); }
