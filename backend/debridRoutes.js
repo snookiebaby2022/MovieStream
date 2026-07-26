@@ -73,6 +73,89 @@ function isLikelyBrowserPlayable(title, url) {
   return browserScore(title, url) >= 55;
 }
 
+const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?code[_\s-]?35|"error_code"\s*:\s*35|unavailable for legal reasons|file was removed from debrid/i;
+
+async function requireAdFree(req, res) {
+  const userTok = verifyToken(
+    req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  );
+  if (!userTok) {
+    res.status(401).json({ success: false, error: 'Login required', code: 'LOGIN_REQUIRED' });
+    return null;
+  }
+  if (require('mongoose').connection.readyState !== 1) {
+    res.status(503).json({ success: false, error: 'Database unavailable' });
+    return null;
+  }
+  const user = await User.findById(userTok.id).select('adFree');
+  if (!user?.adFree) {
+    res.status(403).json({
+      success: false,
+      error: 'Ad-Free (£1) required for Real-Debrid streams. Free accounts use embed servers.',
+      code: 'ADFREE_REQUIRED'
+    });
+    return null;
+  }
+  return userTok;
+}
+
+/** Probe an RD / resolved stream URL for copyright / infringing blocks */
+async function probeStreamUrl(url) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { url, ok: false, reason: 'invalid' };
+  }
+  try {
+    const r = await axios.get(url, {
+      timeout: 10000,
+      maxRedirects: 5,
+      responseType: 'arraybuffer',
+      maxContentLength: 8192,
+      maxBodyLength: 8192,
+      headers: {
+        'User-Agent': ua(),
+        Range: 'bytes=0-4095',
+        Accept: '*/*'
+      },
+      validateStatus: () => true
+    });
+    const ct = String(r.headers['content-type'] || '');
+    const status = r.status;
+    const buf = Buffer.from(r.data || []);
+    const text = buf.toString('utf8', 0, Math.min(buf.length, 4000));
+
+    if (status === 451 || INFRINGE_RE.test(text)) {
+      return { url, ok: false, reason: 'copyright' };
+    }
+    if (/application\/json|text\/html|text\/plain/i.test(ct) && INFRINGE_RE.test(text)) {
+      return { url, ok: false, reason: 'copyright' };
+    }
+    try {
+      if (/json/i.test(ct) || text.trim().startsWith('{')) {
+        const j = JSON.parse(text);
+        if (j && (j.error_code === 35 || j.error === 'infringing_file' || INFRINGE_RE.test(JSON.stringify(j)))) {
+          return { url, ok: false, reason: 'copyright' };
+        }
+      }
+    } catch {}
+
+    // Working media usually redirects to video/octet-stream (even with Range)
+    if (status >= 200 && status < 400 && /video|audio|mpegurl|octet-stream|mp2t|mp4/i.test(ct)) {
+      return { url, ok: true, reason: 'media' };
+    }
+    if (status >= 200 && status < 400 && !/text\/html/i.test(ct) && buf.length > 0) {
+      return { url, ok: true, reason: 'ok' };
+    }
+    if (/text\/html/i.test(ct) && /real-?debrid|error|removed/i.test(text)) {
+      return { url, ok: false, reason: 'rd_error' };
+    }
+    // Unknown — keep (don't over-prune)
+    return { url, ok: true, reason: 'unknown' };
+  } catch (e) {
+    // Network blip — keep link
+    return { url, ok: true, reason: 'probe_error' };
+  }
+}
+
 router.get('/status', async (req, res) => {
   const siteConfigured = !!siteToken();
   // Never use the site-wide RD token for unauthenticated status (leaks account email)
@@ -113,27 +196,42 @@ router.get('/status', async (req, res) => {
   }
 });
 
+/** Validate RD stream URLs — drops copyright / infringing_file links */
+router.post('/validate', async (req, res) => {
+  try {
+    if (!(await requireAdFree(req, res))) return;
+    const list = Array.isArray(req.body?.urls) ? req.body.urls : (req.body?.url ? [req.body.url] : []);
+    const urls = [...new Set(list.map(u => String(u || '').trim()).filter(Boolean))].slice(0, 20);
+    if (!urls.length) return res.status(400).json({ success: false, error: 'urls required' });
+
+    const results = [];
+    // Small concurrency so we don't hammer RD
+    const queue = urls.slice();
+    const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+      while (queue.length) {
+        const u = queue.shift();
+        results.push(await probeStreamUrl(u));
+      }
+    });
+    await Promise.all(workers);
+
+    const bad = results.filter(r => !r.ok).map(r => r.url);
+    res.json({
+      success: true,
+      data: {
+        results,
+        bad,
+        removed: bad.length
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message || 'Validate failed' });
+  }
+});
+
 router.post('/streams', async (req, res) => {
   try {
-    // Real-Debrid is for Ad-Free (paying) members only
-    const userTok = verifyToken(
-      req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-    );
-    if (!userTok) {
-      return res.status(401).json({ success: false, error: 'Login required', code: 'LOGIN_REQUIRED' });
-    }
-    if (require('mongoose').connection.readyState === 1) {
-      const user = await User.findById(userTok.id).select('adFree');
-      if (!user?.adFree) {
-        return res.status(403).json({
-          success: false,
-          error: 'Ad-Free (£1) required for Real-Debrid streams. Free accounts use embed servers.',
-          code: 'ADFREE_REQUIRED'
-        });
-      }
-    } else {
-      return res.status(503).json({ success: false, error: 'Database unavailable' });
-    }
+    if (!(await requireAdFree(req, res))) return;
 
     // Prefer site-wide RD key for paying users
     const token = siteToken() || tokenFrom(req);
@@ -196,6 +294,8 @@ router.post('/streams', async (req, res) => {
         if (!/^https?:\/\//i.test(playUrl)) return null;
         if (/magnet:/i.test(playUrl)) return null;
         const title = s.title || s.name || `Stream ${i + 1}`;
+        // Skip links torrentio already flagged as removed / infringing
+        if (INFRINGE_RE.test(title) || INFRINGE_RE.test(s.name || '')) return null;
         const quality = parseQuality(title + ' ' + (s.name || ''));
         const isHls = /\.m3u8(\?|$)/i.test(playUrl) || /hls/i.test(playUrl);
         const bScore = browserScore(title, playUrl);

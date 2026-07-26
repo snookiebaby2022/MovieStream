@@ -1863,12 +1863,89 @@ function resolvePlayer(s,url){
   if(isNativeApp()&&/\.mkv(\?|$)/i.test(url))return 'skip';
   return 'html5';
 }
+function renderSrcChips(activeIdx){
+  var on=typeof activeIdx==='number'?activeIdx:(S.si||0);
+  $('schips').innerHTML=S.src.map(function(s,i){
+    var q=s.quality||'Auto';
+    var label=s.debrid?(he(s.quality||'HD')+(s.size?' · '+he(s.size):'')):he(s.source);
+    return'<button class="sc'+(i===on?' on':'')+(S.failed[i]?' dead':'')+'" id="sc'+i+'" onclick="tryS('+i+')" title="'+he(s.title||s.source)+'">'+(s.debrid?'RD ':'')+label+'<span class="qbadge q-'+(q==='1080p'||q==='4K'||q==='720p'?'HD':q)+'">'+he(q)+'</span></button>';
+  }).join('');
+}
+/** Remove RD links blocked for copyright / infringing_file */
+function dropSrcUrls(badUrls, reason){
+  if(!badUrls||!badUrls.length||!S.src||!S.src.length)return 0;
+  var bad={};
+  badUrls.forEach(function(u){if(u)bad[u]=1;});
+  var curUrl=S.src[S.si]&&(S.src[S.si].embedUrl||S.src[S.si].url);
+  var before=S.src.length;
+  S.src=S.src.filter(function(s){
+    var u=s.embedUrl||s.url||'';
+    return !bad[u];
+  });
+  var removed=before-S.src.length;
+  if(!removed)return 0;
+  S.failed={};
+  if(!S.src.length){
+    renderSrcChips(0);
+    if(S.debridMode&&!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return removed;}
+    showPE('All Real-Debrid links were removed (copyright / unavailable). Try Embed or another title.');
+    return removed;
+  }
+  var next=0;
+  if(curUrl){
+    var keep=S.src.findIndex(function(s){return (s.embedUrl||s.url)===curUrl;});
+    next=keep>=0?keep:0;
+  }
+  renderSrcChips(next);
+  setSt('sld','Removed '+removed+' blocked RD link'+(removed>1?'s':'')+(reason?' ('+reason+')':'')+'…');
+  // If current was removed, switch to next remaining
+  if(!curUrl||bad[curUrl])tryS(next);
+  else renderSrcChips(S.si);
+  return removed;
+}
+function pruneInfringingRd(){
+  if(!S.debridMode||!S.src||!S.src.length||!S.token)return;
+  var gen=S.playGen;
+  var urls=S.src.slice(0,16).map(function(s){return s.embedUrl||s.url;}).filter(Boolean);
+  if(!urls.length)return;
+  fetch('/api/debrid/validate',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-user-token':S.token,'Authorization':'Bearer '+S.token},
+    body:JSON.stringify({urls:urls})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(gen!==S.playGen)return;
+    if(!d||!d.success||!d.data||!d.data.bad||!d.data.bad.length)return;
+    dropSrcUrls(d.data.bad,'copyright');
+  }).catch(function(){});
+}
+function checkAndDropRd(url,idx){
+  if(!S.debridMode||!url||!S.token)return Promise.resolve(false);
+  return fetch('/api/debrid/validate',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-user-token':S.token,'Authorization':'Bearer '+S.token},
+    body:JSON.stringify({url:url})
+  }).then(function(r){return r.json();}).then(function(d){
+    var bad=d&&d.data&&d.data.bad;
+    if(bad&&bad.length){
+      dropSrcUrls(bad,'copyright');
+      return true;
+    }
+    return false;
+  }).catch(function(){return false;});
+}
 function handleSrc(data){
   destroyPlayer();
   S.src=(data&&data.sources)?data.sources:[];
   S.debridMode=!!(data&&data.debrid);
   S.playGen=(S.playGen||0)+1;
+  S.failed={};
   if(!S.src.length){showPE('No sources found. External providers may be down.');return;}
+  // Drop any already-labeled infringing titles from torrentio
+  S.src=S.src.filter(function(s){
+    var t=(s.title||'')+' '+(s.source||'');
+    return !/copyright infringement|infringing|unavailable for legal/i.test(t);
+  });
+  if(!S.src.length){showPE('No playable Real-Debrid links (blocked for copyright). Try Embed backups.');return;}
   // On the app, prefer browser-friendly RD streams first
   if(isNativeApp()&&S.debridMode){
     S.src=S.src.slice().sort(function(a,b){
@@ -1881,14 +1958,11 @@ function handleSrc(data){
     moreBtn.textContent=S.debridMode?'Embed backups':'More servers';
     moreBtn.title=S.debridMode?'Load embed backups':'More embed servers';
   }
-  $('schips').innerHTML=S.src.map(function(s,i){
-    var q=s.quality||'Auto';
-    var label=s.debrid?(he(s.quality||'HD')+(s.size?' · '+he(s.size):'')):he(s.source);
-    return'<button class="sc'+(i===0?' on':'')+'" id="sc'+i+'" onclick="tryS('+i+')" title="'+he(s.title||s.source)+'">'+(s.debrid?'RD ':'')+label+'<span class="qbadge q-'+(q==='1080p'||q==='4K'||q==='720p'?'HD':q)+'">'+he(q)+'</span></button>';
-  }).join('');
+  renderSrcChips(0);
   renderPlayerChips();
   $('srcbar').style.display='flex';
   tryS(0);
+  if(S.debridMode)pruneInfringingRd();
   if(S.autoNextTimer)clearTimeout(S.autoNextTimer);
   if(S.autoNext&&S.item&&(S.item.type||'')==='tv'){
     S.autoNextTimer=setTimeout(function(){
@@ -1906,7 +1980,7 @@ function tryS(idx){
     return;
   }
   S.si=idx;
-  document.querySelectorAll('#schips .sc').forEach(function(c,i){c.classList.toggle('on',i===idx);});
+  renderSrcChips(idx);
   var s=S.src[idx],url=s.embedUrl||s.url||'';
   var gen=++S.playGen;
   setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
@@ -2025,7 +2099,11 @@ function pHls(url,idx,gen){
     var failed=false;
     var fail=function(){
       if(failed||(gen&&gen!==S.playGen))return;
-      failed=true;mFail(idx);tryS(idx+1);
+      failed=true;
+      var goNext=function(){if(gen&&gen!==S.playGen)return;mFail(idx);tryS(idx+1);};
+      if(S.debridMode){
+        checkAndDropRd(url,idx).then(function(dropped){if(!dropped)goNext();});
+      }else goNext();
     };
     S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},isNativeApp()?16000:12000);
     var useWorker=!isNativeApp();
@@ -2077,7 +2155,11 @@ function pDir(url,idx,gen){
     var fail=function(){
       if(settled||(gen&&gen!==S.playGen))return;settled=true;
       if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-      mFail(idx);tryS(idx+1);
+      var goNext=function(){if(gen&&gen!==S.playGen)return;mFail(idx);tryS(idx+1);};
+      if(S.debridMode){
+        setSt('sld','Checking if RD link was blocked…');
+        checkAndDropRd(url,idx).then(function(dropped){if(!dropped)goNext();});
+      }else goNext();
     };
     v.oncanplay=ok;
     v.onloadeddata=ok;
