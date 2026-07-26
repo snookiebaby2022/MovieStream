@@ -1,75 +1,16 @@
-# Dependencies
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# Build outputs
 dist/
 build/
-out/
-*.tsbuildinfo
-
-# Environment files
-.env
-.env.local
-.env.*.local
-*.env
-
-# Testing
+.env*
+*.log
 coverage/
 .nyc_output/
-*.test.js
-*.spec.js
-__tests__/
-
-# IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 .DS_Store
-Thumbs.db
-.vscode/
-
-# Logs
-logs/
-*.log
-*.log.*
-
-# Temp files
-tmp/
-temp/
-*.tmp
-.cache/
-
-# OS files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Application specific
-uploads/temp/
-uploads/cache/
-storage/
-*.sqlite
-*.sqlite3
-
-# Secrets
 *.pem
 *.key
 *.crt
-*.p12
-*.pfx
-.env.*.local
-
-# Misc
-*.bak
-*.orig
-*.old
+uploads/temp/
+tmp/
+*.sqlite
