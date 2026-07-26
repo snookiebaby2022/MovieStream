@@ -181,6 +181,16 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .rate-row button.on{background:var(--red);border-color:var(--red);color:#fff}
 .comment{padding:10px 0;border-bottom:1px solid var(--s3)}.comment b{font-size:12px}.comment span{font-size:10px;color:var(--t3);margin-left:8px}.comment p{font-size:12px;color:var(--t2);margin-top:4px;line-height:1.5}
 .comment-form{display:flex;gap:8px;margin-top:10px}.comment-form input{flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--s5);background:var(--s2);color:#fff;font-size:12px}
+.lang-sel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#fff;border-radius:16px;padding:6px 8px;font-size:11px;font-family:inherit}
+#profOv,#reqOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px}
+#profOv.on,#reqOv.on{display:flex}
+.prof-list{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:14px 0}
+.prof-card{width:110px;padding:14px 10px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#fff;cursor:pointer;font-family:inherit}
+.prof-card.on{border-color:var(--red);background:rgba(229,9,20,.12)}
+.prof-card.add{border-style:dashed;color:var(--t2)}
+.prof-av{font-size:28px;margin-bottom:8px}
+.cw-prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.15)}
+.cw-prog>i{display:block;height:100%;background:var(--red)}
 </style>
 
 </head>
@@ -204,6 +214,11 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
   </nav>
   <div class="sbar"><input id="q" type="text" placeholder="Search movies, shows..." autocomplete="off"><button type="button" onclick="doSearch()" aria-label="Search">&#128269;</button></div>
   <div class="hdr-actions">
+    <select class="lang-sel" id="langSel" title="Language" aria-label="Language">
+      <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
+    </select>
+    <button class="auth-btn" id="reqBtn" onclick="FlixExtra.openRequest()" title="Request a title">Request</button>
+    <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
     <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid">RD</button>
     <button class="auth-btn" id="authBtn" onclick="openAuth()">Sign In</button>
     <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
@@ -280,7 +295,32 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
     <input id="authEmail" placeholder="Email (optional)" style="display:none" autocomplete="email">
     <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
     <button class="pbtn" id="authSubmit" onclick="submitAuth()">Sign In</button>
-    <div class="auth-switch" id="authSwitch">No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="closeAuth()">Close</a></div>
+    <div class="auth-switch" id="authSwitch">No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="FlixExtra.forgotPassword()">Forgot password?</a> · <a onclick="closeAuth()">Close</a></div>
+  </div>
+</div>
+<div id="profOv" onclick="if(event.target===this)FlixExtra.closeProfiles()">
+  <div class="auth-box" style="max-width:520px">
+    <h2>Who's watching?</h2>
+    <p>Kids profiles hide mature browse results. Progress is saved per profile.</p>
+    <div class="prof-list" id="profList"></div>
+    <div class="auth-switch"><a onclick="FlixExtra.closeProfiles()">Close</a></div>
+  </div>
+</div>
+<div id="reqOv" onclick="if(event.target===this)FlixExtra.closeRequest()">
+  <div class="auth-box">
+    <h2>Request a title</h2>
+    <p>Ask for a movie or show to be checked / prioritized.</p>
+    <div id="reqErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+    <div id="reqOk" style="display:none;color:var(--green);font-size:12px;margin-bottom:8px"></div>
+    <input id="reqTitle" placeholder="Title name">
+    <select id="reqType" class="form-input" style="width:100%;margin-bottom:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--s5);background:var(--s2);color:#fff">
+      <option value="either">Movie or TV</option>
+      <option value="movie">Movie</option>
+      <option value="tv">TV Show</option>
+    </select>
+    <input id="reqNote" placeholder="Optional note">
+    <button class="pbtn" onclick="FlixExtra.sendRequest()">Send request</button>
+    <div class="auth-switch"><a onclick="FlixExtra.closeRequest()">Close</a></div>
   </div>
 </div>
 <div id="rdOv">
@@ -296,6 +336,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
   </div>
 </div>
 <script src="/socket.io/socket.io.js"></script>
+<script src="/flix-extra.js"></script>
 <script>
 'use strict';
 var API='/api',IMGB='https://image.tmdb.org/t/p',YTN='https://www.youtube-nocookie.com/embed/';
@@ -407,7 +448,7 @@ function uapi(path,opts){
 }
 function refreshAuthBtn(){
   var b=$('authBtn');if(!b)return;
-  if(S.user){b.textContent=S.user.username+' ▾';b.onclick=function(){if(confirm('Sign out?')){S.token='';S.user=null;localStorage.removeItem('fn_token');refreshAuthBtn();}};}
+  if(S.user){b.textContent=S.user.username+' ▾';b.onclick=function(){if(confirm('Sign out?')){S.token='';S.user=null;localStorage.removeItem('fn_token');if(window.FlixExtra){FlixExtra.F.profile=null;FlixExtra.F.profiles=[];}refreshAuthBtn();var pb=$('profBtn');if(pb)pb.style.display='none';}};}
   else{b.textContent='Sign In';b.onclick=openAuth;}
 }
 function openAuth(){S.authMode='login';$('authTitle').textContent='Sign In';$('authSub').textContent='Sync My List & history across devices';$('authEmail').style.display='none';$('authSubmit').textContent='Sign In';$('authErr').style.display='none';$('authOv').classList.add('on');}
@@ -418,7 +459,7 @@ function toggleAuthMode(){
   $('authTitle').textContent=reg?'Create Account':'Sign In';
   $('authEmail').style.display=reg?'block':'none';
   $('authSubmit').textContent=reg?'Register':'Sign In';
-  $('authSwitch').innerHTML=reg?'Have an account? <a onclick="toggleAuthMode()">Sign In</a> · <a onclick="closeAuth()">Close</a>':'No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="closeAuth()">Close</a>';
+  $('authSwitch').innerHTML=reg?'Have an account? <a onclick="toggleAuthMode()">Sign In</a> · <a onclick="closeAuth()">Close</a>':'No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="FlixExtra.forgotPassword()">Forgot password?</a> · <a onclick="closeAuth()">Close</a>';
 }
 function submitAuth(){
   var u=$('authUser').value.trim(),p=$('authPass').value,e=$('authEmail').value.trim();
@@ -429,6 +470,7 @@ function submitAuth(){
     if(!d.success){err.textContent=d.error||'Failed';err.style.display='block';return;}
     S.token=d.token;S.user={username:d.username};localStorage.setItem('fn_token',d.token);
     closeAuth();refreshAuthBtn();syncWatchlistUp();
+    if(window.FlixExtra)FlixExtra.loadProfiles();
   }).catch(function(ex){err.textContent=ex.message;err.style.display='block';});
 }
 function syncWatchlistUp(){
@@ -513,6 +555,7 @@ function cardHTML(item,wide){
     +'<div class="cbadges"><span class="bt">'+(t==='tv'?'TV':'Film')+'</span>'+(isNew?'<span class="bn">NEW</span>':'')+'</div>'
     +(rat?'<span class="brat">&#9733;'+rat+'</span>':'')
     +'<button class="heart'+(listed?' on':'')+'" onclick="event.stopPropagation();toggleList(getItem(\''+k+'\'),this)">'+(listed?'♥':'♡')+'</button>'
+    +(item.progressPct?'<div class="cw-prog"><i style="width:'+Math.min(100,item.progressPct)+'%"></i></div>':'')
     +'</div>'
     +'<div class="cx"><div class="cxn">'+tit+'</div><div class="cxy">'+y+epLabel+'</div></div>'
     +'</div>';
@@ -521,7 +564,7 @@ function cardHTML(item,wide){
 // ── ROWS ───────────────────────────────────────────────────
 function makeRow(title,items,ap){
   var id='r'+(S.rc++);
-  var wide=title.indexOf('Continue')===0;
+  var wide=/continue|seguir|reprendre|weiter/i.test(title||'');
   S.rd[id]={title:title,items:items,ap:ap||''};
   var cards='';for(var i=0;i<items.length;i++)cards+=cardHTML(items[i],wide);
   return '<div class="row'+(wide?' cw-row':'')+'">'
@@ -758,6 +801,7 @@ function loadMoreBrowse(){
 }
 
 function loadHome(){
+  var contP=(window.FlixExtra&&S.token)?FlixExtra.loadContinueFromServer():Promise.resolve(lsGet('fn_continue',[]));
   return Promise.all([
     api('/hero'),
     api('/trending/day'),
@@ -768,7 +812,8 @@ function loadHome(){
     api('/discover/movie/top'),
     api('/discover/tv/top'),
     api('/discover/tv/airing'),
-    api('/discover/movie/upcoming')
+    api('/discover/movie/upcoming'),
+    contP
   ]).then(function(rs){
     var g=function(r){try{return r.data&&r.data.length?r.data:[];}catch(e){return[];}};
     var hero=g(rs[0]);
@@ -776,10 +821,10 @@ function loadHome(){
     if(hero.length)initH(hero);
     else if(day.length||week.length)initH((day.length?day:week).slice(0,8));
     else $('hero').style.display='none';
-    var cont=lsGet('fn_continue',[]);
+    var cont=Array.isArray(rs[10])&&rs[10].length?rs[10]:lsGet('fn_continue',[]);
     var secs=[
-      {title:'Continue Watching',items:cont.slice(0,12),ap:''},
-      {title:'Trending Today',items:day.slice(0,24),ap:'/trending/day'},
+      {title:(window.FlixExtra?FlixExtra.t('continueWatching'):'Continue Watching'),items:cont.slice(0,12),ap:'',cw:true},
+      {title:(window.FlixExtra?FlixExtra.t('trendingToday'):'Trending Today'),items:day.slice(0,24),ap:'/trending/day'},
       {title:'Trending This Week',items:week.slice(0,24),ap:'/trending/browse'},
       {title:'Now in Cinemas',items:now.slice(0,24),ap:'/browse/movie?pages=3'},
       {title:'Popular Movies',items:g(rs[4]).slice(0,24),ap:'/browse/movie?pages=5'},
@@ -1224,6 +1269,7 @@ function pEmb(url,idx){
   // No sandbox — players show "disable sandbox" and refuse to play when sandboxed.
   // Popups are handled by: clean servers first, player.html shell, blur→auto Next Server.
   S.popupHits=0;S.playerReadyAt=Date.now();
+  if(window.FlixExtra)FlixExtra.trackPlay('embed',true);
   var playUrl=withAutoplay(url);
   var wrapped='/player.html?u='+encodeURIComponent(playUrl);
   var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button><button type="button" onclick="openDirectEmbed()">Direct</button></div>';
@@ -1247,24 +1293,26 @@ function openDirectEmbed(){
 }
 function pHLS(url,idx){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline style="width:100%;height:100%;background:#000"></video>';
+  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline crossorigin="anonymous" style="width:100%;height:100%;background:#000"></video>';
   var v=document.getElementById('hv');
   if(window.Hls&&Hls.isSupported()){
     var h=new Hls({enableWorker:true,xhrSetup:function(xhr){xhr.withCredentials=false;}});
     h.loadSource(url);h.attachMedia(v);
-    h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));});
+    h.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);});
     h.on(Hls.Events.ERROR,function(_,d){if(d.fatal){mFail(idx);tryS(idx+1);}});
   }else if(v.canPlayType('application/vnd.apple.mpegurl')){
     v.src=url;v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
+    if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
   }else{mFail(idx);tryS(idx+1);}
 }
 function pDir(url,idx){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
+  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline crossorigin="anonymous" style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
   var v=$('dv');
   v.oncanplay=function(){setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':''));};
   v.onerror=function(){mFail(idx);tryS(idx+1);};
   v.play().catch(function(){});
+  if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
 }
 function mFail(idx){S.failed[idx]=1;var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');}
 function showPE(msg){setSt('sfl','Failed');$('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p>'+msg+'</p><button class="pbtn" onclick="retryAll()">Try Again</button><button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button></div>';}
@@ -1301,7 +1349,7 @@ function routeFromLocation(){
   openModal(item);
   return true;
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeMoreNav();}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeMoreNav();if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();}}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
 document.addEventListener('click',function(e){var m=$('navMore');if(m&&!m.contains(e.target))closeMoreNav();});
 $('ov').addEventListener('click',function(e){if(e.target===e.currentTarget)closeModal();});
 $('authOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeAuth();});
@@ -1317,10 +1365,11 @@ api('/genres/movie').then(function(d){
   $('fgenres').innerHTML=d.data.slice(0,18).map(function(g){return'<a href="#" onclick="byG('+g.id+',\'movie\');return false">'+he(g.name)+'</a>';}).join('');
 }).catch(function(){});
 if(S.token){
-  uapi('/me').then(function(d){if(d.success){S.user={username:d.data.username};refreshAuthBtn();}else{S.token='';localStorage.removeItem('fn_token');}}).catch(function(){});
+  uapi('/me').then(function(d){if(d.success){S.user={username:d.data.username};refreshAuthBtn();if(window.FlixExtra)FlixExtra.loadProfiles();}else{S.token='';localStorage.removeItem('fn_token');}}).catch(function(){});
 }
 refreshAuthBtn();
 checkSiteRd();
+if(window.FlixExtra)FlixExtra.init();
 if(!routeFromLocation())go('home',$('nb-home'));
 </script>
 </body>

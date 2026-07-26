@@ -15,6 +15,8 @@ const { Server }      = require('socket.io');
 const ScraperManager  = require('./scrapers/ScraperManager');
 const { router: authRouter } = require('./authRoutes');
 const debridRouter = require('./debridRoutes');
+const { router: featureRouter } = require('./featureRoutes');
+const { TitleRequest, PlayEvent } = require('./models');
 
 dotenv.config();
 
@@ -250,11 +252,11 @@ app.get('/api/discover/genre/:genreId/:type', (req, res) => {
 app.get('/api/browse/:type', async (req, res) => {
   try {
     const { type } = req.params;
-    const { genre, sort, pages, year, page, country, decade, anime } = req.query;
+    const { genre, sort, pages, year, page, country, decade, anime, kids } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const n = Math.min(parseInt(pages) || (page ? 1 : 3), 10);
     const s = sort || 'popularity.desc';
-    const ck = `browse3:${type}:${genre||'all'}:${s}:${year||'any'}:${decade||''}:${country||''}:${anime||''}:${page||'m'}:${n}`;
+    const ck = `browse4:${type}:${genre||'all'}:${s}:${year||'any'}:${decade||''}:${country||''}:${anime||''}:${kids||''}:${page||'m'}:${n}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.data, totalPages: c.tp, page: pageNum });
     const all = [];
@@ -263,6 +265,13 @@ app.get('/api/browse/:type', async (req, res) => {
     const end = page ? pageNum : n;
     for (let p = start; p <= end; p++) {
       const params = { page: p, sort_by: s, include_adult: false };
+      if (kids === '1' || kids === 'true') {
+        params.certification_country = 'US';
+        if (type === 'movie') params['certification.lte'] = 'PG-13';
+        else {
+          params.with_genres = genre || '10751|16'; // Family / Animation bias for kids TV
+        }
+      }
       if (genre) params.with_genres = genre;
       if (anime === '1') {
         // Animation + Japanese / anime keyword blend
@@ -440,6 +449,9 @@ app.use('/api/auth', authRouter);
 
 // Real-Debrid (Torrentio) — token sent per-request via x-rd-token
 app.use('/api/debrid', debridRouter);
+
+// Profiles, progress, requests, subtitles, analytics ingest
+app.use('/api/features', featureRouter);
 
 // SEO
 app.get('/sitemap.xml', async (req, res) => {
@@ -746,6 +758,71 @@ app.post('/api/admin/test/sources', adminAuth, async (req, res) => {
   res.json({ success: true, data: result, elapsed: `${Date.now()-t}ms` });
 });
 
+app.get('/api/admin/requests', adminAuth, async (req, res) => {
+  try {
+    const status = req.query.status || 'open';
+    const q = status === 'all' ? {} : { status };
+    const list = await TitleRequest.find(q).sort({ createdAt: -1 }).limit(100).lean();
+    res.json({ success: true, data: list });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.patch('/api/admin/requests/:id', adminAuth, async (req, res) => {
+  try {
+    const { status, adminNote } = req.body || {};
+    const doc = await TitleRequest.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, error: 'Not found' });
+    if (status && ['open', 'done', 'rejected'].includes(status)) doc.status = status;
+    if (adminNote !== undefined) doc.adminNote = String(adminNote).slice(0, 500);
+    doc.updatedAt = new Date();
+    await doc.save();
+    res.json({ success: true, data: doc });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.get('/api/admin/analytics', adminAuth, async (req, res) => {
+  try {
+    const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 7));
+    const since = new Date(Date.now() - days * 86400000);
+    const match = { at: { $gte: since } };
+    const [total, bySource, topTitles, recent] = await Promise.all([
+      PlayEvent.countDocuments(match),
+      PlayEvent.aggregate([
+        { $match: match },
+        { $group: { _id: '$source', count: { $sum: 1 }, ok: { $sum: { $cond: ['$success', 1, 0] } } } }
+      ]),
+      PlayEvent.aggregate([
+        { $match: match },
+        { $group: { _id: { tmdbId: '$tmdbId', mediaType: '$mediaType', title: '$title' }, plays: { $sum: 1 }, rd: { $sum: { $cond: [{ $eq: ['$source', 'rd'] }, 1, 0] } } } },
+        { $sort: { plays: -1 } },
+        { $limit: 25 }
+      ]),
+      PlayEvent.find(match).sort({ at: -1 }).limit(30).lean()
+    ]);
+    const rd = bySource.find(x => x._id === 'rd') || { count: 0, ok: 0 };
+    const embed = bySource.find(x => x._id === 'embed') || { count: 0, ok: 0 };
+    const rdHitRate = total ? Math.round((rd.count / total) * 1000) / 10 : 0;
+    res.json({
+      success: true,
+      data: {
+        days, totalPlays: total, rdHitRate,
+        bySource: { rd: rd.count, embed: embed.count, other: Math.max(0, total - rd.count - embed.count) },
+        topTitles: topTitles.map(t => ({
+          tmdbId: t._id.tmdbId, type: t._id.mediaType, title: t._id.title || ('#' + t._id.tmdbId),
+          plays: t.plays, rd: t.rd
+        })),
+        recent
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ─── 404 for API ─────────────────────────────────────────
 app.use('/api', (req, res) => res.status(404).json({ success: false, error: 'Not found' }));
 
@@ -757,6 +834,9 @@ app.use(express.static(WEB, { index: 'index.html', maxAge: '1h' }));
 
 // Shareable watch URLs → SPA (nginx should also try_files to index.html)
 app.get('/watch/:type/:id/:season?/:episode?', (req, res) => {
+  res.sendFile(path.join(WEB, 'index.html'));
+});
+app.get('/reset', (req, res) => {
   res.sendFile(path.join(WEB, 'index.html'));
 });
 app.get('*', (req, res, next) => {

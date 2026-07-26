@@ -1,5 +1,5 @@
-const CACHE = 'flixnova-v4';
-const ASSETS = ['/', '/index.html', '/manifest.json', '/player.html'];
+const CACHE = 'flixnova-v5';
+const ASSETS = ['/', '/index.html', '/manifest.json', '/player.html', '/flix-extra.js'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

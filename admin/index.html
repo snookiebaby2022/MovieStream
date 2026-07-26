@@ -756,6 +756,8 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
 
       <div class="nav-sec">Content</div>
       <div class="nav-item" data-nav="debrid" onclick="showPage('debrid',this)"><span class="nav-icon">▶️</span><span class="nav-text">Real-Debrid</span></div>
+      <div class="nav-item" data-nav="requests" onclick="showPage('requests',this)"><span class="nav-icon">📨</span><span class="nav-text">Requests</span></div>
+      <div class="nav-item" data-nav="analytics" onclick="showPage('analytics',this)"><span class="nav-icon">📈</span><span class="nav-text">Analytics</span></div>
       <div class="nav-item" data-nav="scrapers" onclick="showPage('scrapers',this)"><span class="nav-icon">🔍</span><span class="nav-text">Scrapers</span></div>
       <div class="nav-item" data-nav="tester" onclick="showPage('tester',this)"><span class="nav-icon">🧪</span><span class="nav-text">API Tester</span></div>
 
@@ -901,6 +903,56 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
             <table class="tbl">
               <thead><tr><th>User</th><th>IP</th><th>Device</th><th>Page</th><th>Watching</th><th>Duration</th></tr></thead>
               <tbody id="onlineTable"><tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-requests">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">📨 Title Requests</div>
+              <div class="panel-sub">User asks for movies / shows</div>
+            </div>
+            <div class="panel-actions">
+              <select class="form-input" id="reqFilter" style="width:auto" onchange="loadRequests()">
+                <option value="open">Open</option>
+                <option value="done">Done</option>
+                <option value="rejected">Rejected</option>
+                <option value="all">All</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="loadRequests()">⟳ Refresh</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <table class="tbl">
+              <thead><tr><th>When</th><th>User</th><th>Title</th><th>Type</th><th>Note</th><th>Status</th><th></th></tr></thead>
+              <tbody id="reqTable"><tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-analytics">
+        <div class="stat-grid" style="margin-bottom:16px">
+          <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">▶️</div><div class="stat-label">Plays (7d)</div><div class="stat-value" id="an-total">0</div><div class="stat-sub">tracked plays</div></div>
+          <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">📡</div><div class="stat-label">RD Hit Rate</div><div class="stat-value" id="an-rd">0%</div><div class="stat-sub" id="an-rd-sub">of plays via Real-Debrid</div></div>
+          <div class="stat-card" style="--ac:var(--yellow)"><div class="stat-icon">🧩</div><div class="stat-label">Embed Plays</div><div class="stat-value" id="an-emb">0</div><div class="stat-sub">iframe fallback</div></div>
+          <div class="stat-card" style="--ac:var(--purple)"><div class="stat-icon">🎬</div><div class="stat-label">Top Title</div><div class="stat-value" id="an-top" style="font-size:15px">—</div><div class="stat-sub" id="an-top-sub">most played</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">📈 Top Titles</div>
+              <div class="panel-sub">Last 7 days</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadAnalytics()">⟳ Refresh</button>
+          </div>
+          <div class="panel-body">
+            <table class="tbl">
+              <thead><tr><th>Title</th><th>Type</th><th>Plays</th><th>RD</th></tr></thead>
+              <tbody id="anTable"><tr><td colspan="4" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -1305,6 +1357,8 @@ function showPage(id,navEl){
     dashboard:'Dashboard',
     online:'Live Users',
     debrid:'Real-Debrid',
+    requests:'Title Requests',
+    analytics:'Analytics',
     scrapers:'Scraper Management',
     tester:'API Tester',
     cache:'Cache Management',
@@ -1318,6 +1372,8 @@ function showPage(id,navEl){
     dashboard:'System overview and live operational controls',
     online:'Track current viewers and active sessions',
     debrid:'Site-wide Real-Debrid token and stream tests',
+    requests:'Review and resolve user title requests',
+    analytics:'Play counts, RD hit rate, top titles',
     scrapers:'Monitor scraper coverage and source health',
     tester:'Probe search and source endpoints',
     cache:'Inspect and prune cached records',
@@ -1331,6 +1387,8 @@ function showPage(id,navEl){
   document.getElementById('pageSubtitle').textContent=subtitles[id]||'';
   if(id==='online')loadOnline();
   if(id==='debrid')loadDebrid();
+  if(id==='requests')loadRequests();
+  if(id==='analytics')loadAnalytics();
   if(id==='scrapers')loadScrapers();
   if(id==='cache')loadCacheStats();
   if(id==='process')loadProcStatus();
@@ -1344,6 +1402,8 @@ function refreshPage(){
   if(curPage==='logs')loadLogs(curLogType);
   if(curPage==='online')loadOnline();
   if(curPage==='debrid')loadDebrid();
+  if(curPage==='requests')loadRequests();
+  if(curPage==='analytics')loadAnalytics();
   if(curPage==='cache')loadCacheStats();
   if(curPage==='process')loadProcStatus();
   if(curPage==='config')loadConfig();
@@ -1559,6 +1619,52 @@ async function nginxAction(action){
     box.textContent=d?.error||'Failed';
     toast(`Nginx ${action} failed`,'error');
   }
+}
+
+async function loadRequests(){
+  const status=document.getElementById('reqFilter')?.value||'open';
+  const d=await af('/requests?status='+encodeURIComponent(status));
+  const tbody=document.getElementById('reqTable');
+  if(!d?.success){tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">Failed to load</td></tr>';return;}
+  if(!d.data.length){tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">No requests</td></tr>';return;}
+  tbody.innerHTML=d.data.map(r=>`
+    <tr>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${esc(new Date(r.createdAt).toLocaleString())}</td>
+      <td>${esc(r.username||'guest')}</td>
+      <td><b>${esc(r.title)}</b></td>
+      <td>${esc(r.mediaType)}</td>
+      <td style="font-size:12px;color:var(--muted)">${esc(r.note||'')}</td>
+      <td><span class="badge badge-blue">${esc(r.status)}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-green btn-sm" onclick="setRequest('${r._id}','done')">Done</button>
+        <button class="btn btn-secondary btn-sm" onclick="setRequest('${r._id}','rejected')">Reject</button>
+      </td>
+    </tr>`).join('');
+}
+async function setRequest(id,status){
+  const d=await af('/requests/'+id,{method:'PATCH',body:{status}});
+  if(d?.success){toast('Updated','success');loadRequests();}else toast(d?.error||'Failed','error');
+}
+async function loadAnalytics(){
+  const d=await af('/analytics?days=7');
+  if(!d?.success)return;
+  const a=d.data;
+  document.getElementById('an-total').textContent=a.totalPlays||0;
+  document.getElementById('an-rd').textContent=(a.rdHitRate||0)+'%';
+  document.getElementById('an-rd-sub').textContent=`RD ${a.bySource?.rd||0} · Embed ${a.bySource?.embed||0}`;
+  document.getElementById('an-emb').textContent=a.bySource?.embed||0;
+  const top=a.topTitles?.[0];
+  document.getElementById('an-top').textContent=top?top.title:'—';
+  document.getElementById('an-top-sub').textContent=top?(top.plays+' plays'):'most played';
+  const tbody=document.getElementById('anTable');
+  if(!a.topTitles?.length){tbody.innerHTML='<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:20px">No plays tracked yet</td></tr>';return;}
+  tbody.innerHTML=a.topTitles.map(t=>`
+    <tr>
+      <td>${esc(t.title)}</td>
+      <td>${esc(t.type)}</td>
+      <td>${t.plays}</td>
+      <td>${t.rd}</td>
+    </tr>`).join('');
 }
 
 async function loadDebrid(){

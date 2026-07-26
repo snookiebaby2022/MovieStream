@@ -258,4 +258,83 @@ router.post('/ratings/:type/:tmdbId', authRequired, async (req, res) => {
   }
 });
 
+/** Password reset — email if SMTP_* set, otherwise returns reset link in response for admin/dev */
+router.post('/forgot', async (req, res) => {
+  try {
+    if (!dbReady(res)) return;
+    const ident = String((req.body || {}).username || (req.body || {}).email || '').trim().toLowerCase();
+    if (!ident) return res.status(400).json({ success: false, error: 'Username or email required' });
+    const user = await User.findOne({
+      $or: [{ username: ident }, { email: ident }]
+    });
+    // Always generic success to avoid account enumeration
+    if (!user) {
+      return res.json({ success: true, message: 'If an account exists, a reset link was created.' });
+    }
+    const token = crypto.randomBytes(24).toString('hex');
+    user.resetToken = crypto.createHash('sha256').update(token).digest('hex');
+    user.resetExpires = new Date(Date.now() + 3600 * 1000);
+    await user.save();
+    const site = (process.env.SITE_URL || '').replace(/\/$/, '') || '';
+    const resetPath = `/reset?token=${token}`;
+    const resetUrl = site ? `${site}${resetPath}` : resetPath;
+    let emailed = false;
+    if (process.env.SMTP_HOST && user.email) {
+      try {
+        const nodemailer = require('nodemailer');
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT || '587', 10),
+          secure: process.env.SMTP_SECURE === '1',
+          auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' } : undefined
+        });
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@flixnova.local',
+          to: user.email,
+          subject: 'FlixNova password reset',
+          text: `Reset your password: ${resetUrl}\n\nThis link expires in 1 hour.`
+        });
+        emailed = true;
+      } catch (mailErr) {
+        console.error('SMTP forgot-password:', mailErr.message);
+      }
+    }
+    res.json({
+      success: true,
+      message: emailed
+        ? 'Reset email sent if the account has an email on file.'
+        : 'Reset token created. Use the link to set a new password.',
+      // Only expose link when SMTP not configured (self-host convenience)
+      resetUrl: emailed ? undefined : resetUrl,
+      emailed
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/reset', async (req, res) => {
+  try {
+    if (!dbReady(res)) return;
+    const { token, password } = req.body || {};
+    if (!token || !password || String(password).length < 6) {
+      return res.status(400).json({ success: false, error: 'Valid token and password (6+) required' });
+    }
+    const hash = crypto.createHash('sha256').update(String(token)).digest('hex');
+    const user = await User.findOne({
+      resetToken: hash,
+      resetExpires: { $gt: new Date() }
+    });
+    if (!user) return res.status(400).json({ success: false, error: 'Invalid or expired reset token' });
+    user.passHash = await bcrypt.hash(String(password), 10);
+    user.resetToken = '';
+    user.resetExpires = null;
+    await user.save();
+    const jwt = signToken({ id: String(user._id), username: user.username });
+    res.json({ success: true, token: jwt, username: user.username, message: 'Password updated' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = { router, authRequired, authOptional, verifyToken };
