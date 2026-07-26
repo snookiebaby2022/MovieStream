@@ -7,6 +7,7 @@ const dotenv     = require('dotenv');
 const axios      = require('axios');
 const crypto     = require('crypto');
 const fs         = require('fs');
+const path       = require('path');
 const os         = require('os');
 const { execSync }    = require('child_process');
 const { createServer }= require('http');
@@ -190,23 +191,42 @@ app.get('/api/discover/genre/:genreId/:type', (req, res) => {
 app.get('/api/browse/:type', async (req, res) => {
   try {
     const { type } = req.params;
-    const { genre, sort, pages } = req.query;
-    const n = Math.min(parseInt(pages) || 3, 5);
+    const { genre, sort, pages, year, page, query } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const n = Math.min(parseInt(pages) || (page ? 1 : 3), 10);
     const s = sort || 'popularity.desc';
-    const ck = `browse:${type}:${genre||'all'}:${s}:${n}`;
+    const ck = `browse2:${type}:${genre||'all'}:${s}:${year||'any'}:${page||'m'}:${n}:${query||''}`;
     const c = await getC(ck);
-    if (c) return res.json({ success: true, data: c });
+    if (c) return res.json({ success: true, data: c.data, totalPages: c.tp, page: pageNum });
     const all = [];
-    for (let p = 1; p <= n; p++) {
-      const params = { page: p, sort_by: s };
+    let totalPages = 1;
+    const start = page ? pageNum : 1;
+    const end = page ? pageNum : n;
+    for (let p = start; p <= end; p++) {
+      const params = { page: p, sort_by: s, include_adult: false };
       if (genre) params.with_genres = genre;
+      if (year) {
+        if (type === 'movie') params.primary_release_year = year;
+        else params.first_air_date_year = year;
+      }
+      if (query) params.with_keywords = undefined;
       const d = await tmdb(`/discover/${type}`, params);
       if (d?.results) all.push(...d.results.map(x => mapItem({ ...x, media_type: type })));
+      if (d?.total_pages) totalPages = d.total_pages;
     }
-    const seen = new Set(); const u = all.filter(x => { if(seen.has(x.id))return false; seen.add(x.id); return true; });
-    await setC(ck, u, 3600);
-    res.json({ success: true, data: u });
+    const seen = new Set();
+    const u = all.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+    await setC(ck, { data: u, tp: totalPages }, 3600);
+    res.json({ success: true, data: u, totalPages, page: pageNum });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Catalog years for filter UI (123movies-style)
+app.get('/api/years', (req, res) => {
+  const y = new Date().getFullYear();
+  const years = [];
+  for (let i = y; i >= 1950; i--) years.push(i);
+  res.json({ success: true, data: years });
 });
 
 app.get('/api/search/:query', async (req, res) => {
@@ -286,10 +306,13 @@ app.get('/api/season/:tmdbId/:season', async (req, res) => {
 app.get('/api/sources/:tmdbId/:type', async (req, res) => {
   try {
     const { tmdbId, type } = req.params;
-    const { season, episode } = req.query;
-    const ck = `src:${tmdbId}:${type}:${season||0}:${episode||0}`;
-    const c = await getC(ck);
-    if (c) { console.log(`Cache hit: ${ck}`); return res.json({ success: true, data: c, cached: true }); }
+    const { season, episode, nocache } = req.query;
+    // v3 cache key — old health-checked source lists are stale
+    const ck = `src3:${tmdbId}:${type}:${season||0}:${episode||0}`;
+    if (!nocache) {
+      const c = await getC(ck);
+      if (c) { console.log(`Cache hit: ${ck}`); return res.json({ success: true, data: c, cached: true }); }
+    }
     console.log(`Scraping: ${ck}`);
     const { sources, errors } = await scraper.getSources(
       tmdbId, type,
@@ -297,7 +320,7 @@ app.get('/api/sources/:tmdbId/:type', async (req, res) => {
       episode ? parseInt(episode) : null
     );
     const result = { sources, errors, totalSources: sources.length, scrapedAt: Date.now() };
-    if (sources.length > 0) await setC(ck, result, 3600);
+    if (sources.length > 0) await setC(ck, result, 1800);
     res.json({ success: true, data: result });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
@@ -336,7 +359,8 @@ app.get('/robots.txt', (req, res) => {
 });
 
 // ─── ADMIN ────────────────────────────────────────────────
-const TF = '/var/www/moviestream/backend/.admin-sessions';
+const TF = process.env.ADMIN_SESSIONS_FILE || path.join(__dirname, '.admin-sessions');
+const ENV_FILE = process.env.ENV_FILE || path.join(__dirname, '.env');
 let sess = {};
 try { sess = JSON.parse(fs.readFileSync(TF, 'utf8')); } catch {}
 function saveS() { try { fs.writeFileSync(TF, JSON.stringify(sess)); } catch {} }
@@ -453,9 +477,9 @@ app.post('/api/admin/nginx/:action', adminAuth, (req, res) => {
 
 app.get('/api/admin/config', adminAuth, (req, res) => {
   try {
-    const raw = fs.readFileSync('/var/www/moviestream/backend/.env', 'utf8');
+    const raw = fs.readFileSync(ENV_FILE, 'utf8');
     const conf = {};
-    raw.split('\n').forEach(line => { const eq = line.indexOf('='); if(eq>0&&!line.startsWith('#')) { const k=line.slice(0,eq).trim(),v=line.slice(eq+1).trim(); conf[k]=k.includes('SECRET')||k.includes('PASS')?'***':v; } });
+    raw.split('\n').forEach(line => { const eq = line.indexOf('='); if(eq>0&&!line.startsWith('#')) { const k=line.slice(0,eq).trim(),v=line.slice(eq+1).trim(); conf[k]=k.includes('SECRET')||k.includes('PASS')||k.includes('KEY')?'***':v; } });
     res.json({ success: true, data: conf });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
@@ -464,10 +488,10 @@ app.put('/api/admin/config', adminAuth, (req, res) => {
   const { key, value } = req.body || {};
   if (!key) return res.status(400).json({ success: false, error: 'Key required' });
   try {
-    let raw = fs.readFileSync('/var/www/moviestream/backend/.env', 'utf8');
+    let raw = fs.readFileSync(ENV_FILE, 'utf8');
     const re = new RegExp(`^${key}=.*$`, 'm');
     raw = re.test(raw) ? raw.replace(re, `${key}=${value}`) : raw + `\n${key}=${value}`;
-    fs.writeFileSync('/var/www/moviestream/backend/.env', raw);
+    fs.writeFileSync(ENV_FILE, raw);
     res.json({ success: true, message: 'Saved - restart to apply' });
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
@@ -495,69 +519,3 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 process.on('SIGTERM', async () => { if (rc) await rc.quit().catch(()=>{}); process.exit(0); });
-
-// ── Embed proxy to bypass X-Frame-Options ────────────────
-// Some embed providers block direct iframe loading
-// This proxies the initial request to get the actual video URL
-app.get('/api/proxy/embed', async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: 'URL required' });
-
-  try {
-    const decoded = decodeURIComponent(url);
-    const r = await axios.get(decoded, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Referer': new URL(decoded).origin,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      timeout: 10000,
-      maxRedirects: 5
-    });
-
-    // Remove X-Frame-Options and CSP headers
-    const headers = { ...r.headers };
-    delete headers['x-frame-options'];
-    delete headers['content-security-policy'];
-    delete headers['x-content-security-policy'];
-    headers['access-control-allow-origin'] = '*';
-
-    res.set(headers);
-    res.status(r.status).send(r.data);
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Embed proxy to bypass X-Frame-Options ────────────────
-// Some embed providers block direct iframe loading
-// This proxies the initial request to get the actual video URL
-app.get('/api/proxy/embed', async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: 'URL required' });
-
-  try {
-    const decoded = decodeURIComponent(url);
-    const r = await axios.get(decoded, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Referer': new URL(decoded).origin,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      timeout: 10000,
-      maxRedirects: 5
-    });
-
-    // Remove X-Frame-Options and CSP headers
-    const headers = { ...r.headers };
-    delete headers['x-frame-options'];
-    delete headers['content-security-policy'];
-    delete headers['x-content-security-policy'];
-    headers['access-control-allow-origin'] = '*';
-
-    res.set(headers);
-    res.status(r.status).send(r.data);
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
