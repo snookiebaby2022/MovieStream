@@ -1,0 +1,14 @@
+﻿name: Docker Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Disabled by default
+      run: |
+        echo "Docker deploy is manual-only. Prefer Deploy to Server workflow."
+        echo "See deploy/DEPLOY.md"
+        exit 1

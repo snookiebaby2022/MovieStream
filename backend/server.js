@@ -847,8 +847,25 @@ app.use('/api', (req, res) => res.status(404).json({ success: false, error: 'Not
 // ─── Static site + SPA watch routes ──────────────────────
 const WEB = path.join(__dirname, '..', 'website');
 const ADMIN_DIR = path.join(__dirname, '..', 'admin');
-app.use('/admin', express.static(ADMIN_DIR, { index: 'index.html' }));
-app.use(express.static(WEB, { index: 'index.html', maxAge: '1h' }));
+app.use('/admin', express.static(ADMIN_DIR, {
+  index: 'index.html',
+  setHeaders(res, filePath) {
+    if (/\.(html|js|css|json|webmanifest)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  }
+}));
+app.use(express.static(WEB, {
+  index: 'index.html',
+  setHeaders(res, filePath) {
+    // HTML/JS must update immediately after deploy (was maxAge 1h — looked “stuck”)
+    if (/\.(html|js|css|json|webmanifest)$/i.test(filePath) || /sw\.js$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (/\.(png|jpg|jpeg|gif|webp|svg|ico|woff2?)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  }
+}));
 
 // Shareable watch URLs → SPA (nginx should also try_files to index.html)
 app.get('/watch/:type/:id/:season?/:episode?', (req, res) => {

@@ -13,6 +13,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Check deploy secrets
+      env:
+        SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        missing=0
+        [ -z "$SERVER_HOST" ] && echo "::error::Missing secret SERVER_HOST (VPS IP, e.g. 75.119.137.174)" && missing=1
+        [ -z "$SERVER_USER" ] && echo "::error::Missing secret SERVER_USER (e.g. root)" && missing=1
+        [ -z "$SSH_PRIVATE_KEY" ] && echo "::error::Missing secret SSH_PRIVATE_KEY" && missing=1
+        if [ "$missing" = "1" ]; then
+          echo "Add secrets at: Settings → Secrets and variables → Actions"
+          echo "See deploy/DEPLOY.md"
+          exit 1
+        fi
+
     - name: Deploy to Server
       uses: appleboy/ssh-action@v1.0.3
       with:
@@ -23,10 +39,10 @@ jobs:
         script: |
           set -e
           cd /var/www/moviestream
-          git pull origin main
+          git fetch origin
+          git reset --hard origin/main
           cd backend
           npm install --omit=dev
-          pm2 restart moviestream --update-env || pm2 start ecosystem.config.js
-          redis-cli FLUSHDB || true
-          echo "✅ FlixNova deployment complete"
-          echo "Ensure .env has ADMIN_PASS, JWT_SECRET, TMDB_API_KEY"
+          pm2 restart moviestream --update-env || pm2 start ../ecosystem.config.js --name moviestream
+          nginx -t && systemctl reload nginx || true
+          echo "✅ FlixNova deployment complete @ $(git rev-parse --short HEAD)"
