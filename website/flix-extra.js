@@ -212,6 +212,51 @@
     }).catch(function () {});
   }
 
+  /** Pre-roll ad before movies/TV for free users; Ad-Free skips */
+  function withPreroll(playFn) {
+    if (typeof playFn !== 'function') return;
+    if (isAdFree()) { playFn(); return; }
+    var pw = $('pw');
+    if (!pw) { playFn(); return; }
+    var secs = 7;
+    var ads = [
+      { t: 'Support FlixNova', d: 'Free viewers see a short ad before playback. Pay once to remove all site & player ads forever.' },
+      { t: 'Watch without interruptions', d: 'Ad-Free is a one-time ' + (F.payLabel || '£1') + ' unlock — no subscription.' },
+      { t: 'Enjoy the show', d: 'Thanks for watching. Remove ads anytime from the header.' }
+    ];
+    var ad = ads[Math.floor(Math.random() * ads.length)];
+    pw.innerHTML =
+      '<div class="preroll" id="preroll">' +
+      '<div class="preroll-kicker">Advertisement</div>' +
+      '<h3>' + esc(ad.t) + '</h3>' +
+      '<p>' + esc(ad.d) + '</p>' +
+      '<div class="preroll-count" id="prerollCount">Playing in ' + secs + 's…</div>' +
+      '<div class="preroll-actions">' +
+      '<button type="button" class="pbtn gold" id="prerollPay">Remove ads ' + esc(F.payLabel || '£1') + '</button>' +
+      '<button type="button" class="pbtn ghost" id="prerollSkip" disabled>Skip in ' + secs + 's</button>' +
+      '</div></div>';
+    var pay = $('prerollPay');
+    var skip = $('prerollSkip');
+    var count = $('prerollCount');
+    if (pay) pay.onclick = function () { startCheckout(); };
+    var timer = setInterval(function () {
+      secs -= 1;
+      if (count) count.textContent = secs > 0 ? ('Playing in ' + secs + 's…') : 'Starting…';
+      if (skip) {
+        if (secs > 0) { skip.textContent = 'Skip in ' + secs + 's'; skip.disabled = true; }
+        else { skip.textContent = 'Skip ad ▸'; skip.disabled = false; }
+      }
+      if (secs <= 0) {
+        clearInterval(timer);
+        if (skip) skip.onclick = function () { playFn(); };
+        // auto-start shortly after unlock
+        setTimeout(function () {
+          if ($('preroll')) playFn();
+        }, 400);
+      }
+    }, 1000);
+  }
+
   function bindVideoExtras(video, url, isRd) {
     if (!video) return;
     F.lastStreamUrl = url || '';
@@ -220,6 +265,17 @@
     video.addEventListener('pause', function () { saveProgress(video); });
     video.addEventListener('ended', function () { saveProgress(video); });
     trackPlay(isRd ? 'rd' : 'embed', true);
+    // Mid-roll nudge once ~12 minutes in for free users (overlay only, does not stop stream long)
+    if (!isAdFree() && !video._fnMid) {
+      video._fnMid = true;
+      var midTimer = setInterval(function () {
+        if (!document.body.contains(video)) { clearInterval(midTimer); return; }
+        if (video.currentTime > 12 * 60 && video.currentTime < 12 * 60 + 3) {
+          clearInterval(midTimer);
+          showMidrollNudge();
+        }
+      }, 2000);
+    }
 
     // Resume
     if (S.token && S.item) {
@@ -240,6 +296,23 @@
 
     injectPlayerChrome(video, url, isRd);
     loadSubtitlesForCurrent(video);
+  }
+
+  function showMidrollNudge() {
+    if (isAdFree()) return;
+    var pw = $('pw');
+    if (!pw || pw.querySelector('.midroll')) return;
+    var bar = document.createElement('div');
+    bar.className = 'midroll';
+    bar.style.cssText = 'position:absolute;left:12px;right:12px;bottom:54px;z-index:25;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.82);border:1px solid rgba(245,197,24,.3);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap';
+    bar.innerHTML = '<span style="font-size:12px;color:#ddd">Remove player ads forever — one-time ' + esc(F.payLabel || '£1') + '</span>' +
+      '<span><button type="button" class="pbtn gold" style="margin:0;padding:6px 12px;font-size:11px" id="midPay">Unlock</button> ' +
+      '<button type="button" class="pbtn ghost" style="margin:0;padding:6px 10px;font-size:11px;background:rgba(255,255,255,.1)" id="midX">Dismiss</button></span>';
+    pw.appendChild(bar);
+    var pay = $('midPay'); var x = $('midX');
+    if (pay) pay.onclick = function () { startCheckout(); };
+    if (x) x.onclick = function () { bar.remove(); };
+    setTimeout(function () { if (bar.parentNode) bar.remove(); }, 12000);
   }
 
   function injectPlayerChrome(video, url, isRd) {
@@ -593,6 +666,7 @@
     setAdFree: setAdFree,
     adAction: adAction,
     injectRowAds: injectRowAds,
-    renderAdUi: renderAdUi
+    renderAdUi: renderAdUi,
+    withPreroll: withPreroll
   };
 })(window);

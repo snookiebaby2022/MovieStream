@@ -201,6 +201,15 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .house-ad-x{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--t3);cursor:pointer;font-size:14px}
 #adStrip{display:none;padding:10px 4% 0}
 .adfree-badge{display:none;padding:6px 10px;border-radius:16px;border:1px solid rgba(70,211,105,.35);background:rgba(70,211,105,.1);color:var(--green);font-size:10px;font-weight:700}
+.preroll{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;background:radial-gradient(ellipse at center,rgba(40,20,20,.96),rgba(0,0,0,.96));color:#fff}
+.preroll-kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
+.preroll h3{font-size:22px;font-weight:800;max-width:420px;line-height:1.2}
+.preroll p{font-size:13px;color:var(--t2);max-width:380px;line-height:1.5}
+.preroll-count{font-size:12px;color:var(--t3)}
+.preroll-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.preroll-actions .pbtn{margin:0}
+.preroll-actions .pbtn.gold{background:var(--gold);color:#111}
+.preroll-actions .pbtn.ghost{background:rgba(255,255,255,.08)}
 </style>
 
 </head>
@@ -1295,24 +1304,26 @@ function withAutoplay(url){
   return url+(url.indexOf('?')>=0?'&':'?')+'autoplay=1&autoPlay=true';
 }
 function pEmb(url,idx){
-  // No sandbox — players show "disable sandbox" and refuse to play when sandboxed.
-  // Popups are handled by: clean servers first, player.html shell, blur→auto Next Server.
-  S.popupHits=0;S.playerReadyAt=Date.now();
-  if(window.FlixExtra)FlixExtra.trackPlay('embed',true);
-  var playUrl=withAutoplay(url);
-  var wrapped='/player.html?u='+encodeURIComponent(playUrl);
-  var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button><button type="button" onclick="openDirectEmbed()">Direct</button></div>';
-  $('pw').innerHTML=tools+'<iframe id="emb" src="'+wrapped+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
-  S._directUrl=playUrl;
-  var frame=$('emb'),loaded=false;
-  if(frame){
-    frame.addEventListener('load',function(){loaded=true;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');});
-    frame.addEventListener('error',function(){mFail(idx);tryS(idx+1);});
-  }
-  S.failTimer=setTimeout(function(){
-    if(!loaded&&!S.failed[idx]){setSt('sld','Slow server — tap Next Server');}
-  },14000);
-  setTimeout(function(){if(!S.failed[idx])setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');},4000);
+  var start=function(){
+    // No sandbox — players show "disable sandbox" and refuse to play when sandboxed.
+    S.popupHits=0;S.playerReadyAt=Date.now();
+    if(window.FlixExtra)FlixExtra.trackPlay('embed',true);
+    var playUrl=withAutoplay(url);
+    var wrapped='/player.html?u='+encodeURIComponent(playUrl);
+    var tools='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next Server</button><button type="button" onclick="retryAll()">Reload</button><button type="button" onclick="openDirectEmbed()">Direct</button></div>';
+    $('pw').innerHTML=tools+'<iframe id="emb" src="'+wrapped+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
+    S._directUrl=playUrl;
+    var frame=$('emb'),loaded=false;
+    if(frame){
+      frame.addEventListener('load',function(){loaded=true;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');});
+      frame.addEventListener('error',function(){mFail(idx);tryS(idx+1);});
+    }
+    S.failTimer=setTimeout(function(){
+      if(!loaded&&!S.failed[idx]){setSt('sld','Slow server — tap Next Server');}
+    },14000);
+    setTimeout(function(){if(!S.failed[idx])setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · autoplay');},4000);
+  };
+  if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 function openDirectEmbed(){
   if(!S._directUrl)return;
@@ -1322,49 +1333,54 @@ function openDirectEmbed(){
 }
 function pHLS(url,idx){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline style="width:100%;height:100%;background:#000"></video>';
-  var v=document.getElementById('hv');
-  var failed=false;
-  var fail=function(){if(failed)return;failed=true;mFail(idx);tryS(idx+1);};
-  S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},12000);
-  if(window.Hls&&Hls.isSupported()){
-    var h=new Hls({enableWorker:true,xhrSetup:function(xhr){xhr.withCredentials=false;}});
-    h.loadSource(url);h.attachMedia(v);
-    h.on(Hls.Events.MANIFEST_PARSED,function(){
-      if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-      v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
+  var start=function(){
+    $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="hv" controls autoplay playsinline style="width:100%;height:100%;background:#000"></video>';
+    var v=document.getElementById('hv');
+    var failed=false;
+    var fail=function(){if(failed)return;failed=true;mFail(idx);tryS(idx+1);};
+    S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},12000);
+    if(window.Hls&&Hls.isSupported()){
+      var h=new Hls({enableWorker:true,xhrSetup:function(xhr){xhr.withCredentials=false;}});
+      h.loadSource(url);h.attachMedia(v);
+      h.on(Hls.Events.MANIFEST_PARSED,function(){
+        if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+        v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
+        if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
+      });
+      h.on(Hls.Events.ERROR,function(_,d){if(d.fatal)fail();});
+    }else if(v.canPlayType('application/vnd.apple.mpegurl')){
+      v.src=url;v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
       if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
-    });
-    h.on(Hls.Events.ERROR,function(_,d){if(d.fatal)fail();});
-  }else if(v.canPlayType('application/vnd.apple.mpegurl')){
-    v.src=url;v.play().catch(function(){});setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':''));
-    if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
-  }else{fail();}
+    }else{fail();}
+  };
+  if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 function pDir(url,idx){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
-  $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
-  var v=$('dv');
-  var settled=false;
-  var ok=function(){
-    if(settled)return;settled=true;
-    if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-    setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':''));
+  var start=function(){
+    $('pw').innerHTML='<div class="pw-tools"><button type="button" onclick="nextSrc()">Next quality</button><button type="button" onclick="retryAll()">Reload</button></div><video id="dv" controls autoplay playsinline style="width:100%;height:100%;background:#000" src="'+url.replace(/"/g,'&quot;')+'"></video>';
+    var v=$('dv');
+    var settled=false;
+    var ok=function(){
+      if(settled)return;settled=true;
+      if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':''));
+    };
+    var fail=function(){
+      if(settled)return;settled=true;
+      if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+      mFail(idx);tryS(idx+1);
+    };
+    v.oncanplay=ok;
+    v.onloadeddata=ok;
+    v.onerror=fail;
+    S.failTimer=setTimeout(function(){
+      if(!settled&&v.readyState<2)fail();
+    },10000);
+    v.play().catch(function(){});
+    if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
   };
-  var fail=function(){
-    if(settled)return;settled=true;
-    if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-    mFail(idx);tryS(idx+1);
-  };
-  v.oncanplay=ok;
-  v.onloadeddata=ok;
-  v.onerror=fail;
-  // Browsers hang on unsupported MKV/HEVC — don't wait forever
-  S.failTimer=setTimeout(function(){
-    if(!settled&&v.readyState<2)fail();
-  },10000);
-  v.play().catch(function(){});
-  if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
+  if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 function mFail(idx){S.failed[idx]=1;var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');}
 function showPE(msg){setSt('sfl','Failed');$('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p>'+msg+'</p><button class="pbtn" onclick="retryAll()">Try Again</button><button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button></div>';}
