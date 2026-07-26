@@ -1,16 +1,134 @@
+# Dependencies
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
 dist/
 build/
-.env*
-*.log
+out/
+*.tsbuildinfo
+.esbuild/
+.vite/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Testing
 coverage/
 .nyc_output/
+__tests__/coverage/
+*.test.js
+*.spec.js
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+
+# Logs
+logs/
+*.log
+*.log.*
+npm-debug.log*
+
+# Temp files
+tmp/
+temp/
+*.tmp
+.cache/
+*.cache
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Application specific
+uploads/temp/
+uploads/cache/
+storage/
+*.sqlite
+*.sqlite3
+media/temp/
+
+# Secrets & Keys
 *.pem
 *.key
 *.crt
-uploads/temp/
-tmp/
-*.sqlite
+*.p12
+*.pfx
+*.p8
+*.p7b
+*.cer
+*.der
+.secrets/
+*.secret
+
+# Package manager
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Misc
+*.bak
+*.orig
+*.old
+*.log
+*.gz
+*.zip
+*.rar
+*.tar
+*.tgz
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# CI/CD
+.github/
+.gitlab/
+.azure/
+.travis.yml
+.gitlab-ci.yml
+circle.yml
+Jenkinsfile
+
+# TypeScript
+*.tsbuildinfo
+
+# Next.js specific
+.next/
+out/
+
+# Vue specific
+dist/
+*.local
+
+# React specific
+*.local
+
+# Node specific
+*.log
+*.pid
+*.seed
+*.pid.lock
