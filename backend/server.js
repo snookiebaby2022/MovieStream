@@ -318,7 +318,7 @@ app.get('/api/hero', async (req, res) => {
   }
 });
 
-/** Adult / XXX catalog — Ad-Free accounts only (bounded TMDB fan-out) */
+/** Adult / XXX catalog — Ad-Free accounts only (bounded but larger catalog) */
 app.get('/api/discover/adult', async (req, res) => {
   try {
     if (!(await allowAdult(req))) {
@@ -329,21 +329,30 @@ app.get('/api/discover/adult', async (req, res) => {
       });
     }
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const ck = `adult:cat:v4:${page}`;
+    const ck = `adult:cat:v5:${page}`;
     const c = await getC(ck);
-    if (c) return res.json({ success: true, data: c.r, totalPages: c.tp });
+    if (c) return res.json({ success: true, data: c.r, totalPages: c.tp, page });
     const all = [];
     const queries = [
-      'xxx', 'adult', 'erotic', 'pornographic', 'softcore',
-      'hentai', 'explicit', 'adult film', 'japanese adult', 'playboy'
+      'xxx', 'adult', 'erotic', 'pornographic', 'softcore', 'hardcore',
+      'hentai', 'explicit', 'adult film', 'japanese adult', 'european adult',
+      'playboy', 'penthouse', 'nude', 'lesbian', 'gay adult', 'milf',
+      'pornstar', 'uncensored', 'blue movie', 'adult comedy', 'erotica',
+      'sex comedy', 'erotic thriller', 'adult anime', 'jav', 'av idol'
     ];
-    // Rotate query slice by page so Load More finds more titles without 200 TMDB calls
-    const qSlice = queries.slice((page - 1) % queries.length).concat(queries).slice(0, 6);
+    // Rotate 10 queries per page; also pull adjacent search pages
+    const start = ((page - 1) * 8) % queries.length;
+    const qSlice = [];
+    for (let i = 0; i < 10; i++) qSlice.push(queries[(start + i) % queries.length]);
     for (const q of qSlice) {
       const d = await tmdb('/search/movie', { query: q, page, include_adult: true });
       if (d?.results) all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
+      if (page < 4) {
+        const d2 = await tmdb('/search/movie', { query: q, page: page + 1, include_adult: true });
+        if (d2?.results) all.push(...d2.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
+      }
     }
-    for (let p = page; p < page + 3; p++) {
+    for (let p = page; p < page + 5; p++) {
       const dm = await tmdb('/discover/movie', { page: p, include_adult: true, sort_by: 'popularity.desc' });
       if (dm?.results) all.push(...dm.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
     }
@@ -355,8 +364,116 @@ app.get('/api/discover/adult', async (req, res) => {
         return true;
       })
       .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    await setC(ck, { r, tp: 50 }, 1800);
-    res.json({ success: true, data: r, totalPages: 50, page });
+    await setC(ck, { r, tp: 80 }, 1800);
+    res.json({ success: true, data: r, totalPages: 80, page });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** Fat home catalog — many movie/TV rows in one request */
+app.get('/api/catalog/home', async (req, res) => {
+  try {
+    const adult = await allowAdult(req);
+    const ck = `home:catalog:v1:a${adult ? 1 : 0}`;
+    const c = await getC(ck);
+    if (c) return res.json({ success: true, data: c });
+
+    const movieGenres = [
+      [28, 'Action'], [12, 'Adventure'], [16, 'Animation'], [35, 'Comedy'],
+      [80, 'Crime'], [18, 'Drama'], [14, 'Fantasy'], [27, 'Horror'],
+      [878, 'Sci-Fi'], [53, 'Thriller'], [10749, 'Romance'], [9648, 'Mystery'],
+      [10752, 'War'], [37, 'Western'], [99, 'Documentary'], [36, 'History']
+    ];
+    const tvGenres = [
+      [10759, 'Action & Adventure'], [16, 'Animation'], [35, 'Comedy'],
+      [80, 'Crime'], [18, 'Drama'], [10765, 'Sci-Fi & Fantasy'],
+      [9648, 'Mystery'], [10751, 'Family'], [10762, 'Kids'], [10764, 'Reality']
+    ];
+
+    const fetchBrowse = async (type, extra = {}, pages = 2) => {
+      const all = [];
+      for (let p = 1; p <= pages; p++) {
+        const d = await tmdb(`/discover/${type}`, {
+          page: p,
+          sort_by: 'popularity.desc',
+          include_adult: adult,
+          ...extra
+        });
+        if (d?.results) all.push(...d.results.map(x => mapItem({ ...x, media_type: type })));
+      }
+      return filterAdult(all, adult);
+    };
+
+    const [
+      trendingDay, trendingWeek, nowPlaying,
+      popMovie, topMovie, popTv, topTv, animeTv, animeMovie
+    ] = await Promise.all([
+      tmdb('/trending/all/day', { page: 1 }),
+      tmdb('/trending/all/week', { page: 1 }),
+      fetchBrowse('movie', {}, 2),
+      fetchBrowse('movie', {}, 3),
+      fetchBrowse('movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 300 }, 2),
+      fetchBrowse('tv', {}, 3),
+      fetchBrowse('tv', { sort_by: 'vote_average.desc', 'vote_count.gte': 200 }, 2),
+      fetchBrowse('tv', { with_genres: '16', with_origin_country: 'JP' }, 2),
+      fetchBrowse('movie', { with_genres: '16', with_origin_country: 'JP' }, 2)
+    ]);
+
+    const mapTrend = (d) => filterAdult(
+      (d?.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv').map(mapItem),
+      adult
+    );
+
+    // now_playing / airing via dedicated endpoints for accuracy
+    const [nowApi, airApi, onAirApi, upApi] = await Promise.all([
+      tmdb('/movie/now_playing', { page: 1 }),
+      tmdb('/tv/airing_today', { page: 1 }),
+      tmdb('/tv/on_the_air', { page: 1 }),
+      tmdb('/movie/upcoming', { page: 1 })
+    ]);
+    const now = filterAdult((nowApi?.results || []).map(x => mapItem({ ...x, media_type: 'movie' })), adult);
+    const air = filterAdult((airApi?.results || []).map(x => mapItem({ ...x, media_type: 'tv' })), adult);
+    const onair = filterAdult((onAirApi?.results || []).map(x => mapItem({ ...x, media_type: 'tv' })), adult);
+    const up = filterAdult((upApi?.results || []).map(x => mapItem({ ...x, media_type: 'movie' })), adult);
+
+    const genreMovieRows = [];
+    for (const [id, name] of movieGenres) {
+      genreMovieRows.push({
+        title: `Movies · ${name}`,
+        items: await fetchBrowse('movie', { with_genres: String(id) }, 2),
+        ap: `/browse/movie?genre=${id}`
+      });
+    }
+    const genreTvRows = [];
+    for (const [id, name] of tvGenres) {
+      genreTvRows.push({
+        title: `TV · ${name}`,
+        items: await fetchBrowse('tv', { with_genres: String(id) }, 2),
+        ap: `/browse/tv?genre=${id}`
+      });
+    }
+
+    const sections = [
+      { title: 'Trending Today', items: mapTrend(trendingDay), ap: '/trending/day' },
+      { title: 'Trending This Week', items: mapTrend(trendingWeek), ap: '/trending/browse' },
+      { title: 'Now in Cinemas', items: now.length ? now : nowPlaying, ap: '/browse/movie' },
+      { title: 'Popular Movies', items: popMovie, ap: '/browse/movie' },
+      { title: 'Popular TV Shows', items: popTv, ap: '/browse/tv' },
+      { title: 'Top Rated Movies', items: topMovie, ap: '/browse/movie?sort=vote_average.desc' },
+      { title: 'Top Rated TV', items: topTv, ap: '/browse/tv?sort=vote_average.desc' },
+      { title: 'Airing Today', items: air, ap: '/browse/tv' },
+      { title: 'On The Air', items: onair, ap: '/browse/tv' },
+      { title: 'Coming Soon', items: up, ap: '/discover/movie/upcoming' },
+      { title: 'Anime Series', items: animeTv, ap: '/browse/tv?anime=1' },
+      { title: 'Anime Movies', items: animeMovie, ap: '/browse/movie?anime=1' },
+      ...genreMovieRows,
+      ...genreTvRows
+    ].map(s => ({ ...s, items: (s.items || []).slice(0, 40) }))
+      .filter(s => s.items && s.items.length);
+
+    await setC(ck, sections, 900);
+    res.json({ success: true, data: sections });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
