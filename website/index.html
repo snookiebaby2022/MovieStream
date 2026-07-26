@@ -191,6 +191,16 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .prof-av{font-size:28px;margin-bottom:8px}
 .cw-prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.15)}
 .cw-prog>i{display:block;height:100%;background:var(--red)}
+.house-ad-wrap{padding:0 4% 18px}
+.house-ad{position:relative;padding:16px 18px;border-radius:12px;border:1px solid rgba(245,197,24,.22);background:linear-gradient(120deg,rgba(40,32,10,.95),rgba(20,20,20,.95));max-width:920px}
+.house-ad-kicker{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);margin-bottom:6px}
+.house-ad-t{font-size:16px;font-weight:700;margin-bottom:4px}
+.house-ad-d{font-size:12px;color:var(--t2);line-height:1.45;margin-bottom:10px;max-width:520px}
+.house-ad-cta{padding:8px 14px;border:0;border-radius:8px;background:var(--gold);color:#111;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
+.house-ad-cta:hover{filter:brightness(1.05)}
+.house-ad-x{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--t3);cursor:pointer;font-size:14px}
+#adStrip{display:none;padding:10px 4% 0}
+.adfree-badge{display:none;padding:6px 10px;border-radius:16px;border:1px solid rgba(70,211,105,.35);background:rgba(70,211,105,.1);color:var(--green);font-size:10px;font-weight:700}
 </style>
 
 </head>
@@ -218,6 +228,8 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
       <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
     </select>
     <button class="auth-btn" id="reqBtn" onclick="FlixExtra.openRequest()" title="Request a title">Request</button>
+    <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.startCheckout()" title="Remove site ads">Ad-Free £1</button>
+    <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
     <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
     <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid">RD</button>
     <button class="auth-btn" id="authBtn" onclick="openAuth()">Sign In</button>
@@ -246,6 +258,7 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
   <div class="hdots" id="hdd"></div>
 </div>
 <div id="gbar"></div>
+<div id="adStrip"></div>
 <div id="rows"><div class="spw"><div class="sp"></div><span>Loading...</span></div></div>
 <footer class="footer">
   <div id="fgenres"></div>
@@ -1365,7 +1378,14 @@ api('/genres/movie').then(function(d){
   $('fgenres').innerHTML=d.data.slice(0,18).map(function(g){return'<a href="#" onclick="byG('+g.id+',\'movie\');return false">'+he(g.name)+'</a>';}).join('');
 }).catch(function(){});
 if(S.token){
-  uapi('/me').then(function(d){if(d.success){S.user={username:d.data.username};refreshAuthBtn();if(window.FlixExtra)FlixExtra.loadProfiles();}else{S.token='';localStorage.removeItem('fn_token');}}).catch(function(){});
+  uapi('/me').then(function(d){
+    if(d.success){
+      S.user={username:d.data.username,adFree:!!d.data.adFree};
+      if(d.data.adFree&&window.FlixExtra)FlixExtra.setAdFree(true);
+      refreshAuthBtn();
+      if(window.FlixExtra){FlixExtra.loadProfiles();FlixExtra.loadPayStatus();}
+    }else{S.token='';localStorage.removeItem('fn_token');}
+  }).catch(function(){});
 }
 refreshAuthBtn();
 checkSiteRd();

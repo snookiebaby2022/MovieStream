@@ -16,6 +16,9 @@ const UserSchema = new mongoose.Schema({
   activeProfileId: { type: String, default: '' },
   resetToken: { type: String, default: '' },
   resetExpires: { type: Date, default: null },
+  adFree: { type: Boolean, default: false },
+  adFreeAt: { type: Date, default: null },
+  stripeSessionId: { type: String, default: '' },
   watchlist: [{
     tmdbId: Number, type: { type: String, enum: ['movie', 'tv'] },
     title: String, poster: String, year: String, rating: Number, addedAt: { type: Date, default: Date.now }

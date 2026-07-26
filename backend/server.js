@@ -16,6 +16,7 @@ const ScraperManager  = require('./scrapers/ScraperManager');
 const { router: authRouter } = require('./authRoutes');
 const debridRouter = require('./debridRoutes');
 const { router: featureRouter } = require('./featureRoutes');
+const { router: payRouter, handleWebhook } = require('./paymentRoutes');
 const { TitleRequest, PlayEvent } = require('./models');
 
 dotenv.config();
@@ -25,6 +26,9 @@ const server = createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 const PORT   = parseInt(process.env.PORT) || 3001;
 const scraper= new ScraperManager();
+
+// Stripe webhook needs raw body (must be before express.json)
+app.post('/api/pay/webhook', express.raw({ type: 'application/json' }), handleWebhook);
 
 // ─── Online tracking ─────────────────────────────────────
 const online = new Map();
@@ -452,6 +456,9 @@ app.use('/api/debrid', debridRouter);
 
 // Profiles, progress, requests, subtitles, analytics ingest
 app.use('/api/features', featureRouter);
+
+// £1 ad-free unlock (Stripe Checkout)
+app.use('/api/pay', payRouter);
 
 // SEO
 app.get('/sitemap.xml', async (req, res) => {

@@ -6,8 +6,17 @@
     profiles: [],
     progressTimer: null,
     lastStreamUrl: '',
-    lang: localStorage.getItem('fn_lang') || 'en'
+    lang: localStorage.getItem('fn_lang') || 'en',
+    adFree: localStorage.getItem('fn_adfree') === '1',
+    payConfigured: false,
+    payLabel: '£1.00'
   };
+
+  var HOUSE_ADS = [
+    { t: 'Go Ad-Free forever', d: 'One-time payment — remove FlixNova banners on this account.', cta: 'Unlock £1', action: 'pay' },
+    { t: 'Better with Real-Debrid', d: 'Direct streams, no iframe popups. Tap RD if streams struggle.', cta: 'Open RD', action: 'rd' },
+    { t: 'Request missing titles', d: 'Can’t find something? Send a request and we’ll check it.', cta: 'Request', action: 'request' }
+  ];
 
   var I18N = {
     en: {
@@ -420,13 +429,143 @@
     // Hook loadHome via wrapper if needed — exposed for index.html
   }
 
+  function isAdFree() {
+    return !!(F.adFree || (global.S && S.user && S.user.adFree) || localStorage.getItem('fn_adfree') === '1');
+  }
+
+  function setAdFree(on) {
+    F.adFree = !!on;
+    if (on) localStorage.setItem('fn_adfree', '1');
+    else localStorage.removeItem('fn_adfree');
+    if (global.S && S.user) S.user.adFree = !!on;
+    renderAdUi();
+  }
+
+  function loadPayStatus() {
+    var headers = {};
+    if (global.S && S.token) headers['x-user-token'] = S.token;
+    return fetch('/api/pay/status', { headers: headers }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.success) return;
+      F.payConfigured = !!d.configured;
+      F.payLabel = d.label || '£1.00';
+      if (d.adFree) setAdFree(true);
+      var btn = $('adfreeBtn');
+      if (btn) {
+        btn.style.display = isAdFree() ? 'none' : 'inline-flex';
+        btn.textContent = 'Ad-Free ' + F.payLabel;
+      }
+      renderAdUi();
+    }).catch(function () {});
+  }
+
+  function startCheckout() {
+    if (isAdFree()) { alert('You already have Ad-Free.'); return; }
+    var email = '';
+    if (!(global.S && S.token)) {
+      email = prompt('Optional email for Stripe receipt (or Cancel to continue as guest):') || '';
+    }
+    fetch('/api/pay/checkout', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, (S.token ? { 'x-user-token': S.token } : {})),
+      body: JSON.stringify({ email: email })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.success && d.url) { location.href = d.url; return; }
+      alert(d.error || 'Checkout unavailable. Add STRIPE_SECRET_KEY on the server.');
+    }).catch(function (e) { alert(e.message); });
+  }
+
+  function handlePayReturn() {
+    var params = new URLSearchParams(location.search);
+    var flag = params.get('adfree');
+    var sid = params.get('session_id');
+    if (flag === 'cancel') {
+      history.replaceState(null, '', '/');
+      return;
+    }
+    if (flag === 'success' && sid) {
+      var headers = {};
+      if (S.token) headers['x-user-token'] = S.token;
+      fetch('/api/pay/confirm?session_id=' + encodeURIComponent(sid), { headers: headers })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.success) {
+            setAdFree(true);
+            alert(d.message || 'Ad-Free unlocked. Thanks!');
+          } else {
+            alert(d.error || 'Could not confirm payment');
+          }
+          history.replaceState(null, '', '/');
+        }).catch(function () { history.replaceState(null, '', '/'); });
+    }
+  }
+
+  function houseAdHtml(i) {
+    var a = HOUSE_ADS[i % HOUSE_ADS.length];
+    return '<div class="house-ad" data-ad="' + i + '">' +
+      '<div class="house-ad-kicker">Sponsored</div>' +
+      '<div class="house-ad-t">' + esc(a.t) + '</div>' +
+      '<div class="house-ad-d">' + esc(a.d) + '</div>' +
+      '<button type="button" class="house-ad-cta" onclick="FlixExtra.adAction(\'' + a.action + '\')">' + esc(a.cta.replace('£1', F.payLabel)) + '</button>' +
+      '<button type="button" class="house-ad-x" onclick="this.parentNode.remove()" aria-label="Dismiss">✕</button>' +
+      '</div>';
+  }
+
+  function adAction(action) {
+    if (action === 'pay') startCheckout();
+    else if (action === 'rd' && typeof openRd === 'function') openRd();
+    else if (action === 'request') openRequest();
+  }
+
+  function injectRowAds() {
+    if (isAdFree()) {
+      document.querySelectorAll('.house-ad').forEach(function (el) { el.remove(); });
+      var strip = $('adStrip'); if (strip) strip.style.display = 'none';
+      return;
+    }
+    var strip = $('adStrip');
+    if (strip) {
+      strip.style.display = 'block';
+      strip.innerHTML = houseAdHtml(0);
+    }
+    var rows = document.querySelectorAll('#rows .row');
+    if (!rows.length) return;
+    // Insert up to 2 soft ads between rows
+    var spots = [1, 3];
+    spots.forEach(function (idx, n) {
+      if (!rows[idx]) return;
+      if (rows[idx].previousElementSibling && rows[idx].previousElementSibling.classList.contains('house-ad-wrap')) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'house-ad-wrap';
+      wrap.innerHTML = houseAdHtml(n + 1);
+      rows[idx].parentNode.insertBefore(wrap, rows[idx]);
+    });
+  }
+
+  function renderAdUi() {
+    var btn = $('adfreeBtn');
+    if (btn) btn.style.display = isAdFree() ? 'none' : 'inline-flex';
+    var badge = $('adfreeBadge');
+    if (badge) badge.style.display = isAdFree() ? 'inline-flex' : 'none';
+    injectRowAds();
+  }
+
   function init() {
     applyI18n();
     installBrowseKidsHook();
     if (handleResetRoute()) return;
+    handlePayReturn();
     loadProfiles();
+    loadPayStatus();
     var langSel = $('langSel');
     if (langSel) langSel.addEventListener('change', function () { setLang(langSel.value); });
+    // Re-inject ads when home rows render
+    var rows = $('rows');
+    if (rows && window.MutationObserver) {
+      var mo = new MutationObserver(function () {
+        if (!isAdFree()) injectRowAds();
+      });
+      mo.observe(rows, { childList: true, subtree: false });
+    }
   }
 
   global.FlixExtra = {
@@ -447,6 +586,13 @@
     forgotPassword: forgotPassword,
     loadContinueFromServer: loadContinueFromServer,
     kidsActive: kidsActive,
-    openSubPicker: openSubPicker
+    openSubPicker: openSubPicker,
+    startCheckout: startCheckout,
+    loadPayStatus: loadPayStatus,
+    isAdFree: isAdFree,
+    setAdFree: setAdFree,
+    adAction: adAction,
+    injectRowAds: injectRowAds,
+    renderAdUi: renderAdUi
   };
 })(window);

@@ -102,9 +102,23 @@ router.post('/login', async (req, res) => {
 router.get('/me', authRequired, async (req, res) => {
   try {
     if (!dbReady(res)) return;
-    const user = await User.findById(req.user.id).select('-passHash');
+    const user = await User.findById(req.user.id).select('-passHash -resetToken');
     if (!user) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, data: user });
+    res.json({
+      success: true,
+      data: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        adFree: !!user.adFree,
+        adFreeAt: user.adFreeAt,
+        watchlist: user.watchlist,
+        history: user.history,
+        profiles: user.profiles,
+        activeProfileId: user.activeProfileId,
+        createdAt: user.createdAt
+      }
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
