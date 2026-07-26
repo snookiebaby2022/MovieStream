@@ -1170,13 +1170,20 @@ function pDir(url,idx){
 function mFail(idx){S.failed[idx]=1;var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');}
 function showPE(msg){setSt('sfl','Failed');$('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p>'+msg+'</p><button class="pbtn" onclick="retryAll()">Try Again</button><button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button></div>';}
 function retryAll(){
-  if(!S.item)return;S.failed={};S.src=[];
+  if(!S.item)return;S.failed={};S.src=[];S._triedEmbeds=0;
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
-  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Retrying servers...</span></div>';
+  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Retrying...</span></div>';
   $('srcbar').style.display='none';
-  var p=sourcesPath(id,type,S.sn,S.ep);
-  p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1';
-  api(p).then(function(d){if(d.success)handleSrc(d.data);else showPE('Still no sources.');}).catch(function(e){showPE(e.message);});
+  var emb=function(){
+    var p=sourcesPath(id,type,S.sn,S.ep);
+    p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1';
+    return api(p).then(function(d){if(d.success)handleSrc(d.data);else showPE('Still no sources.');});
+  };
+  var imdb=S.item.imdbId;
+  fetchDebridStreams(imdb,type,S.sn,S.ep,id).then(function(rd){
+    if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){handleSrc({sources:rd.data.streams,debrid:true});return;}
+    return emb();
+  }).catch(function(e){showPE(e.message);});
 }
 function closeModal(){
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
