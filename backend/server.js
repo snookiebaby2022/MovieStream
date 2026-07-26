@@ -576,25 +576,162 @@ app.post('/api/admin/nginx/:action', adminAuth, (req, res) => {
   catch(e) { res.status(500).json({ success: false, error: e.stderr?.toString()||e.message }); }
 });
 
+function isSecretEnvKey(k) {
+  return /SECRET|PASS|KEY|TOKEN|URI|URL/i.test(k) && !/^SITE_URL$/i.test(k);
+}
+
+function upsertEnvKey(key, value) {
+  let raw = '';
+  try { raw = fs.readFileSync(ENV_FILE, 'utf8'); } catch { raw = ''; }
+  const re = new RegExp(`^${key}=.*$`, 'm');
+  const line = `${key}=${value ?? ''}`;
+  raw = re.test(raw) ? raw.replace(re, line) : (raw.replace(/\s*$/, '') + `\n${line}\n`);
+  fs.writeFileSync(ENV_FILE, raw);
+}
+
 app.get('/api/admin/config', adminAuth, (req, res) => {
   try {
     const raw = fs.readFileSync(ENV_FILE, 'utf8');
     const conf = {};
-    raw.split('\n').forEach(line => { const eq = line.indexOf('='); if(eq>0&&!line.startsWith('#')) { const k=line.slice(0,eq).trim(),v=line.slice(eq+1).trim(); conf[k]=k.includes('SECRET')||k.includes('PASS')||k.includes('KEY')?'***':v; } });
+    raw.split('\n').forEach(line => {
+      const eq = line.indexOf('=');
+      if (eq > 0 && !line.startsWith('#')) {
+        const k = line.slice(0, eq).trim();
+        const v = line.slice(eq + 1).trim();
+        conf[k] = isSecretEnvKey(k) ? '***' : v;
+      }
+    });
     res.json({ success: true, data: conf });
-  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.put('/api/admin/config', adminAuth, (req, res) => {
   const { key, value } = req.body || {};
   if (!key) return res.status(400).json({ success: false, error: 'Key required' });
+  if (isSecretEnvKey(key) && key !== 'REALDEBRID_API_TOKEN') {
+    return res.status(400).json({ success: false, error: 'Use the Real-Debrid page or edit .env on the server for secrets' });
+  }
   try {
-    let raw = fs.readFileSync(ENV_FILE, 'utf8');
-    const re = new RegExp(`^${key}=.*$`, 'm');
-    raw = re.test(raw) ? raw.replace(re, `${key}=${value}`) : raw + `\n${key}=${value}`;
-    fs.writeFileSync(ENV_FILE, raw);
+    upsertEnvKey(key, value);
     res.json({ success: true, message: 'Saved - restart to apply' });
-  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+/** Admin Real-Debrid management */
+app.get('/api/admin/debrid', adminAuth, async (req, res) => {
+  const token = (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').trim();
+  if (!token) {
+    return res.json({ success: true, configured: false, siteConfigured: false });
+  }
+  try {
+    const r = await axios.get('https://api.real-debrid.com/rest/1.0/user', {
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'FlixNova-Admin' },
+      timeout: 10000
+    });
+    res.json({
+      success: true,
+      configured: true,
+      siteConfigured: true,
+      data: {
+        username: r.data.username,
+        email: r.data.email,
+        premium: r.data.type === 'premium',
+        expiration: r.data.expiration,
+        points: r.data.points,
+        tokenHint: token.slice(0, 4) + '…' + token.slice(-4)
+      }
+    });
+  } catch (e) {
+    const status = e.response?.status;
+    res.status(status === 401 ? 401 : 502).json({
+      success: false,
+      configured: true,
+      siteConfigured: true,
+      error: status === 401 ? 'Invalid Real-Debrid token' : (e.message || 'RD check failed')
+    });
+  }
+});
+
+app.put('/api/admin/debrid', adminAuth, async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  if (!token) return res.status(400).json({ success: false, error: 'Token required' });
+  try {
+    const r = await axios.get('https://api.real-debrid.com/rest/1.0/user', {
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'FlixNova-Admin' },
+      timeout: 10000
+    });
+    upsertEnvKey('REALDEBRID_API_TOKEN', token);
+    process.env.REALDEBRID_API_TOKEN = token;
+    res.json({
+      success: true,
+      message: 'Real-Debrid token saved and active',
+      data: {
+        username: r.data.username,
+        premium: r.data.type === 'premium',
+        expiration: r.data.expiration
+      }
+    });
+  } catch (e) {
+    const status = e.response?.status;
+    res.status(status === 401 ? 401 : 502).json({
+      success: false,
+      error: status === 401 ? 'Invalid Real-Debrid token' : (e.message || 'Could not verify token')
+    });
+  }
+});
+
+app.delete('/api/admin/debrid', adminAuth, (req, res) => {
+  try {
+    upsertEnvKey('REALDEBRID_API_TOKEN', '');
+    delete process.env.REALDEBRID_API_TOKEN;
+    delete process.env.RD_API_TOKEN;
+    res.json({ success: true, message: 'Site Real-Debrid token cleared' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/debrid/test', adminAuth, async (req, res) => {
+  try {
+    const token = (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').trim();
+    if (!token) return res.status(400).json({ success: false, error: 'No site RD token configured' });
+    const { tmdbId = '27205', type = 'movie', season = 1, episode = 1 } = req.body || {};
+    const media = type === 'tv' ? 'tv' : 'movie';
+    let imdb = '';
+    if (KEY) {
+      try {
+        const ext = await axios.get(`${TMDB}/${media}/${tmdbId}/external_ids`, {
+          params: { api_key: KEY }, timeout: 8000
+        });
+        imdb = ext.data?.imdb_id || '';
+      } catch {}
+    }
+    if (!imdb) return res.status(400).json({ success: false, error: 'Could not resolve IMDB id' });
+    const cfg = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
+    const pathStr = media === 'tv'
+      ? `/stream/series/${imdb}:${parseInt(season, 10) || 1}:${parseInt(episode, 10) || 1}.json`
+      : `/stream/movie/${imdb}.json`;
+    const t0 = Date.now();
+    const r = await axios.get(`https://torrentio.strem.fun/${cfg}${pathStr}`, {
+      headers: { 'User-Agent': 'FlixNova-Admin', Accept: 'application/json' },
+      timeout: 25000,
+      validateStatus: s => s < 500
+    });
+    const streams = (r.data?.streams || []).filter(s => /^https?:\/\//i.test(s.url || s.externalUrl || ''));
+    res.json({
+      success: true,
+      data: {
+        imdbId: imdb,
+        tmdbId,
+        type: media,
+        streamCount: streams.length,
+        sample: streams.slice(0, 5).map(s => (s.title || s.name || '').split('\n')[0]),
+        elapsed: `${Date.now() - t0}ms`
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 app.get('/api/admin/test/search/:query', adminAuth, async (req, res) => {

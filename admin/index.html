@@ -755,6 +755,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
       <div class="nav-item" data-nav="online" onclick="showPage('online',this)"><span class="nav-icon">👥</span><span class="nav-text">Live Users</span><span class="nav-badge" id="sb-online">0</span></div>
 
       <div class="nav-sec">Content</div>
+      <div class="nav-item" data-nav="debrid" onclick="showPage('debrid',this)"><span class="nav-icon">▶️</span><span class="nav-text">Real-Debrid</span></div>
       <div class="nav-item" data-nav="scrapers" onclick="showPage('scrapers',this)"><span class="nav-icon">🔍</span><span class="nav-text">Scrapers</span></div>
       <div class="nav-item" data-nav="tester" onclick="showPage('tester',this)"><span class="nav-icon">🧪</span><span class="nav-text">API Tester</span></div>
 
@@ -901,6 +902,74 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
               <thead><tr><th>User</th><th>IP</th><th>Device</th><th>Page</th><th>Watching</th><th>Duration</th></tr></thead>
               <tbody id="onlineTable"><tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-debrid">
+        <div class="stat-grid" style="margin-bottom:16px">
+          <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">▶️</div><div class="stat-label">RD Status</div><div class="stat-value" id="rd-status">...</div><div class="stat-sub" id="rd-status-sub">loading</div></div>
+          <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">👤</div><div class="stat-label">Account</div><div class="stat-value" id="rd-user" style="font-size:18px">—</div><div class="stat-sub" id="rd-email">site-wide token</div></div>
+          <div class="stat-card" style="--ac:var(--yellow)"><div class="stat-icon">⭐</div><div class="stat-label">Premium</div><div class="stat-value" id="rd-prem">—</div><div class="stat-sub" id="rd-exp">expiration</div></div>
+          <div class="stat-card" style="--ac:var(--purple)"><div class="stat-icon">🔑</div><div class="stat-label">Token</div><div class="stat-value" id="rd-hint" style="font-size:16px">—</div><div class="stat-sub">stored in server .env</div></div>
+        </div>
+        <div class="toolbar-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">Real-Debrid Site Key</div>
+                <div class="panel-sub">Powers ad-free streams for every visitor</div>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="loadDebrid()">⟳ Refresh</button>
+            </div>
+            <div class="panel-body">
+              <div class="callout" style="margin-bottom:14px">
+                <div class="icon">⚠️</div>
+                <div>
+                  <h3>Account sharing risk</h3>
+                  <p>One RD key for the whole site is convenient, but heavy shared use can get the key banned. Prefer Premium and monitor usage.</p>
+                </div>
+              </div>
+              <label class="form-label">API token</label>
+              <input class="form-input" id="rdTokenIn" type="password" placeholder="Paste Real-Debrid API token" autocomplete="off" style="margin-bottom:12px;font-family:'JetBrains Mono',monospace;font-size:12px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                <button class="btn btn-green" onclick="saveDebrid()">Save &amp; Activate</button>
+                <button class="btn btn-secondary" onclick="clearDebrid()">Clear Token</button>
+                <button class="btn btn-yellow" onclick="procAction('restart')">♻️ Restart App</button>
+              </div>
+              <div id="rdMsg" style="font-size:13px;color:var(--muted)"></div>
+              <p style="margin-top:12px;font-size:12px;color:var(--muted)">Get a token from <a href="https://real-debrid.com/apitoken" target="_blank" rel="noreferrer" style="color:#bfdcff">real-debrid.com/apitoken</a>. Saved as <code>REALDEBRID_API_TOKEN</code> in backend/.env.</p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">Test RD Streams</div>
+                <div class="panel-sub">Verify Torrentio + Real-Debrid for a title</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="form-row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+                <div class="form-group" style="flex:1;min-width:100px">
+                  <label class="form-label">TMDB ID</label>
+                  <input class="form-input" id="rdTid" value="27205">
+                </div>
+                <div class="form-group" style="flex:1;min-width:100px">
+                  <label class="form-label">Type</label>
+                  <select class="form-input" id="rdType"><option value="movie">movie</option><option value="tv">tv</option></select>
+                </div>
+                <div class="form-group" style="width:80px">
+                  <label class="form-label">Season</label>
+                  <input class="form-input" id="rdSeason" value="1">
+                </div>
+                <div class="form-group" style="width:80px">
+                  <label class="form-label">Episode</label>
+                  <input class="form-input" id="rdEpisode" value="1">
+                </div>
+              </div>
+              <button class="btn btn-primary" onclick="testDebrid()" style="margin-bottom:12px">Test Streams</button>
+              <div class="logbox" id="rdTestOut">Results here...</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1235,6 +1304,7 @@ function showPage(id,navEl){
   const titles={
     dashboard:'Dashboard',
     online:'Live Users',
+    debrid:'Real-Debrid',
     scrapers:'Scraper Management',
     tester:'API Tester',
     cache:'Cache Management',
@@ -1247,6 +1317,7 @@ function showPage(id,navEl){
   const subtitles={
     dashboard:'System overview and live operational controls',
     online:'Track current viewers and active sessions',
+    debrid:'Site-wide Real-Debrid token and stream tests',
     scrapers:'Monitor scraper coverage and source health',
     tester:'Probe search and source endpoints',
     cache:'Inspect and prune cached records',
@@ -1259,6 +1330,7 @@ function showPage(id,navEl){
   document.getElementById('pageTitle').textContent=titles[id]||id;
   document.getElementById('pageSubtitle').textContent=subtitles[id]||'';
   if(id==='online')loadOnline();
+  if(id==='debrid')loadDebrid();
   if(id==='scrapers')loadScrapers();
   if(id==='cache')loadCacheStats();
   if(id==='process')loadProcStatus();
@@ -1271,6 +1343,7 @@ function refreshPage(){
   if(curPage==='dashboard')loadStats();
   if(curPage==='logs')loadLogs(curLogType);
   if(curPage==='online')loadOnline();
+  if(curPage==='debrid')loadDebrid();
   if(curPage==='cache')loadCacheStats();
   if(curPage==='process')loadProcStatus();
   if(curPage==='config')loadConfig();
@@ -1486,6 +1559,77 @@ async function nginxAction(action){
     box.textContent=d?.error||'Failed';
     toast(`Nginx ${action} failed`,'error');
   }
+}
+
+async function loadDebrid(){
+  const msg=document.getElementById('rdMsg');
+  if(msg)msg.textContent='';
+  try{
+    const d=await af('/debrid');
+    if(!d)return;
+    const st=document.getElementById('rd-status');
+    if(d.success&&d.configured&&d.data){
+      st.textContent='ACTIVE';
+      st.style.color='#a8f1ca';
+      document.getElementById('rd-status-sub').textContent='Site-wide streams enabled';
+      document.getElementById('rd-user').textContent=d.data.username||'—';
+      document.getElementById('rd-email').textContent=d.data.email||'';
+      document.getElementById('rd-prem').textContent=d.data.premium?'YES':'NO';
+      document.getElementById('rd-exp').textContent=d.data.expiration?('Expires '+new Date(d.data.expiration).toLocaleDateString()):'—';
+      document.getElementById('rd-hint').textContent=d.data.tokenHint||'set';
+    }else{
+      st.textContent='OFF';
+      st.style.color='#ffb1ba';
+      document.getElementById('rd-status-sub').textContent=d.error||'No site token';
+      document.getElementById('rd-user').textContent='—';
+      document.getElementById('rd-email').textContent='Add token below';
+      document.getElementById('rd-prem').textContent='—';
+      document.getElementById('rd-exp').textContent='—';
+      document.getElementById('rd-hint').textContent='none';
+    }
+  }catch(e){
+    document.getElementById('rd-status').textContent='ERR';
+    document.getElementById('rd-status-sub').textContent=e.message;
+  }
+}
+async function saveDebrid(){
+  const token=document.getElementById('rdTokenIn').value.trim();
+  const msg=document.getElementById('rdMsg');
+  if(!token){toast('Paste a token first','error');return;}
+  msg.textContent='Saving…';
+  const d=await af('/debrid',{method:'PUT',body:{token}});
+  if(d?.success){
+    toast(d.message||'Saved','success');
+    msg.textContent='Connected as '+(d.data?.username||'')+(d.data?.premium?' (Premium)':'');
+    document.getElementById('rdTokenIn').value='';
+    actLog.push({time:Date.now(),action:'debrid-save',data:{user:d.data?.username}});
+    loadDebrid();
+  }else{
+    toast(d?.error||'Failed','error');
+    msg.textContent=d?.error||'Failed';
+  }
+}
+async function clearDebrid(){
+  if(!confirm('Remove the site Real-Debrid token? Visitors will lose site-wide RD streams.'))return;
+  const d=await af('/debrid',{method:'DELETE'});
+  if(d?.success){
+    toast(d.message,'success');
+    actLog.push({time:Date.now(),action:'debrid-clear',data:{}});
+    loadDebrid();
+  }else toast(d?.error||'Failed','error');
+}
+async function testDebrid(){
+  const box=document.getElementById('rdTestOut');
+  box.textContent='Testing Real-Debrid streams…';
+  const d=await af('/debrid/test',{method:'POST',body:{
+    tmdbId:document.getElementById('rdTid').value||'27205',
+    type:document.getElementById('rdType').value||'movie',
+    season:document.getElementById('rdSeason').value||1,
+    episode:document.getElementById('rdEpisode').value||1
+  }});
+  box.textContent=JSON.stringify(d,null,2);
+  if(d?.success)toast((d.data?.streamCount||0)+' streams found','success');
+  else toast(d?.error||'Test failed','error');
 }
 
 async function loadConfig(){
