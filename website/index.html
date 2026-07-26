@@ -168,8 +168,8 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .auth-btn:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
 .auth-btn.primary{background:var(--red);border-color:var(--red);color:#fff}
 .auth-btn.primary:hover{filter:brightness(1.08);background:var(--red)}
-#authOv,#rdOv,#watchGateOv,#payPromoOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
-#authOv.on,#rdOv.on,#watchGateOv.on,#payPromoOv.on{display:flex}
+#authOv,#rdOv,#watchGateOv,#payPromoOv,#welcomeOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+#authOv.on,#rdOv.on,#watchGateOv.on,#payPromoOv.on,#welcomeOv.on{display:flex}
 #rdBtn{display:none}
 #rdBtn.on{border-color:var(--green);color:var(--green);background:rgba(70,211,105,.12)}
 .auth-box{width:100%;max-width:380px;background:var(--s1);border:1px solid var(--s4);border-radius:14px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.55)}
@@ -259,6 +259,7 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
         <button class="nb" id="nb-anime" onclick="go('anime',this);closeMoreNav()">Anime</button>
         <button class="nb" id="nb-genres" onclick="go('genres',this);closeMoreNav()">Genres</button>
         <button class="nb" id="nb-list" onclick="go('list',this);closeMoreNav()">My List</button>
+        <button class="nb" id="nb-request" onclick="closeMoreNav();FlixExtra.openRequest()">Request a title</button>
       </div>
     </div>
   </nav>
@@ -268,13 +269,12 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
       <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
     </select>
     <a class="auth-btn" id="getAppBtn" href="/get-app.html" title="Android, Fire Stick, iPhone">Get App</a>
-    <button class="auth-btn" id="reqBtn" onclick="FlixExtra.openRequest()" title="Request a title">Request</button>
     <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Ad-Free + Real-Debrid">Ad-Free £1</button>
     <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
     <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
     <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid" style="display:none">RD</button>
-    <button class="auth-btn" id="regBtn" onclick="openAuth('register')">Register</button>
-    <button class="auth-btn primary" id="authBtn" onclick="openAuth('login')">Sign In</button>
+    <button class="auth-btn primary" id="regBtn" onclick="openAuth('register')">Sign Up</button>
+    <button class="auth-btn" id="authBtn" onclick="openAuth('login')">Log In</button>
     <div class="opill"><div class="odot"></div><span id="oc">0</span>&nbsp;online</div>
   </div>
 </header>
@@ -312,6 +312,7 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
     <a href="/" onclick="go('genres',null);return false">Genres</a>
     <a href="/" onclick="go('list',null);return false">My List</a>
     <a href="/get-app.html">Get the App</a>
+    <a href="#" onclick="FlixExtra.openRequest();return false">Request a title</a>
     <a href="/admin">Admin</a>
   </div>
   <p>FlixNova &copy; 2026 &mdash; Stream movies &amp; TV from TMDB catalog via third-party players. We do not host media files.</p>
@@ -342,14 +343,26 @@ body.app-shell #hdr{padding-top:env(safe-area-inset-top)}
     <div class="tbd"><div class="tp" id="tpEp"></div><div class="tp" id="tpCast"></div><div class="tp" id="tpSim"></div><div class="tp" id="tpTrail"></div><div class="tp" id="tpComm"></div><div class="tp" id="tpLinks"></div></div>
   </div>
 </div>
+<div id="welcomeOv" onclick="if(event.target===this)closeWelcome(true)">
+  <div class="gate-box" role="dialog" aria-labelledby="welcomeTitle">
+    <div class="gate-kicker">Welcome to FlixNova</div>
+    <h2 id="welcomeTitle">Sign up or log in to continue</h2>
+    <p>Create a free account to watch movies &amp; TV. Guests can’t play titles — sign up takes a few seconds.</p>
+    <div class="gate-actions">
+      <button type="button" class="pbtn" onclick="closeWelcome(false);openAuth('register')">Sign Up — it’s free</button>
+      <button type="button" class="pbtn ghost" onclick="closeWelcome(false);openAuth('login')">Log In</button>
+      <button type="button" class="pbtn ghost" onclick="closeWelcome(true)">Browse without watching</button>
+    </div>
+  </div>
+</div>
 <div id="watchGateOv" onclick="if(event.target===this)closeWatchGate()">
   <div class="gate-box" role="dialog" aria-labelledby="gateTitle">
     <div class="gate-kicker">Account required</div>
-    <h2 id="gateTitle">Register or log in to watch</h2>
-    <p>Create a free account to stream movies &amp; TV. Free members use embed players. Upgrade later for Real-Debrid &amp; Ad-Free.</p>
+    <h2 id="gateTitle">Sign up or log in to watch</h2>
+    <p>You need a free account to play movies &amp; TV. Free members use embed players; Ad-Free £1 unlocks Real-Debrid.</p>
     <div class="gate-actions">
-      <button type="button" class="pbtn" onclick="closeWatchGate();openAuth('register')">Create free account</button>
-      <button type="button" class="pbtn ghost" onclick="closeWatchGate();openAuth('login')">Log in</button>
+      <button type="button" class="pbtn" onclick="closeWatchGate();openAuth('register')">Sign Up</button>
+      <button type="button" class="pbtn ghost" onclick="closeWatchGate();openAuth('login')">Log In</button>
       <button type="button" class="pbtn ghost" onclick="closeWatchGate()">Not now</button>
     </div>
   </div>
@@ -457,9 +470,26 @@ function isAdFreeUser(){
 }
 function openWatchGate(item){
   if(item)S._pendingWatch=item;
+  closeWelcome(false);
   var g=$('watchGateOv');if(g)g.classList.add('on');
 }
 function closeWatchGate(){var g=$('watchGateOv');if(g)g.classList.remove('on');}
+function openWelcome(){
+  if(S.token)return;
+  var w=$('welcomeOv');if(w)w.classList.add('on');
+}
+function closeWelcome(persist){
+  var w=$('welcomeOv');if(w)w.classList.remove('on');
+  if(persist)localStorage.setItem('fn_welcome_dismiss',String(Date.now()));
+}
+function maybeShowWelcome(){
+  if(S.token)return;
+  if(location.pathname.indexOf('/watch/')===0)return;
+  var ts=parseInt(localStorage.getItem('fn_welcome_dismiss')||'0',10)||0;
+  // Re-show every visit unless they dismissed in the last hour (still always block play)
+  if(ts && (Date.now()-ts)<60*60*1000)return;
+  setTimeout(openWelcome,600);
+}
 function requireWatchAuth(item){
   if(S.token)return true;
   if(item)S._pendingWatch=item;
@@ -574,27 +604,33 @@ function refreshAuthBtn(){
   var reg=$('regBtn');
   if(S.user){
     b.textContent=S.user.username+' ▾';
-    b.classList.remove('primary');
-    b.onclick=function(){if(confirm('Sign out?')){S.token='';S.user=null;localStorage.removeItem('fn_token');if(window.FlixExtra){FlixExtra.F.profile=null;FlixExtra.F.profiles=[];FlixExtra.setAdFree(false);}refreshAuthBtn();refreshRdBtn();var pb=$('profBtn');if(pb)pb.style.display='none';}}};
+    b.classList.add('primary');
+    b.onclick=function(){if(confirm('Sign out?')){S.token='';S.user=null;localStorage.removeItem('fn_token');localStorage.removeItem('fn_welcome_dismiss');if(window.FlixExtra){FlixExtra.F.profile=null;FlixExtra.F.profiles=[];FlixExtra.setAdFree(false);}refreshAuthBtn();refreshRdBtn();var pb=$('profBtn');if(pb)pb.style.display='none';maybeShowWelcome();}}};
     if(reg)reg.style.display='none';
   }else{
-    b.textContent='Sign In';
-    b.classList.add('primary');
+    b.textContent='Log In';
+    b.classList.remove('primary');
     b.onclick=function(){openAuth('login');};
-    if(reg){reg.style.display='inline-flex';reg.onclick=function(){openAuth('register');};}
+    if(reg){
+      reg.style.display='inline-flex';
+      reg.textContent='Sign Up';
+      reg.classList.add('primary');
+      reg.onclick=function(){openAuth('register');};
+    }
   }
   refreshRdBtn();
 }
 function openAuth(mode){
   closeWatchGate();
+  closeWelcome(false);
   S.authMode=(mode==='register')?'register':'login';
   var reg=S.authMode==='register';
-  $('authTitle').textContent=reg?'Create Account':'Sign In';
-  $('authSub').textContent=reg?'Register free to watch movies & TV':'Sync My List & history across devices';
+  $('authTitle').textContent=reg?'Sign Up':'Log In';
+  $('authSub').textContent=reg?'Create a free account to watch movies & TV':'Welcome back — sync My List & history';
   $('authEmail').style.display=reg?'block':'none';
-  $('authSubmit').textContent=reg?'Register':'Sign In';
+  $('authSubmit').textContent=reg?'Sign Up':'Log In';
   $('authErr').style.display='none';
-  $('authSwitch').innerHTML=reg?'Have an account? <a onclick="toggleAuthMode()">Sign In</a> · <a onclick="closeAuth()">Close</a>':'No account? <a onclick="toggleAuthMode()">Register</a> · <a onclick="FlixExtra.forgotPassword()">Forgot password?</a> · <a onclick="closeAuth()">Close</a>';
+  $('authSwitch').innerHTML=reg?'Have an account? <a onclick="toggleAuthMode()">Log In</a> · <a onclick="closeAuth()">Close</a>':'No account? <a onclick="toggleAuthMode()">Sign Up</a> · <a onclick="FlixExtra.forgotPassword()">Forgot password?</a> · <a onclick="closeAuth()">Close</a>';
   $('authOv').classList.add('on');
 }
 function closeAuth(){$('authOv').classList.remove('on');}
@@ -1575,7 +1611,7 @@ function routeFromLocation(){
   openModal(item);
   return true;
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeWatchGate();closeMoreNav();if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();FlixExtra.closePayPromo();}}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeWatchGate();closeWelcome(true);closeMoreNav();if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();FlixExtra.closePayPromo();}}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
 document.addEventListener('click',function(e){var m=$('navMore');if(m&&!m.contains(e.target))closeMoreNav();});
 $('ov').addEventListener('click',function(e){if(e.target===e.currentTarget)closeModal();});
 $('authOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeAuth();});
@@ -1604,6 +1640,7 @@ refreshAuthBtn();
 checkSiteRd();
 if(window.FlixExtra)FlixExtra.init();
 if(!routeFromLocation())go('home',$('nb-home'));
+maybeShowWelcome();
 </script>
 </body>
 </html>

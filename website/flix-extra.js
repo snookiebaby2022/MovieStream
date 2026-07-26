@@ -513,17 +513,18 @@
 
   function maybeShowPayPromo() {
     if (isAdFree()) return;
+    // Guests see Sign Up / Log In first — £1 promo is for logged-in free users
+    if (!(global.S && S.token)) return;
     if (localStorage.getItem('fn_paypromo_dismiss')) {
       var ts = parseInt(localStorage.getItem('fn_paypromo_dismiss'), 10) || 0;
-      // Re-show after 2 days
       if (Date.now() - ts < 2 * 24 * 60 * 60 * 1000) return;
     }
-    // Don’t steal focus from watch / auth / deep links
     if (location.pathname.indexOf('/watch/') === 0) return;
     if ($('ov') && $('ov').classList.contains('on')) return;
     if ($('authOv') && $('authOv').classList.contains('on')) return;
     if ($('watchGateOv') && $('watchGateOv').classList.contains('on')) return;
-    setTimeout(function () { openPayPromo(false); }, 1800);
+    if ($('welcomeOv') && $('welcomeOv').classList.contains('on')) return;
+    setTimeout(function () { openPayPromo(false); }, 2200);
   }
 
   function startCheckout() {
