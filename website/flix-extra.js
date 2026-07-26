@@ -590,28 +590,9 @@
   }
 
   function injectRowAds() {
-    if (isAdFree()) {
-      document.querySelectorAll('.house-ad').forEach(function (el) { el.remove(); });
-      var strip = $('adStrip'); if (strip) strip.style.display = 'none';
-      return;
-    }
-    var strip = $('adStrip');
-    if (strip) {
-      strip.style.display = 'block';
-      strip.innerHTML = houseAdHtml(0);
-    }
-    var rows = document.querySelectorAll('#rows .row');
-    if (!rows.length) return;
-    // Insert up to 2 soft ads between rows
-    var spots = [1, 3];
-    spots.forEach(function (idx, n) {
-      if (!rows[idx]) return;
-      if (rows[idx].previousElementSibling && rows[idx].previousElementSibling.classList.contains('house-ad-wrap')) return;
-      var wrap = document.createElement('div');
-      wrap.className = 'house-ad-wrap';
-      wrap.innerHTML = houseAdHtml(n + 1);
-      rows[idx].parentNode.insertBefore(wrap, rows[idx]);
-    });
+    // Homepage stays ad-free — ads only play inside the movie/TV player
+    document.querySelectorAll('.house-ad, .house-ad-wrap').forEach(function (el) { el.remove(); });
+    var strip = $('adStrip'); if (strip) { strip.style.display = 'none'; strip.innerHTML = ''; }
   }
 
   function renderAdUi() {
@@ -631,14 +612,7 @@
     loadPayStatus();
     var langSel = $('langSel');
     if (langSel) langSel.addEventListener('change', function () { setLang(langSel.value); });
-    // Re-inject ads when home rows render
-    var rows = $('rows');
-    if (rows && window.MutationObserver) {
-      var mo = new MutationObserver(function () {
-        if (!isAdFree()) injectRowAds();
-      });
-      mo.observe(rows, { childList: true, subtree: false });
-    }
+    injectRowAds();
   }
 
   global.FlixExtra = {
