@@ -104,8 +104,7 @@ pnpm-lock.yaml
 Dockerfile
 docker-compose.yml
 
-# CI/CD
-.github/
+# CI/CD (workflows are tracked)
 .gitlab/
 .azure/
 .travis.yml
