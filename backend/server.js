@@ -829,7 +829,7 @@ function adminAuth(req, res, next) {
 
 app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
   // Re-read .env so password changes apply without full code redeploy confusion
-  try { dotenv.config({ path: path.join(__dirname, '.env'), override: false }); } catch {}
+  try { dotenv.config({ path: path.join(__dirname, '.env'), override: true }); } catch {}
   const { username, password } = req.body || {};
   const adminUser = String(process.env.ADMIN_USER || 'admin').trim();
   const adminPass = String(process.env.ADMIN_PASS || '');
