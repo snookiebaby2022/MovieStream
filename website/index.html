@@ -293,18 +293,61 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .preroll-actions .pbtn{margin:0}
 .preroll-actions .pbtn.gold{background:var(--gold);color:#111}
 .preroll-actions .pbtn.ghost{background:rgba(255,255,255,.08)}
-/* TV / Fire Stick / app shell — clearer remote focus */
+/* TV / Fire Stick / Android TV — overscan-safe + remote focus */
+body.tv-mode{
+  --tv-pad-x:3.2vw;
+  --tv-pad-y:2.4vh;
+}
+body.tv-mode #hdr{
+  padding-left:var(--tv-pad-x);
+  padding-right:var(--tv-pad-x);
+  min-height:64px;
+}
+body.tv-mode #main,body.tv-mode #hero .hc,body.tv-mode footer{
+  padding-left:var(--tv-pad-x)!important;
+  padding-right:var(--tv-pad-x)!important;
+}
+body.tv-mode .nb,body.tv-mode .auth-btn,body.tv-mode .bplay,body.tv-mode .binfo,body.tv-mode .pbtn{
+  font-size:15px;
+  padding:10px 16px;
+}
+body.tv-mode .strip .card{width:158px}
+body.tv-mode .fgrid .card,body.tv-mode .sg .card{width:100%}
+body.tv-mode .htt{font-size:clamp(42px,6vw,72px)}
+body.tv-mode .adtip,#getAppBtn,#langSel{display:none!important}
 body.tv-mode .nb:focus,body.tv-mode .auth-btn:focus,body.tv-mode .bplay:focus,body.tv-mode .binfo:focus,
 body.tv-mode .card:focus,body.tv-mode .sc:focus,body.tv-mode .pbtn:focus,body.tv-mode .epi:focus,
-body.tv-mode a:focus,body.tv-mode button:focus{
-  outline:3px solid var(--gold)!important;outline-offset:3px;transform:scale(1.03);
+body.tv-mode .pc:focus,body.tv-mode a:focus,body.tv-mode button:focus,body.tv-mode input:focus{
+  outline:3px solid var(--gold)!important;outline-offset:4px;transform:scale(1.06);
+  box-shadow:0 0 0 6px rgba(245,197,24,.18);
+  z-index:2;
 }
-body.tv-mode .card{scroll-snap-align:start}
-body.tv-mode .strip{scroll-snap-type:x mandatory}
+body.tv-mode .card{scroll-snap-align:start;border-radius:10px}
+body.tv-mode .strip{scroll-snap-type:x mandatory;padding-bottom:12px}
+body.tv-mode .pw-tools button{min-width:88px;min-height:44px;font-size:15px}
+body.tv-mode #modal{max-width:96vw}
+body.tv-mode .sbar input{font-size:16px;min-height:44px}
+#appUpdateBar{
+  display:none;position:fixed;left:var(--tv-pad-x,16px);right:var(--tv-pad-x,16px);bottom:18px;z-index:12000;
+  background:linear-gradient(135deg,#1a1214,#121018);border:1px solid rgba(245,197,24,.35);
+  border-radius:14px;padding:14px 16px;color:#fff;box-shadow:0 12px 40px rgba(0,0,0,.45);
+  align-items:center;gap:14px;flex-wrap:wrap;
+}
+#appUpdateBar.on{display:flex}
+#appUpdateBar b{color:var(--gold)}
+#appUpdateBar .pbtn{margin:0}
 </style>
 
 </head>
 <body>
+<div id="appUpdateBar" role="status">
+  <div style="flex:1;min-width:200px;font-size:14px;line-height:1.4">
+    <b>App update available</b><br>
+    <span id="appUpdateNote">A newer FlixNova APK improves Fire Stick playback.</span>
+  </div>
+  <button type="button" class="pbtn" id="appUpdateBtn">Update APK</button>
+  <button type="button" class="pbtn" style="background:var(--s4)" onclick="dismissAppUpdate()">Later</button>
+</div>
 <header id="hdr">
   <div class="logo" onclick="goHome()"><div class="logo-i">F</div><div class="logo-t">Flix<b>Nova</b></div></div>
   <div class="hdr-scroll" id="hdrScroll">
@@ -524,16 +567,36 @@ var PH='data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg
 (function detectAppShell(){
   var q=new URLSearchParams(location.search);
   var ua=navigator.userAgent||'';
-  var isApp=q.get('app')==='1'||/FlixNovaApp|wv\)|; wv/i.test(ua)||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
-  var isTv=/AFT|AFTT|AFTM|AFTN|AFTS|AFTB|Android TV|BRAVIA|MIBOX|GoogleTV|SmartTV|TV Stick|Fire TV/i.test(ua)||q.get('tv')==='1';
+  var native=window.FlixNovaNative||{};
+  var isApp=q.get('app')==='1'||!!native.platform||/FlixNovaApp|wv\)|; wv/i.test(ua)||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  var isTv=!!native.tv||/FlixNovaTV|AFT|AFTT|AFTM|AFTN|AFTS|AFTB|Android TV|BRAVIA|MIBOX|GoogleTV|SmartTV|TV Stick|Fire TV/i.test(ua)||q.get('tv')==='1';
   if(isApp)document.body.classList.add('app-shell');
   if(isTv)document.body.classList.add('tv-mode');
-  // Make poster cards focusable for Fire Stick D-pad
-  if(isTv){
-    document.addEventListener('DOMContentLoaded',function(){
-      document.querySelectorAll('.card').forEach(function(c){if(!c.hasAttribute('tabindex'))c.setAttribute('tabindex','0');});
+  window.FlixNovaIsApp=!!isApp;
+  window.FlixNovaIsTv=!!isTv;
+  function focusableCards(root){
+    (root||document).querySelectorAll('.card,.nb,.auth-btn,.bplay,.binfo,.sc,.pbtn,.pc,.epi').forEach(function(c){
+      if(!c.hasAttribute('tabindex'))c.setAttribute('tabindex','0');
     });
   }
+  if(isTv||isApp){
+    document.addEventListener('DOMContentLoaded',function(){
+      focusableCards();
+      try{
+        var mo=new MutationObserver(function(){focusableCards();});
+        mo.observe(document.body,{childList:true,subtree:true});
+      }catch(e){}
+    });
+  }
+  window.addEventListener('flixnova-native-ready',function(){
+    var n=window.FlixNovaNative||{};
+    document.body.classList.add('app-shell');
+    if(n.tv)document.body.classList.add('tv-mode');
+    window.FlixNovaIsApp=true;
+    window.FlixNovaIsTv=!!n.tv;
+    focusableCards();
+    if(typeof checkAppUpdate==='function')checkAppUpdate();
+  });
 })();
 
 // ── ITEM STORE (THE FIX - no JSON in HTML attributes) ──────
@@ -1929,12 +1992,58 @@ function bTrail(videos){$('tpTrail').innerHTML='<div class="tb"><iframe src="'+Y
 // ── SOURCES & PLAYER ───────────────────────────────────────
 function isNativeApp(){
   try{
+    if(window.FlixNovaIsApp||(window.FlixNovaNative&&window.FlixNovaNative.platform))return true;
     if(window.Capacitor){
       if(typeof Capacitor.isNativePlatform==='function')return !!Capacitor.isNativePlatform();
       return true;
     }
   }catch(e){}
-  return /FlixNova|wv\)|Android.*Version\/4\.0/i.test(navigator.userAgent||'');
+  return /FlixNovaApp|wv\)|Android.*Version\/4\.0/i.test(navigator.userAgent||'');
+}
+function isTvApp(){
+  return !!(window.FlixNovaIsTv||document.body.classList.contains('tv-mode')||(window.FlixNovaNative&&window.FlixNovaNative.tv));
+}
+function dismissAppUpdate(){
+  try{localStorage.setItem('fn_apk_skip',String((window.FlixNovaNative&&window.FlixNovaNative.versionCode)||1));}catch(e){}
+  var b=$('appUpdateBar');if(b)b.classList.remove('on');
+}
+function openApkUpdate(url){
+  var u=url||'https://snookiebaby.xyz/downloads/FlixNova-android.apk';
+  try{
+    if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Browser&&Capacitor.Plugins.Browser.open){
+      Capacitor.Plugins.Browser.open({url:u});return;
+    }
+  }catch(e){}
+  try{window.open(u,'_blank');}catch(e2){location.href=u;}
+}
+function checkAppUpdate(){
+  if(!isNativeApp())return;
+  fetch(API+'/app/version',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.success)return;
+    var local=0;
+    try{
+      if(window.FlixNovaNative&&window.FlixNovaNative.versionCode)local=Number(window.FlixNovaNative.versionCode)||0;
+      else if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App&&Capacitor.Plugins.App.getInfo){
+        return Capacitor.Plugins.App.getInfo().then(function(info){
+          local=parseInt(String(info.build||info.version||'0').replace(/\D/g,''),10)||0;
+          maybeShowAppUpdate(d,local);
+        });
+      }
+    }catch(e){}
+    maybeShowAppUpdate(d,local);
+  }).catch(function(){});
+}
+function maybeShowAppUpdate(d,local){
+  var remote=Number(d.versionCode)||0;
+  if(!remote||local>=remote)return;
+  var skipped=0;
+  try{skipped=Number(localStorage.getItem('fn_apk_skip')||0);}catch(e){}
+  if(!d.forceUpdate&&skipped>=remote)return;
+  var note=$('appUpdateNote');
+  if(note)note.textContent=(d.notes||('Version '+d.versionName+' is ready.'))+' Install over the current app.';
+  var btn=$('appUpdateBtn');
+  if(btn)btn.onclick=function(){openApkUpdate(isTvApp()?(d.firetvApkUrl||d.apkUrl):d.apkUrl);};
+  var bar=$('appUpdateBar');if(bar)bar.classList.add('on');
 }
 function destroyPlayer(){
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
@@ -2410,7 +2519,33 @@ function routeFromLocation(){
   openModal(item);
   return true;
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeAuth();closeRd();closeWatchGate();closeWelcome(true);closeMoreNav();if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();FlixExtra.closePayPromo();}}if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();}});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    closeModal();closeAuth();closeRd();closeWatchGate();closeWelcome(true);closeMoreNav();
+    if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();FlixExtra.closePayPromo();}
+    return;
+  }
+  if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();return;}
+  // Fire Stick / Android TV remote
+  if(isTvApp()||isNativeApp()){
+    var t=e.target;
+    if((e.key==='Enter'||e.key===' ')&&t&&t.classList&&t.classList.contains('card')){
+      e.preventDefault();t.click();return;
+    }
+    if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+      var card=t&&t.closest?t.closest('.card'):null;
+      var strip=card&&card.parentElement;
+      if(strip&&(strip.classList.contains('strip')||strip.classList.contains('sg')||strip.classList.contains('fgrid'))){
+        var cards=[].slice.call(strip.querySelectorAll('.card'));
+        var i=cards.indexOf(card);
+        if(i>=0){
+          var n=e.key==='ArrowRight'?cards[i+1]:cards[i-1];
+          if(n){e.preventDefault();n.focus();try{n.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});}catch(ex){}}
+        }
+      }
+    }
+  }
+});
 document.addEventListener('click',function(e){var m=$('navMore');if(m&&!m.contains(e.target))closeMoreNav();});
 $('ov').addEventListener('click',function(e){if(e.target===e.currentTarget)closeModal();});
 $('authOv').addEventListener('click',function(e){if(e.target===e.currentTarget)closeAuth();});
@@ -2444,6 +2579,7 @@ if(window.FlixExtra)FlixExtra.init();
 syncAdultUi();
 if(!routeFromLocation())go('home',$('nb-home'));
 maybeShowWelcome();
+setTimeout(checkAppUpdate,1500);
 </script>
 </body>
 </html>

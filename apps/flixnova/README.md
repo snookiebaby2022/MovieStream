@@ -1,6 +1,13 @@
 # FlixNova — Android / Fire Stick / iOS
 
-One codebase wraps the **live website** (`https://snookiebaby.xyz:8443`), so catalog, login, payments, and players update when you deploy the site — no app store resubmit for content changes.
+One codebase wraps the **live website** (`https://snookiebaby.xyz`), so catalog, login, payments, and players update when you deploy the site — no app store resubmit for content changes.
+
+| What updates remotely? | How |
+|------------------------|-----|
+| Site UI, catalog, players, embeds | Automatic — WebView loads the live site |
+| New APK (TV shell, allowlist, UA) | In-app **Update APK** banner, or reinstall from Get App |
+
+Current native build: **versionCode 2 / 1.1.0** (Fire Stick / Android TV optimized).
 
 | Platform | How users get it |
 |----------|------------------|

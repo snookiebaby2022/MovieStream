@@ -396,6 +396,21 @@ app.get('/api/online', (req, res) => {
   });
 });
 
+// Native Android / Fire Stick APK version (for in-app update prompts)
+app.get('/api/app/version', (req, res) => {
+  res.json({
+    success: true,
+    platform: 'android',
+    versionCode: 2,
+    versionName: '1.1.0',
+    minVersionCode: 2,
+    apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-android.apk',
+    firetvApkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-firetv.apk',
+    notes: 'Fire Stick / Android TV optimized: embed hosts allowed, D-pad focus, single-iframe player.',
+    forceUpdate: false
+  });
+});
+
 app.get('/api/trending', async (req, res) => {
   try {
     const adult = await allowAdult(req);
