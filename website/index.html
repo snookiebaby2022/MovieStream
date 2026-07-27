@@ -1674,15 +1674,13 @@ function openModal(item){
         if(S.item){
           S.item.imdbId=imdb;
           S.item.title=det.data.title||S.item.title;
-          if(det.data.year)S.item.year=det.data.year;
-          sockWatchingUpdate();
-        }
           S.item.poster=det.data.poster||S.item.poster;
           S.item.backdrop=det.data.backdrop||S.item.backdrop;
           S.item.year=det.data.year||S.item.year;
           S.item.rating=det.data.rating||S.item.rating;
           S.item.overview=det.data.overview||S.item.overview;
           S.item.adult=!!(det.data.adult||S.item.adult);
+          sockWatchingUpdate();
           saveContinue(S.item,S.sn,S.ep);
         }
       }
