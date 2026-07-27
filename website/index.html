@@ -169,7 +169,8 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
   .hdr-scroll{gap:6px;padding-right:4px}
   .nav{display:flex}
   .nb{padding:6px 10px;font-size:12px}
-  .hdr-actions #getAppBtn,.hdr-actions #langSel{display:none}
+  .hdr-actions #langSel{display:none}
+  .hdr-actions #getAppBtn{display:inline-flex;padding:6px 10px;font-size:10px}
   .sbar{flex:0 0 132px;max-width:132px;min-width:110px;margin-left:0}
   .sbar input{padding:8px 10px;font-size:12px}
   .auth-btn{padding:6px 9px;font-size:10px}
@@ -314,7 +315,8 @@ body.tv-mode .nb,body.tv-mode .auth-btn,body.tv-mode .bplay,body.tv-mode .binfo,
 body.tv-mode .strip .card{width:158px}
 body.tv-mode .fgrid .card,body.tv-mode .sg .card{width:100%}
 body.tv-mode .htt{font-size:clamp(42px,6vw,72px)}
-body.tv-mode .adtip,#getAppBtn,#langSel{display:none!important}
+body.tv-mode .adtip,#langSel{display:none!important}
+body.app-shell #getAppBtn{display:none!important}
 body.tv-mode .nb:focus,body.tv-mode .auth-btn:focus,body.tv-mode .bplay:focus,body.tv-mode .binfo:focus,
 body.tv-mode .card:focus,body.tv-mode .sc:focus,body.tv-mode .pbtn:focus,body.tv-mode .epi:focus,
 body.tv-mode .pc:focus,body.tv-mode a:focus,body.tv-mode button:focus,body.tv-mode input:focus{
@@ -365,6 +367,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
           <button class="nb" id="nb-list" onclick="go('list',this);closeMoreNav()">Wishlist</button>
           <button class="nb" id="nb-adult" onclick="go('adult',this);closeMoreNav()" style="display:none">XXX</button>
           <button class="nb" id="nb-request" onclick="closeMoreNav();FlixExtra.openRequest()">Request a title</button>
+          <a class="nb" id="nb-getapp" href="/get-app.html" onclick="closeMoreNav()">Get App</a>
         </div>
       </div>
     </nav>
