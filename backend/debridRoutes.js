@@ -76,7 +76,7 @@ function browserScore(title, url, name) {
   if (/1080p/.test(t)) score += 18;
   if (/720p/.test(t)) score += 22;
   if (/480p|dvdrip|hdrip/.test(t)) score += 6;
-  if (/2160p|4k|uhd/.test(t)) score -= 30;
+  if (/2160p|4k|uhd/.test(t)) score -= 55;
   if (/x265|h\.?265|hevc|10bit|hdr10|dolby\s*vision|\bdv\b/.test(t)) score -= 45;
   if (/\bav1\b/.test(t)) score -= 50;
   if (/\.mkv(\?|$)|[\s.\-_]mkv[\s.\-_]/i.test(t)) score -= 25;
@@ -260,8 +260,8 @@ async function fetchJsonStreams(url, label) {
 }
 
 async function fetchTorrentio(token, path) {
-  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
-  const cfgAll = `realdebrid=${encodeURIComponent(token)}`;
+  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k,scr,cam,unknown`;
+  const cfgAll = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k`;
   let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgClean}${path}`, 'torrentio');
   if (!streams.length) {
     streams = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, 'torrentio');
@@ -761,6 +761,10 @@ router.post('/streams', async (req, res) => {
     // Prefer a solid set of browser-friendly links over a wall of 4K HEVC [RD+]
     if (friendly.length >= 4) streams = friendly;
     else if (cachedOnly.length >= 8) streams = dedupeStreams(friendly.concat(cachedOnly));
+
+    // Prefer 720p/1080p/HD when we have enough — skip 4K unless nothing else
+    const not4k = streams.filter(s => s.quality !== '4K');
+    if (not4k.length >= 3) streams = not4k;
 
     streams = streams.slice(0, 40);
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];

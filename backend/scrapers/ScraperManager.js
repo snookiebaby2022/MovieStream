@@ -256,6 +256,15 @@ class NontonGo extends S {
   }
 }
 
+class VidRock extends S {
+  constructor() { super('vidrock', 'https://vidrock.net'); }
+  buildUrl(id, t, s, e) {
+    return t === 'tv' && s && e
+      ? `${this.baseUrl}/tv/${id}/${s}/${e}`
+      : `${this.baseUrl}/movie/${id}`;
+  }
+}
+
 class SuperEmbed extends S {
   constructor() { super('superembed', 'https://multiembed.mov'); }
   buildUrl(id, t, s, e) {
@@ -386,8 +395,7 @@ class Hopcloud extends S {
 
 class ScraperManager {
   constructor() {
-    // clean:true = fewer ads / better player UX. Prioritize hosts that still answer in 2026.
-    // (vidlink / vidsrc.cc / vidfast currently 403 — demoted)
+    // Only hosts that currently answer (probed Jul 2026). Dead mirrors removed from rotation.
     this.scrapers = [
       { instance: new VidSrcWiki(),     priority: 1,  enabled: true,  clean: true },
       { instance: new Videasy(),        priority: 2,  enabled: true,  clean: true },
@@ -398,36 +406,9 @@ class ScraperManager {
       { instance: new VidSrcNL(),       priority: 7,  enabled: true,  clean: true },
       { instance: new VidSrcIn(),       priority: 8,  enabled: true,  clean: true },
       { instance: new MoviesApi(),      priority: 9,  enabled: true,  clean: true },
-      { instance: new VidSrcMeSu(),     priority: 10, enabled: true,  clean: true },
-      { instance: new VidLinkPro(),     priority: 11, enabled: false, clean: false }, // 403
-      { instance: new VidSrcCC(),       priority: 12, enabled: false, clean: false }, // 403
-      { instance: new VidSrcCC2(),      priority: 13, enabled: false, clean: false },
-      { instance: new VidFast(),        priority: 14, enabled: false, clean: false }, // 403
-      { instance: new Vidify(),         priority: 15, enabled: false, clean: false }, // timeout
-      { instance: new AutoEmbed(),      priority: 16, enabled: false, clean: false }, // DNS dead
-      { instance: new VidSrcPro(),      priority: 17, enabled: false, clean: false },
-      { instance: new VidSrcXyz(),      priority: 18, enabled: false, clean: false },
-      { instance: new VidSrcICU(),      priority: 19, enabled: false, clean: false },
-      { instance: new VidSrcVip(),      priority: 20, enabled: false, clean: false },
-      { instance: new VidSrcRip(),      priority: 21, enabled: false, clean: false },
-      { instance: new VidSrcNet(),      priority: 22, enabled: false, clean: false },
-      { instance: new VidSrcPmux(),     priority: 23, enabled: false, clean: false },
-      { instance: new VidsrcSx(),       priority: 24, enabled: false, clean: false },
-      { instance: new EmbedSu(),        priority: 25, enabled: false, clean: false },
-      { instance: new EmbedRs(),        priority: 26, enabled: false, clean: false },
-      { instance: new TwoEmbed(),       priority: 27, enabled: false, clean: false },
-      { instance: new TwoEmbedOrg(),    priority: 28, enabled: false, clean: false },
-      { instance: new TwoEmbedSkin(),   priority: 29, enabled: false, clean: false },
-      { instance: new MultiEmbed(),     priority: 30, enabled: false, clean: false },
-      { instance: new SmashyStream(),   priority: 31, enabled: false, clean: false },
-      { instance: new SuperEmbed(),     priority: 32, enabled: false, clean: false },
-      { instance: new BlackVid(),       priority: 33, enabled: false, clean: false },
-      { instance: new Moviee(),         priority: 34, enabled: false, clean: false },
-      { instance: new RgShows(),        priority: 35, enabled: false, clean: false },
-      { instance: new Embed123(),       priority: 36, enabled: false, clean: false },
-      { instance: new Hopcloud(),       priority: 37, enabled: false, clean: false },
-      { instance: new NontonGo(),       priority: 38, enabled: false, clean: false },
-      { instance: new FilmsToWatch(),   priority: 39, enabled: false, clean: false },
+      { instance: new NontonGo(),       priority: 10, enabled: true,  clean: true },
+      { instance: new VidRock(),        priority: 11, enabled: true,  clean: true },
+      { instance: new VidSrcMeSu(),     priority: 12, enabled: true,  clean: true },
     ];
     this.scrapers.sort((a, b) => a.priority - b.priority);
   }
