@@ -32,6 +32,8 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
 .note{margin-top:22px;font-size:12px;color:var(--t3);line-height:1.5}
 .kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
 .code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:rgba(255,255,255,.06);padding:8px 10px;border-radius:8px;word-break:break-all;color:#ddd;margin-top:8px}
+.dl-code-box{margin:0 0 14px;padding:14px;border-radius:12px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.28);text-align:center}
+.dl-code{font-family:ui-monospace,Consolas,monospace;font-size:clamp(28px,8vw,40px);font-weight:800;letter-spacing:.12em;color:var(--gold);margin:8px 0 4px}
 </style>
 </head>
 <body>
@@ -60,14 +62,19 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
 
       <section class="card">
         <h2>Fire Stick / Fire TV</h2>
-        <p>Install the same APK with Downloader (or ADB). <b>Update required</b> if you see 403 Forbidden on play.</p>
+        <p>Install the same APK with the <b>Downloader</b> app (easiest), or paste the APK URL.</p>
+        <div class="dl-code-box">
+          <div class="kicker" style="margin:0">Code for Downloader App</div>
+          <div class="dl-code" id="dlCode">3777174</div>
+          <button class="btn" type="button" id="copyDlCode" style="width:100%;margin-top:10px">Copy Downloader code</button>
+        </div>
         <ol class="steps">
           <li><b>1.</b> Settings → My Fire TV → Developer Options → <b>Apps from Unknown Sources</b> ON.</li>
           <li><b>2.</b> Install <b>Downloader</b> from the Amazon store.</li>
-          <li><b>3.</b> Paste the APK URL below → Download → Install → Open FlixNova.</li>
-          <li><b>4.</b> If a title shows <b>403</b>, press <b>Next</b> for another server (or update the APK).</li>
+          <li><b>3.</b> Open Downloader → enter code <b>3777174</b> → Go → Download → Install.</li>
+          <li><b>4.</b> Open FlixNova → Sign Up / Log In → Watch.</li>
         </ol>
-        <button class="btn ghost" type="button" id="copyApk">Copy APK URL for Downloader</button>
+        <button class="btn ghost" type="button" id="copyApk">Copy full APK URL instead</button>
         <div class="code" id="apkUrl2"></div>
       </section>
 
@@ -84,11 +91,12 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
       </section>
     </div>
 
-    <p class="note">Get App from the site header opens this page. Fire Stick users: reinstall the latest APK if embeds show 403 Forbidden.</p>
+    <p class="note">Fire Stick tip: in Downloader, type code <b style="color:#fff">3777174</b> — faster than pasting a long URL. Reinstall if embeds show 403 Forbidden.</p>
   </div>
   <script>
     (function () {
-      var url = location.origin + '/downloads/FlixNova-android-debug.apk';
+      var url = location.origin + '/downloads/FlixNova-android.apk';
+      var code = '3777174';
       var a = document.getElementById('apkUrl');
       var b = document.getElementById('apkUrl2');
       if (a) a.textContent = url;
@@ -97,7 +105,11 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
       if (btn) btn.href = url;
       var copy = document.getElementById('copyApk');
       if (copy) copy.onclick = function () {
-        navigator.clipboard.writeText(url).then(function () { copy.textContent = 'Copied!'; }).catch(function () { prompt('Copy this URL:', url); });
+        navigator.clipboard.writeText(url).then(function () { copy.textContent = 'URL copied!'; }).catch(function () { prompt('Copy this URL:', url); });
+      };
+      var copyCode = document.getElementById('copyDlCode');
+      if (copyCode) copyCode.onclick = function () {
+        navigator.clipboard.writeText(code).then(function () { copyCode.textContent = 'Code copied!'; }).catch(function () { prompt('Copy this code:', code); });
       };
     })();
   </script>
