@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>FlixNova Admin</title>
+  <style>
+    html, body {
+      margin: 0; height: 100%; background: #090b10; color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+    }
+    .box { padding: 24px; max-width: 360px; }
+    .mark {
+      width: 72px; height: 72px; margin: 0 auto 16px; border-radius: 16px;
+      background: #2563eb; display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 28px; box-shadow: 0 8px 28px rgba(37,99,235,.35);
+    }
+    h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: .02em; }
+    p { color: #b3b3b3; font-size: 14px; line-height: 1.5; margin: 0 0 18px; }
+    a {
+      display: inline-block; padding: 12px 18px; border-radius: 10px;
+      background: #2563eb; color: #fff; text-decoration: none; font-weight: 700;
+    }
+    .hint { margin-top: 14px; font-size: 12px; color: #808080; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="mark">A</div>
+    <h1>FlixNova Admin</h1>
+    <p>Loading the admin panel…</p>
+    <a id="open" href="https://snookiebaby.xyz/admin/">Open Admin</a>
+    <div class="hint">Staff only · manage users, plans, promo</div>
+  </div>
+  <script>
+    setTimeout(function () {
+      location.replace('https://snookiebaby.xyz/admin/');
+    }, 350);
+  </script>
+</body>
+</html>

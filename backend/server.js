@@ -20,7 +20,7 @@ const { router: authRouter, verifyToken } = require('./authRoutes');
 const debridRouter = require('./debridRoutes');
 const { router: featureRouter } = require('./featureRoutes');
 const { router: payRouter, handleWebhook } = require('./paymentRoutes');
-const { PlayEvent, User, ContactMessage } = require('./models');
+const { PlayEvent, User, ContactMessage, TitleRequest, Promo } = require('./models');
 
 function requireUser(req, res) {
   const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -935,6 +935,18 @@ app.delete('/api/admin/cache/clear', adminAuth, async (req, res) => {
   catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+app.delete('/api/admin/cache/key', adminAuth, async (req, res) => {
+  try {
+    const key = String(req.body?.key || req.query?.key || '').trim();
+    if (!key) return res.status(400).json({ success: false, error: 'key required' });
+    if (rok && rc) await rc.del(key);
+    mem.delete(key);
+    res.json({ success: true, deleted: key });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.get('/api/admin/logs/:type', adminAuth, (req, res) => {
   const file = req.params.type==='error' ? '/var/log/moviestream-error.log' : '/var/log/moviestream-out.log';
   const lines = parseInt(req.query.lines) || 100;
@@ -1289,6 +1301,194 @@ app.delete('/api/admin/users/:id', adminAuth, async (req, res) => {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ success: false, error: 'User not found' });
     res.json({ success: true, message: 'User deleted' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** Create a site user from admin (optional Ad-Free) */
+app.post('/api/admin/users', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const username = String(req.body?.username || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 120);
+    const adFree = !!req.body?.adFree;
+    if (username.length < 3 || password.length < 6) {
+      return res.status(400).json({ success: false, error: 'Username (3+) and password (6+) required' });
+    }
+    const exists = await User.findOne({ username });
+    if (exists) return res.status(409).json({ success: false, error: 'Username taken' });
+    const bcrypt = require('bcryptjs');
+    const passHash = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      username,
+      email,
+      passHash,
+      adFree,
+      adFreeAt: adFree ? new Date() : null
+    });
+    res.json({
+      success: true,
+      data: {
+        id: String(user._id),
+        username: user.username,
+        email: user.email || '',
+        adFree: !!user.adFree
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** Title requests from users */
+app.get('/api/admin/requests', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const status = String(req.query.status || '').trim();
+    const filter = ['open', 'done', 'rejected'].includes(status) ? { status } : {};
+    const list = await TitleRequest.find(filter).sort({ createdAt: -1 }).limit(200).lean();
+    const open = await TitleRequest.countDocuments({ status: 'open' });
+    res.json({
+      success: true,
+      open,
+      data: list.map(r => ({
+        id: String(r._id),
+        title: r.title,
+        mediaType: r.mediaType,
+        note: r.note || '',
+        username: r.username || 'guest',
+        tmdbId: r.tmdbId,
+        status: r.status,
+        adminNote: r.adminNote || '',
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.patch('/api/admin/requests/:id', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const doc = await TitleRequest.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, error: 'Not found' });
+    const { status, adminNote } = req.body || {};
+    if (['open', 'done', 'rejected'].includes(status)) doc.status = status;
+    if (adminNote !== undefined) doc.adminNote = String(adminNote || '').slice(0, 500);
+    doc.updatedAt = new Date();
+    await doc.save();
+    res.json({ success: true, data: { id: String(doc._id), status: doc.status, adminNote: doc.adminNote } });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/** First-10 free Ad-Free launch promo */
+app.get('/api/admin/promo', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const FIRST10_KEY = 'first10';
+    const envLimit = Math.max(1, parseInt(process.env.FIRST10_PROMO_LIMIT || '10', 10) || 10);
+    await Promo.updateOne(
+      { key: FIRST10_KEY },
+      { $setOnInsert: { key: FIRST10_KEY, limit: envLimit, claimed: 0, claims: [], enabled: true } },
+      { upsert: true }
+    );
+    const promo = await Promo.findOne({ key: FIRST10_KEY }).lean();
+    const limit = Math.max(1, promo?.limit || envLimit);
+    const claimed = Math.min(limit, Math.max(0, promo?.claimed || 0));
+    res.json({
+      success: true,
+      data: {
+        key: FIRST10_KEY,
+        enabled: promo?.enabled !== false && String(process.env.FIRST10_PROMO_ENABLED || '1') !== '0',
+        limit,
+        claimed,
+        remaining: Math.max(0, limit - claimed),
+        claims: (promo?.claims || []).slice().reverse()
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.patch('/api/admin/promo', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const FIRST10_KEY = 'first10';
+    const updates = { updatedAt: new Date() };
+    if (typeof req.body?.enabled === 'boolean') updates.enabled = req.body.enabled;
+    if (req.body?.limit !== undefined) {
+      const lim = parseInt(req.body.limit, 10);
+      if (!Number.isFinite(lim) || lim < 1 || lim > 1000) {
+        return res.status(400).json({ success: false, error: 'limit must be 1–1000' });
+      }
+      updates.limit = lim;
+    }
+    const promo = await Promo.findOneAndUpdate(
+      { key: FIRST10_KEY },
+      { $set: updates, $setOnInsert: { key: FIRST10_KEY, claimed: 0, claims: [] } },
+      { new: true, upsert: true }
+    );
+    res.json({
+      success: true,
+      data: {
+        enabled: promo.enabled !== false,
+        limit: promo.limit,
+        claimed: promo.claimed,
+        remaining: Math.max(0, promo.limit - promo.claimed)
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/promo/reset', adminAuth, async (req, res) => {
+  try {
+    if (require('mongoose').connection.readyState !== 1) {
+      return res.status(503).json({ success: false, error: 'Database unavailable' });
+    }
+    const FIRST10_KEY = 'first10';
+    // Clear promoClaim flags on users who used this promo (does not revoke adFree by default)
+    const revoke = !!req.body?.revokeAdFree;
+    const claimedUsers = await Promo.findOne({ key: FIRST10_KEY }).lean();
+    const ids = (claimedUsers?.claims || []).map(c => c.userId).filter(Boolean);
+    if (revoke && ids.length) {
+      await User.updateMany(
+        { _id: { $in: ids }, promoClaim: FIRST10_KEY },
+        { $set: { adFree: false, adFreeAt: null, promoClaim: '' } }
+      );
+    } else if (ids.length) {
+      await User.updateMany({ _id: { $in: ids }, promoClaim: FIRST10_KEY }, { $set: { promoClaim: '' } });
+    }
+    const promo = await Promo.findOneAndUpdate(
+      { key: FIRST10_KEY },
+      { $set: { claimed: 0, claims: [], updatedAt: new Date() } },
+      { new: true, upsert: true }
+    );
+    res.json({
+      success: true,
+      message: revoke
+        ? 'Promo reset and Ad-Free revoked for prior claimants'
+        : 'Promo counter reset (Ad-Free kept on prior claimants)',
+      data: { claimed: 0, remaining: promo?.limit || 10, limit: promo?.limit || 10 }
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

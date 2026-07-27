@@ -808,6 +808,8 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
   #page-users .users-table-wrap{display:none}
   #page-users .user-cards{display:grid}
   #page-users .panel-body{padding:14px}
+  #page-requests .requests-table-wrap{display:none}
+  #page-requests .user-cards{display:grid}
   /* Other tables stay scrollable */
   .panel-body > .tbl,
   .panel-body > table.tbl{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -824,7 +826,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="brand-mark">F</div>
         <div>
           <div class="login-title">Flix<b>Nova</b></div>
-          <div class="version-chip">Admin Panel v3.1 · mobile</div>
+          <div class="version-chip">Admin Panel v3.2 · mobile</div>
         </div>
       </div>
       <div class="login-kicker">A polished control room for moderation, system health, cache, logs, scrapers, and live traffic.</div>
@@ -862,6 +864,8 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
       <div class="nav-sec">Content</div>
       <div class="nav-item" data-nav="debrid" onclick="showPage('debrid',this)"><span class="nav-icon">▶️</span><span class="nav-text">Real-Debrid</span></div>
       <div class="nav-item" data-nav="users" onclick="showPage('users',this)"><span class="nav-icon">👤</span><span class="nav-text">Users</span></div>
+      <div class="nav-item" data-nav="requests" onclick="showPage('requests',this)"><span class="nav-icon">📩</span><span class="nav-text">Requests</span><span class="nav-badge" id="sb-requests">0</span></div>
+      <div class="nav-item" data-nav="promo" onclick="showPage('promo',this)"><span class="nav-icon">🎁</span><span class="nav-text">Launch Promo</span></div>
       <div class="nav-item" data-nav="catalog" onclick="showPage('catalog',this)"><span class="nav-icon">🎞️</span><span class="nav-text">Catalog</span></div>
       <div class="nav-item" data-nav="apps" onclick="showPage('apps',this)"><span class="nav-icon">📱</span><span class="nav-text">Apps</span></div>
       <div class="nav-item" data-nav="analytics" onclick="showPage('analytics',this)"><span class="nav-icon">📈</span><span class="nav-text">Analytics</span></div>
@@ -1033,6 +1037,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
             </div>
             <div class="panel-actions">
               <input class="form-input" id="userSearch" placeholder="Search username / email" onkeydown="if(event.key==='Enter')loadUsers()">
+              <button class="btn btn-green btn-sm" onclick="openCreateUser()">＋ Create user</button>
               <button class="btn btn-secondary btn-sm" onclick="loadUsers()">⟳ Refresh</button>
             </div>
           </div>
@@ -1044,6 +1049,77 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
               </table>
             </div>
             <div class="user-cards" id="usersCards"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-requests">
+        <div class="stat-grid" style="margin-bottom:16px">
+          <div class="stat-card" style="--ac:var(--yellow)"><div class="stat-icon">📩</div><div class="stat-label">Open</div><div class="stat-value" id="rq-open">0</div><div class="stat-sub">awaiting review</div></div>
+          <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">✅</div><div class="stat-label">Done</div><div class="stat-value" id="rq-done">0</div><div class="stat-sub">completed</div></div>
+          <div class="stat-card" style="--ac:var(--red)"><div class="stat-icon">⛔</div><div class="stat-label">Rejected</div><div class="stat-value" id="rq-rej">0</div><div class="stat-sub">closed</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">📩 Title requests</div>
+              <div class="panel-sub">User requests for missing movies / shows</div>
+            </div>
+            <div class="panel-actions">
+              <select class="form-select" id="rqFilter" onchange="loadRequests()" style="width:120px;padding:8px 10px;font-size:12px">
+                <option value="">All</option>
+                <option value="open" selected>Open</option>
+                <option value="done">Done</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="loadRequests()">⟳ Refresh</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="tbl-wrap requests-table-wrap">
+              <table class="tbl">
+                <thead><tr><th>When</th><th>User</th><th>Title</th><th>Type</th><th>Note</th><th>Status</th><th></th></tr></thead>
+                <tbody id="requestsTable"><tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
+              </table>
+            </div>
+            <div class="user-cards" id="requestsCards"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-promo">
+        <div class="stat-grid" style="margin-bottom:16px">
+          <div class="stat-card" style="--ac:var(--gold,#f5c518)"><div class="stat-icon">🎁</div><div class="stat-label">Remaining</div><div class="stat-value" id="pr-remain">—</div><div class="stat-sub">free Ad-Free spots</div></div>
+          <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">✨</div><div class="stat-label">Claimed</div><div class="stat-value" id="pr-claimed">—</div><div class="stat-sub">of <span id="pr-limit">10</span></div></div>
+          <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">⏻</div><div class="stat-label">Status</div><div class="stat-value" id="pr-status" style="font-size:18px">—</div><div class="stat-sub">launch offer</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">🎁 First-N free Ad-Free</div>
+              <div class="panel-sub">Launch promo — sign up &amp; claim</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadPromo()">⟳ Refresh</button>
+          </div>
+          <div class="panel-body">
+            <div class="form-row" style="gap:10px;flex-wrap:wrap;margin-bottom:14px">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Limit</label>
+                <input class="form-input" id="prLimitInput" type="number" min="1" max="1000" value="10" style="width:110px">
+              </div>
+              <button class="btn btn-blue" onclick="savePromoSettings()">Save limit</button>
+              <button class="btn btn-green" id="prEnableBtn" onclick="togglePromoEnabled(true)">Enable</button>
+              <button class="btn btn-secondary" id="prDisableBtn" onclick="togglePromoEnabled(false)">Disable</button>
+              <button class="btn btn-yellow" onclick="resetPromo(false)">Reset counter</button>
+              <button class="btn btn-red" onclick="resetPromo(true)">Reset + revoke Ad-Free</button>
+            </div>
+            <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.5">Reset counter frees spots again. <b>Reset + revoke</b> also removes Ad-Free from people who claimed the promo.</p>
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th>When</th><th>User</th><th>User ID</th></tr></thead>
+                <tbody id="promoClaimsTable"><tr><td colspan="3" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -1095,6 +1171,17 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
                   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
                     <a class="btn btn-green" href="/downloads/FlixNova-android.apk">⬇ Download APK</a>
                     <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(location.origin+'/downloads/FlixNova-android.apk');toast('APK URL copied','success')">Copy APK URL</button>
+                  </div>
+                </div>
+              </div>
+              <div class="callout">
+                <div class="icon">🛠️</div>
+                <div>
+                  <h3>Admin Android app</h3>
+                  <p>Capacitor shell that opens the admin panel. Use on your phone to manage users, plans, promo, and requests.</p>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                    <a class="btn btn-blue" href="/downloads/FlixNova-Admin-android.apk">⬇ Download Admin APK</a>
+                    <a class="btn btn-secondary" href="/admin/" target="_blank" rel="noreferrer">Open /admin in browser</a>
                   </div>
                 </div>
               </div>
@@ -1516,6 +1603,39 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
   </div>
 </div>
 
+<div class="modal-ov" id="userCreateOv" onclick="if(event.target===this)closeCreateUser()">
+  <div class="modal-box" role="dialog" aria-labelledby="ucTitle">
+    <h3 id="ucTitle">Create user</h3>
+    <p>Add a site account. Optionally grant Ad-Free immediately.</p>
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input class="form-input" id="ucUser" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="ucEmail" type="email" placeholder="optional">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input class="form-input" id="ucPass" type="password" autocomplete="new-password" placeholder="min 6 characters">
+    </div>
+    <div class="plan-toggle">
+      <div>
+        <div class="lbl">Ad-Free plan</div>
+        <div class="sub">Grant paid plan now</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="ucAdFree">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeCreateUser()">Cancel</button>
+      <button type="button" class="btn btn-green" id="ucSaveBtn" onclick="saveCreateUser()">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const AAPI='/api/admin';
 let token=localStorage.getItem('adminToken');
@@ -1640,6 +1760,8 @@ function showPage(id,navEl){
     online:'Live Users',
     debrid:'Real-Debrid',
     users:'Users',
+    requests:'Title Requests',
+    promo:'Launch Promo',
     catalog:'Catalog',
     apps:'Apps',
     analytics:'Analytics',
@@ -1659,6 +1781,8 @@ function showPage(id,navEl){
     online:'Track current viewers and active sessions',
     debrid:'Site-wide Real-Debrid token and stream tests',
     users:'Accounts, Ad-Free grants, and member stats',
+    requests:'Review missing-title requests from members',
+    promo:'First-N free Ad-Free offer controls',
     catalog:'Force-refresh homepage / trending TMDB caches',
     apps:'Android APK, Fire Stick, and iOS install links',
     analytics:'Play counts, RD hit rate, top titles',
@@ -1678,6 +1802,8 @@ function showPage(id,navEl){
   if(id==='online')loadOnline();
   if(id==='debrid')loadDebrid();
   if(id==='users')loadUsers();
+  if(id==='requests')loadRequests();
+  if(id==='promo')loadPromo();
   if(id==='analytics')loadAnalytics();
   if(id==='scrapers')loadScrapers();
   if(id==='cache')loadCacheStats();
@@ -1695,6 +1821,8 @@ function refreshPage(){
   if(curPage==='online')loadOnline();
   if(curPage==='debrid')loadDebrid();
   if(curPage==='users')loadUsers();
+  if(curPage==='requests')loadRequests();
+  if(curPage==='promo')loadPromo();
   if(curPage==='analytics')loadAnalytics();
   if(curPage==='cache')loadCacheStats();
   if(curPage==='process')loadProcStatus();
@@ -2018,6 +2146,141 @@ async function deleteUser(id,name){
   if(d?.success){toast('User deleted','success');loadUsers();}
   else toast(d?.error||'Failed','error');
 }
+function openCreateUser(){
+  document.getElementById('ucUser').value='';
+  document.getElementById('ucEmail').value='';
+  document.getElementById('ucPass').value='';
+  document.getElementById('ucAdFree').checked=false;
+  document.getElementById('userCreateOv').classList.add('on');
+  document.body.style.overflow='hidden';
+  setTimeout(()=>document.getElementById('ucUser')?.focus(),50);
+}
+function closeCreateUser(){
+  document.getElementById('userCreateOv')?.classList.remove('on');
+  document.body.style.overflow='';
+}
+async function saveCreateUser(){
+  const username=(document.getElementById('ucUser').value||'').trim();
+  const email=(document.getElementById('ucEmail').value||'').trim();
+  const password=document.getElementById('ucPass').value||'';
+  const adFree=!!document.getElementById('ucAdFree').checked;
+  if(username.length<3||password.length<6){toast('Username 3+ and password 6+ required','error');return;}
+  const btn=document.getElementById('ucSaveBtn');
+  if(btn){btn.disabled=true;btn.textContent='Creating…';}
+  const d=await af('/users',{method:'POST',body:{username,email,password,adFree}});
+  if(btn){btn.disabled=false;btn.textContent='Create';}
+  if(d?.success){
+    toast('User created'+(adFree?' · Ad-Free':''),'success');
+    closeCreateUser();
+    loadUsers();
+  }else toast(d?.error||'Failed','error');
+}
+async function loadRequests(){
+  const status=document.getElementById('rqFilter')?.value||'';
+  const d=await af('/requests'+(status?('?status='+encodeURIComponent(status)):''));
+  const tbody=document.getElementById('requestsTable');
+  const cards=document.getElementById('requestsCards');
+  if(!d?.success){
+    const err=d?.error||'Failed';
+    tbody.innerHTML=`<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">${esc(err)}</td></tr>`;
+    if(cards)cards.innerHTML=`<div class="user-card" style="color:var(--muted);text-align:center">${esc(err)}</div>`;
+    return;
+  }
+  const badge=document.getElementById('sb-requests');
+  if(badge)badge.textContent=String(d.open||0);
+  // Counts: fetch all statuses lightly via open + current list heuristics
+  document.getElementById('rq-open').textContent=d.open??0;
+  if(!status){
+    const done=(d.data||[]).filter(r=>r.status==='done').length;
+    const rej=(d.data||[]).filter(r=>r.status==='rejected').length;
+    document.getElementById('rq-done').textContent=done;
+    document.getElementById('rq-rej').textContent=rej;
+  }
+  if(!d.data?.length){
+    tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">No requests</td></tr>';
+    if(cards)cards.innerHTML='<div class="user-card" style="color:var(--muted);text-align:center">No requests</div>';
+    return;
+  }
+  tbody.innerHTML=d.data.map(r=>`
+    <tr>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${r.createdAt?esc(new Date(r.createdAt).toLocaleString()):'—'}</td>
+      <td>${esc(r.username||'guest')}</td>
+      <td><b>${esc(r.title)}</b></td>
+      <td>${esc(r.mediaType||'either')}</td>
+      <td style="font-size:12px;color:var(--muted)">${esc(r.note||'—')}</td>
+      <td><span class="badge ${r.status==='done'?'badge-green':r.status==='rejected'?'badge-red':'badge-yellow'}">${esc(r.status)}</span></td>
+      <td style="white-space:nowrap">
+        ${r.status!=='done'?`<button class="btn btn-green btn-sm" data-id="${esc(r.id)}" onclick="setRequestStatus(this.dataset.id,'done')">Done</button>`:''}
+        ${r.status!=='rejected'?`<button class="btn btn-secondary btn-sm" data-id="${esc(r.id)}" onclick="setRequestStatus(this.dataset.id,'rejected')">Reject</button>`:''}
+        ${r.status!=='open'?`<button class="btn btn-blue btn-sm" data-id="${esc(r.id)}" onclick="setRequestStatus(this.dataset.id,'open')">Reopen</button>`:''}
+      </td>
+    </tr>`).join('');
+  if(cards){
+    cards.innerHTML=d.data.map(r=>`
+      <div class="user-card">
+        <div class="user-card-top">
+          <div>
+            <div class="user-card-name">${esc(r.title)}</div>
+            <div class="user-card-meta">${esc(r.username||'guest')} · ${esc(r.mediaType||'either')}<br>${r.createdAt?esc(new Date(r.createdAt).toLocaleString()):'—'}<br>${esc(r.note||'')}</div>
+          </div>
+          <span class="badge ${r.status==='done'?'badge-green':r.status==='rejected'?'badge-red':'badge-yellow'}">${esc(r.status)}</span>
+        </div>
+        <div class="user-card-actions">
+          ${r.status!=='done'?`<button class="btn btn-green" data-id="${esc(r.id)}" onclick="setRequestStatus(this.dataset.id,'done')">Done</button>`:''}
+          ${r.status!=='rejected'?`<button class="btn btn-secondary" data-id="${esc(r.id)}" onclick="setRequestStatus(this.dataset.id,'rejected')">Reject</button>`:''}
+          ${r.status!=='open'?`<button class="btn btn-blue span2" data-id="${esc(r.id)}" onclick="setRequestStatus(this.dataset.id,'open')">Reopen</button>`:''}
+        </div>
+      </div>`).join('');
+  }
+}
+async function setRequestStatus(id,status){
+  const d=await af('/requests/'+id,{method:'PATCH',body:{status}});
+  if(d?.success){toast('Request → '+status,'success');loadRequests();}
+  else toast(d?.error||'Failed','error');
+}
+async function loadPromo(){
+  const d=await af('/promo');
+  if(!d?.success){toast(d?.error||'Failed to load promo','error');return;}
+  const p=d.data||{};
+  document.getElementById('pr-remain').textContent=p.remaining??'—';
+  document.getElementById('pr-claimed').textContent=p.claimed??'—';
+  document.getElementById('pr-limit').textContent=p.limit??10;
+  document.getElementById('prLimitInput').value=p.limit??10;
+  document.getElementById('pr-status').textContent=p.enabled?'ON':'OFF';
+  document.getElementById('pr-status').style.color=p.enabled?'#a8f1ca':'#ffb1ba';
+  const tbody=document.getElementById('promoClaimsTable');
+  const claims=p.claims||[];
+  if(!claims.length){
+    tbody.innerHTML='<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:20px">No claims yet</td></tr>';
+  }else{
+    tbody.innerHTML=claims.map(c=>`
+      <tr>
+        <td style="font-size:12px;color:var(--muted)">${c.at?esc(new Date(c.at).toLocaleString()):'—'}</td>
+        <td><b>${esc(c.username||'—')}</b></td>
+        <td style="font-size:11px;color:var(--muted)">${esc(c.userId||'')}</td>
+      </tr>`).join('');
+  }
+}
+async function savePromoSettings(){
+  const limit=parseInt(document.getElementById('prLimitInput').value,10);
+  const d=await af('/promo',{method:'PATCH',body:{limit}});
+  if(d?.success){toast('Promo limit saved','success');loadPromo();}
+  else toast(d?.error||'Failed','error');
+}
+async function togglePromoEnabled(on){
+  const d=await af('/promo',{method:'PATCH',body:{enabled:!!on}});
+  if(d?.success){toast(on?'Promo enabled':'Promo disabled','success');loadPromo();}
+  else toast(d?.error||'Failed','error');
+}
+async function resetPromo(revoke){
+  const msg=revoke
+    ?'Reset promo AND revoke Ad-Free from people who claimed it?'
+    :'Reset promo counter? Prior claimants keep Ad-Free.';
+  if(!confirm(msg))return;
+  const d=await af('/promo/reset',{method:'POST',body:{revokeAdFree:!!revoke}});
+  if(d?.success){toast(d.message||'Promo reset','success');loadPromo();loadUsers();}
+  else toast(d?.error||'Failed','error');
+}
 async function refreshCatalog(){
   const msg=document.getElementById('catalogMsg');
   if(msg)msg.textContent='Refreshing…';
@@ -2249,14 +2512,25 @@ function initAdmin(){
   if(statsTimer)clearInterval(statsTimer);
   if(onlineTimer)clearInterval(onlineTimer);
   loadStats();
-  statsTimer=setInterval(loadStats,10000);
+  refreshRequestBadge();
+  statsTimer=setInterval(()=>{loadStats();refreshRequestBadge();},10000);
   onlineTimer=setInterval(()=>{if(curPage==='online')loadOnline();},8000);
+}
+async function refreshRequestBadge(){
+  try{
+    const d=await af('/requests?status=open');
+    if(d?.success){
+      const b=document.getElementById('sb-requests');
+      if(b)b.textContent=String(d.open||0);
+    }
+  }catch{}
 }
 
 window.addEventListener('resize',syncSidebarMode);
 window.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     closeUserEdit();
+    closeCreateUser();
     closeSidebar();
   }
 });

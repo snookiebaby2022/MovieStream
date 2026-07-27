@@ -34,8 +34,8 @@ function dbReady(res) {
 }
 
 async function getFirst10Promo(userId) {
-  const enabled = FIRST10_ENABLED;
-  if (!enabled || require('mongoose').connection.readyState !== 1) {
+  const envOn = FIRST10_ENABLED;
+  if (!envOn || require('mongoose').connection.readyState !== 1) {
     return {
       key: FIRST10_KEY,
       enabled: false,
@@ -48,12 +48,14 @@ async function getFirst10Promo(userId) {
   }
   await Promo.updateOne(
     { key: FIRST10_KEY },
-    { $setOnInsert: { key: FIRST10_KEY, limit: FIRST10_LIMIT, claimed: 0, claims: [] } },
+    { $setOnInsert: { key: FIRST10_KEY, limit: FIRST10_LIMIT, claimed: 0, claims: [], enabled: true } },
     { upsert: true }
   );
   const promo = await Promo.findOne({ key: FIRST10_KEY }).lean();
-  const claimed = Math.min(FIRST10_LIMIT, Math.max(0, promo?.claimed || 0));
-  const remaining = Math.max(0, FIRST10_LIMIT - claimed);
+  const dbEnabled = promo?.enabled !== false;
+  const limit = Math.max(1, promo?.limit || FIRST10_LIMIT);
+  const claimed = Math.min(limit, Math.max(0, promo?.claimed || 0));
+  const remaining = Math.max(0, limit - claimed);
   let alreadyClaimed = false;
   if (userId) {
     const u = await User.findById(userId).select('promoClaim adFree').lean();
@@ -61,12 +63,13 @@ async function getFirst10Promo(userId) {
   }
   return {
     key: FIRST10_KEY,
-    enabled: true,
-    active: remaining > 0,
-    limit: FIRST10_LIMIT,
+    enabled: dbEnabled,
+    active: dbEnabled && remaining > 0,
+    limit,
     claimed,
     remaining,
-    alreadyClaimed
+    alreadyClaimed,
+    claims: (promo?.claims || []).slice(-20).reverse()
   };
 }
 
@@ -115,6 +118,17 @@ router.post('/promo/claim', authRequired, async (req, res) => {
       return res.status(410).json({ success: false, error: 'This offer is no longer available', code: 'PROMO_OFF' });
     }
 
+    await Promo.updateOne(
+      { key: FIRST10_KEY },
+      { $setOnInsert: { key: FIRST10_KEY, limit: FIRST10_LIMIT, claimed: 0, claims: [], enabled: true } },
+      { upsert: true }
+    );
+    const promoState = await Promo.findOne({ key: FIRST10_KEY }).lean();
+    if (promoState?.enabled === false) {
+      return res.status(410).json({ success: false, error: 'This offer is no longer available', code: 'PROMO_OFF' });
+    }
+    const limit = Math.max(1, promoState?.limit || FIRST10_LIMIT);
+
     const user = await User.findById(req.user.id);
     if (!user) return res.status(401).json({ success: false, error: 'Login required' });
     if (user.adFree) {
@@ -134,14 +148,8 @@ router.post('/promo/claim', authRequired, async (req, res) => {
       });
     }
 
-    await Promo.updateOne(
-      { key: FIRST10_KEY },
-      { $setOnInsert: { key: FIRST10_KEY, limit: FIRST10_LIMIT, claimed: 0, claims: [] } },
-      { upsert: true }
-    );
-
     const promo = await Promo.findOneAndUpdate(
-      { key: FIRST10_KEY, claimed: { $lt: FIRST10_LIMIT } },
+      { key: FIRST10_KEY, claimed: { $lt: limit }, enabled: { $ne: false } },
       {
         $inc: { claimed: 1 },
         $push: {
@@ -151,7 +159,7 @@ router.post('/promo/claim', authRequired, async (req, res) => {
             at: new Date()
           }
         },
-        $set: { updatedAt: new Date(), limit: FIRST10_LIMIT }
+        $set: { updatedAt: new Date(), limit }
       },
       { new: true }
     );
@@ -160,7 +168,7 @@ router.post('/promo/claim', authRequired, async (req, res) => {
       const cur = await getFirst10Promo(user._id);
       return res.status(410).json({
         success: false,
-        error: 'Sorry — all 10 free Ad-Free spots are taken. You can still unlock for £1.',
+        error: 'Sorry — all free Ad-Free spots are taken. You can still unlock for £1.',
         code: 'PROMO_SOLD_OUT',
         promo: cur
       });
@@ -171,15 +179,15 @@ router.post('/promo/claim', authRequired, async (req, res) => {
     user.promoClaim = FIRST10_KEY;
     await user.save();
 
-    console.log('First10 promo claimed by', user.username, `(${promo.claimed}/${FIRST10_LIMIT})`);
+    console.log('First10 promo claimed by', user.username, `(${promo.claimed}/${limit})`);
     res.json({
       success: true,
       adFree: true,
       promoClaim: FIRST10_KEY,
-      remaining: Math.max(0, FIRST10_LIMIT - promo.claimed),
+      remaining: Math.max(0, limit - promo.claimed),
       claimed: promo.claimed,
-      limit: FIRST10_LIMIT,
-      message: `You're in! Free Ad-Free unlocked (${promo.claimed} of ${FIRST10_LIMIT} claimed).`
+      limit,
+      message: `You're in! Free Ad-Free unlocked (${promo.claimed} of ${limit} claimed).`
     });
   } catch (e) {
     console.error('Promo claim:', e.message);

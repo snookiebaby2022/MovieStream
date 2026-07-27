@@ -107,6 +107,7 @@ const PromoSchema = new mongoose.Schema({
   key: { type: String, required: true, unique: true },
   limit: { type: Number, default: 10 },
   claimed: { type: Number, default: 0 },
+  enabled: { type: Boolean, default: true },
   claims: [{
     userId: { type: String, default: '' },
     username: { type: String, default: '' },

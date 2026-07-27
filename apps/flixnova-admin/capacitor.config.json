@@ -1,0 +1,34 @@
+{
+  "appId": "xyz.snookiebaby.flixnova.admin",
+  "appName": "FlixNova Admin",
+  "webDir": "www",
+  "server": {
+    "url": "https://snookiebaby.xyz/admin/",
+    "cleartext": false,
+    "androidScheme": "https",
+    "allowNavigation": [
+      "snookiebaby.xyz",
+      "*.snookiebaby.xyz"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#090b10",
+    "buildOptions": {
+      "keystorePath": "",
+      "keystoreAlias": ""
+    }
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 900,
+      "backgroundColor": "#090b10",
+      "showSpinner": false,
+      "androidSplashResourceName": "splash"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#090b10"
+    }
+  }
+}
