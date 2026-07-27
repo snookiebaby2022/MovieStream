@@ -2080,18 +2080,14 @@ function tryS(idx){
   setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
   if(!url){mFail(idx);tryS(idx+1);return;}
 
-  // Skip awkward RD files (HEVC/MKV) when a friendlier RD link exists — never hide the chip row
+  // Skip awkward RD files (HEVC/MKV) when a friendlier RD link exists
   var mode=getPlayerMode();
   if(mode!=='external'&&mode!=='embed'&&s.debrid&&isHardFailUrl(url,s)){
-    var anyOk=S.src.some(function(x,i){return i!==idx&&x.browserOk!==false&&!isHardFailUrl(x.embedUrl||x.url||'',x);});
+    var anyOk=S.src.some(function(x,i){return i!==idx&&!S.failed[i]&&x.browserOk!==false&&!isHardFailUrl(x.embedUrl||x.url||'',x);});
     if(anyOk){mFail(idx);tryS(idx+1);return;}
-    // Only hard options left — try External once, then keep trying html5; embeds only after all RD fail
-    if(!S._triedRdExternal){
-      S._triedRdExternal=1;
-      setSt('sld','RD file may need External player…');
-      pExt(url,idx,gen);
-      return;
-    }
+    // All remaining look "hard" — still try in-browser Auto/HTML5 first.
+    // External is a fallback after real playback failure (or if user picks External).
+    setSt('sld','Trying in browser…');
   }
 
   var engine=resolvePlayer(s,url);
