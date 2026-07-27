@@ -899,6 +899,27 @@ function removeContinue(item,btn){
 
 // ── SOCKET / LIVE ONLINE ───────────────────────────────────
 var sock=null;
+function visitorId(){
+  try{
+    var id=localStorage.getItem('fn_vid');
+    if(id&&id.length>=8)return id;
+    id='v'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+    localStorage.setItem('fn_vid',id);
+    return id;
+  }catch(e){return 'v'+Date.now();}
+}
+function currentWatchPayload(){
+  if(!S.item)return null;
+  var title=(S.item.title||'').trim();
+  if(!title||/^loading/i.test(title))return null;
+  return{
+    title:title,
+    tmdbId:S.item.tmdbId||S.item.id,
+    type:S.item.type||'movie',
+    season:S.sn,
+    episode:S.ep
+  };
+}
 function setOnlineCount(n){
   var el=document.getElementById('oc');
   if(!el)return;
@@ -910,21 +931,42 @@ function refreshOnlineCount(){
     if(d&&d.success&&typeof d.count==='number')setOnlineCount(d.count);
   }).catch(function(){});
 }
+function sockHello(){
+  var watching=currentWatchPayload();
+  var adminTok=null;
+  try{adminTok=localStorage.getItem('adminToken');}catch(e){}
+  var uname=S.user&&S.user.username?S.user.username:(adminTok?'admin':null);
+  sockEmit('hello',{
+    vid:visitorId(),
+    username:uname,
+    role:adminTok?'admin':null,
+    page:watching?'watching':(S.section||'home'),
+    watching:watching
+  });
+}
 function sockIdentify(){
-  if(S.user&&S.user.username)sockEmit('identify',{username:S.user.username});
+  sockHello();
+}
+function sockWatchingUpdate(){
+  var w=currentWatchPayload();
+  if(w)sockEmit('watching',w);
+  else sockEmit('stop-watching');
 }
 try{
   sock=io({transports:['websocket','polling'],reconnection:true,reconnectionDelay:1500});
   sock.on('connect',function(){
+    sockHello();
     sockEmit('page-view',{page:S.section||'home'});
-    sockIdentify();
     refreshOnlineCount();
   });
   sock.on('online-count',function(n){setOnlineCount(n);});
   sock.on('online-stats',function(s){if(s&&typeof s.count==='number')setOnlineCount(s.count);});
 }catch(ex){console.log('Socket N/A');}
 function sockEmit(ev,d){try{if(sock&&sock.connected)sock.emit(ev,d);}catch(ex){}}
-setInterval(refreshOnlineCount,12000);
+setInterval(function(){
+  refreshOnlineCount();
+  if(sock&&sock.connected)sockHello();
+},15000);
 refreshOnlineCount();
 
 // ── UTILS ──────────────────────────────────────────────────
@@ -1615,7 +1657,7 @@ function openModal(item){
   $('mgen').innerHTML='';$('mtag').textContent='';$('mov').textContent=item.overview||'';
   $('mcrew').innerHTML='';$('mfacts').innerHTML='';$('mtabs').innerHTML='';
   ['tpEp','tpCast','tpSim','tpTrail','tpComm','tpLinks'].forEach(function(t){$(t).innerHTML='';$(t).classList.remove('on');});
-  sockEmit('watching',{title:item.title,tmdbId:id,type:type,season:S.sn,episode:S.ep});
+  sockWatchingUpdate();
   // Don't save "Loading..." stubs — wait for details below
   if(isValidContinueItem(item))saveContinue(item,S.sn,S.ep);
   document.title=(item.title||'')+' - FlixNova';
@@ -1632,6 +1674,9 @@ function openModal(item){
         if(S.item){
           S.item.imdbId=imdb;
           S.item.title=det.data.title||S.item.title;
+          if(det.data.year)S.item.year=det.data.year;
+          sockWatchingUpdate();
+        }
           S.item.poster=det.data.poster||S.item.poster;
           S.item.backdrop=det.data.backdrop||S.item.backdrop;
           S.item.year=det.data.year||S.item.year;
@@ -1803,7 +1848,7 @@ function pEp(tid,sn,ep,el){
   $('srcbar').style.display='none';S.src=[];S.si=0;S.failed={};S._triedEmbeds=0;
   $('pw').scrollIntoView({behavior:'smooth',block:'start'});
   try{history.replaceState(null,'','/watch/tv/'+tid+'/'+sn+'/'+ep);}catch(ex){}
-  sockEmit('watching',{title:S.item&&S.item.title,tmdbId:tid,type:'tv',season:sn,episode:ep});
+  sockWatchingUpdate();
   if(S.item)saveContinue(S.item,sn,ep);
   var imdb=S.item&&S.item.imdbId;
   var loadEmb=function(){
@@ -2348,6 +2393,7 @@ function closeModal(){
   document.title='FlixNova - Watch Free Movies & TV Shows Online';
   S.item=null;S.src=[];S.failed={};S._extUrl='';S._directUrl='';
   sockEmit('stop-watching');
+  sockHello();
   try{if(location.pathname.indexOf('/watch/')===0)history.replaceState(null,'','/');}catch(ex){}
   // Resume home cinema trailer only when still on the home hero
   resumeHeroMedia();

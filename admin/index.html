@@ -826,7 +826,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="brand-mark">F</div>
         <div>
           <div class="login-title">Flix<b>Nova</b></div>
-          <div class="version-chip">Admin Panel v3.4 · mobile</div>
+          <div class="version-chip">Admin Panel v3.5 · mobile</div>
         </div>
       </div>
       <div class="login-kicker">A polished control room for moderation, system health, cache, logs, scrapers, and live traffic.</div>
@@ -852,7 +852,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="sb-mark">F</div>
         <div>
           <div class="sb-title">Flix<b>Nova</b></div>
-          <div class="sb-badge">Admin Panel v3.4</div>
+          <div class="sb-badge">Admin Panel v3.5</div>
         </div>
       </div>
     </div>
@@ -1636,6 +1636,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
   </div>
 </div>
 
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <script>
 const AAPI='/api/admin';
 let token=localStorage.getItem('adminToken');
@@ -1643,7 +1644,41 @@ let curPage='dashboard';
 let curLogType='out';
 let statsTimer;
 let onlineTimer;
+let adminSock=null;
 const actLog=[];
+
+function adminVisitorId(){
+  try{
+    let id=localStorage.getItem('fn_admin_vid');
+    if(id&&id.length>=8)return id;
+    id='a'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+    localStorage.setItem('fn_admin_vid',id);
+    return id;
+  }catch(e){return 'a'+Date.now();}
+}
+function adminPresence(){
+  try{
+    if(typeof io==='undefined')return;
+    if(!adminSock){
+      adminSock=io({transports:['websocket','polling'],reconnection:true});
+      adminSock.on('connect',()=>{
+        adminSock.emit('hello',{
+          vid:adminVisitorId(),
+          username:document.getElementById('sbName')?.textContent||'admin',
+          role:'admin',
+          page:'admin'
+        });
+      });
+    }else if(adminSock.connected){
+      adminSock.emit('hello',{
+        vid:adminVisitorId(),
+        username:document.getElementById('sbName')?.textContent||'admin',
+        role:'admin',
+        page:'admin'
+      });
+    }
+  }catch(e){}
+}
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function escAttr(s){return esc(s);}
@@ -1949,13 +1984,21 @@ async function loadOnline(){
   tbody.innerHTML=d.data.map(u=>{
     const dur=u.duration||0;
     const ds=dur>3600?Math.floor(dur/3600)+'h '+Math.floor((dur%3600)/60)+'m':dur>60?Math.floor(dur/60)+'m '+(dur%60)+'s':dur+'s';
-    const label=u.user||String(u.id||'').slice(0,6);
+    const label=u.user||(u.role==='admin'?'admin':null)||String(u.id||'').slice(0,6);
+    const roleBadge=u.role==='admin'?' <span class="badge badge-yellow">admin</span>':'';
+    let watchCell='<span style="color:var(--muted);font-size:12px">Browsing</span>';
+    if(u.watching&&(u.watching.title||u.watching.tmdbId)){
+      const title=u.watching.title||('Title #'+u.watching.tmdbId);
+      const ep=u.watching.type==='tv'&&u.watching.season?` S${u.watching.season}E${u.watching.episode||1}`:'';
+      const kind=u.watching.type==='tv'?'TV':'Movie';
+      watchCell=`<span class="watching-badge">Watching · ${esc(title)}${esc(ep)}</span> <span style="color:var(--muted);font-size:11px">${esc(kind)}</span>`;
+    }
     return `<tr>
-      <td><span class="badge badge-purple">${esc(label)}</span></td>
+      <td><span class="badge badge-purple">${esc(label)}</span>${roleBadge}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${esc(u.ip||'')}</td>
       <td><span class="badge ${u.device==='Mobile'?'badge-yellow':'badge-blue'}">${esc(u.device||'Unknown')}</span></td>
       <td style="font-size:13px">${esc(u.page||'home')}</td>
-      <td>${u.watching?`<span class="watching-badge">${esc(u.watching.title||'Watching')}${u.watching.season?` S${u.watching.season}E${u.watching.episode}`:''}</span>`:'<span style="color:var(--muted);font-size:12px">Browsing</span>'}</td>
+      <td>${watchCell}</td>
       <td style="color:var(--muted);font-size:12px">${esc(ds)}</td>
     </tr>`;
   }).join('');
@@ -2518,9 +2561,10 @@ function loadActivity(){
 function initAdmin(){
   if(statsTimer)clearInterval(statsTimer);
   if(onlineTimer)clearInterval(onlineTimer);
+  adminPresence();
   loadStats();
   refreshRequestBadge();
-  statsTimer=setInterval(()=>{loadStats();refreshRequestBadge();},10000);
+  statsTimer=setInterval(()=>{loadStats();refreshRequestBadge();adminPresence();},10000);
   onlineTimer=setInterval(()=>{if(curPage==='online')loadOnline();},8000);
 }
 async function refreshRequestBadge(){

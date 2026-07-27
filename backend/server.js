@@ -42,7 +42,8 @@ const scraper= new ScraperManager();
 app.post('/api/pay/webhook', express.raw({ type: 'application/json' }), handleWebhook);
 
 // ─── Online tracking ─────────────────────────────────────
-const online = new Map();
+const online = new Map(); // socket.id -> session
+const visitors = new Map(); // stable visitor id -> { firstSeen, user, role }
 let totalViews = 0, totalWatches = 0;
 
 function clientIp(sock) {
@@ -55,8 +56,8 @@ function getOnlineStats() {
   const ips = new Set();
   let currentlyWatching = 0;
   for (const u of online.values()) {
-    ips.add(u.ip || u.id);
-    if (u.watching) currentlyWatching++;
+    ips.add(u.ip || u.vid || u.id);
+    if (u.watching && (u.watching.title || u.watching.tmdbId)) currentlyWatching++;
   }
   return {
     count: ips.size,
@@ -73,43 +74,119 @@ function broadcastOnline() {
   io.emit('online-stats', s);
 }
 
-io.on('connection', sock => {
-  const uid = crypto.randomBytes(8).toString('hex');
-  online.set(uid, {
-    id: uid,
+function normalizeWatching(d) {
+  if (!d || typeof d !== 'object') return null;
+  const title = String(d.title || '').trim();
+  const tmdbId = d.tmdbId || d.id || null;
+  if (!title && !tmdbId) return null;
+  const out = {
+    title: title || 'Unknown title',
+    tmdbId,
+    type: d.type === 'tv' ? 'tv' : 'movie'
+  };
+  if (out.type === 'tv') {
+    if (d.season != null) out.season = Number(d.season) || 1;
+    if (d.episode != null) out.episode = Number(d.episode) || 1;
+  }
+  return out;
+}
+
+function upsertPresence(sock, payload) {
+  const d = payload || {};
+  const vid = String(d.vid || sock.id).slice(0, 64);
+  const prevVisit = visitors.get(vid) || {};
+  const existing = online.get(sock.id);
+  const firstSeen = prevVisit.firstSeen || (existing && existing.firstSeen) || Date.now();
+  const username = String(d.username || d.user || prevVisit.user || (existing && existing.user) || '').slice(0, 40) || null;
+  const role = String(d.role || prevVisit.role || (existing && existing.role) || '').slice(0, 20) || null;
+  const watching = d.watching !== undefined
+    ? normalizeWatching(d.watching)
+    : (existing ? existing.watching : null);
+  const page = (d.page || (existing && existing.page) || 'home').toString().slice(0, 40);
+  const session = {
+    id: sock.id.slice(0, 8),
+    vid,
     ip: clientIp(sock),
     ua: sock.handshake.headers['user-agent'] || '',
-    connectedAt: Date.now(),
-    page: 'home',
-    watching: null,
-    user: null
-  });
+    firstSeen,
+    connectedAt: firstSeen,
+    lastSeen: Date.now(),
+    page,
+    watching,
+    user: username,
+    role
+  };
+  online.set(sock.id, session);
+  visitors.set(vid, { firstSeen, user: username, role, lastSeen: Date.now() });
+  // prune idle visitor memory (24h)
+  if (visitors.size > 5000) {
+    const cut = Date.now() - 86400000;
+    for (const [k, v] of visitors) {
+      if ((v.lastSeen || 0) < cut) visitors.delete(k);
+    }
+  }
+  return session;
+}
+
+io.on('connection', sock => {
+  // Temporary row until client sends hello/identify
+  upsertPresence(sock, { vid: 'tmp-' + sock.id, page: 'home' });
   broadcastOnline();
   sock.emit('online-count', getOnlineStats().count);
+
+  sock.on('hello', d => {
+    upsertPresence(sock, d || {});
+    broadcastOnline();
+  });
   sock.on('page-view', d => {
     totalViews++;
-    const u = online.get(uid);
-    if (u) u.page = (d && d.page) || 'home';
+    const u = online.get(sock.id);
+    if (u) {
+      u.page = (d && d.page) || 'home';
+      u.lastSeen = Date.now();
+    } else {
+      upsertPresence(sock, { page: d && d.page });
+    }
   });
   sock.on('identify', d => {
-    const u = online.get(uid);
+    const u = online.get(sock.id);
     if (!u || !d) return;
     const name = String(d.username || d.user || '').slice(0, 40);
-    if (name) u.user = name;
+    if (name) {
+      u.user = name;
+      if (d.role) u.role = String(d.role).slice(0, 20);
+      const prev = visitors.get(u.vid) || { firstSeen: u.firstSeen };
+      visitors.set(u.vid, { ...prev, user: name, role: u.role, lastSeen: Date.now() });
+    }
   });
   sock.on('watching', d => {
     totalWatches++;
-    const u = online.get(uid);
-    if (u) u.watching = d || null;
+    const u = online.get(sock.id);
+    const watching = normalizeWatching(d);
+    if (u) {
+      u.watching = watching;
+      u.page = watching ? 'watching' : (u.page || 'home');
+      u.lastSeen = Date.now();
+    } else {
+      upsertPresence(sock, { watching: d, page: 'watching' });
+    }
     broadcastOnline();
   });
   sock.on('stop-watching', () => {
-    const u = online.get(uid);
-    if (u) u.watching = null;
+    const u = online.get(sock.id);
+    if (u) {
+      u.watching = null;
+      if (u.page === 'watching') u.page = 'home';
+      u.lastSeen = Date.now();
+    }
+    broadcastOnline();
+  });
+  sock.on('presence', d => {
+    upsertPresence(sock, d || {});
     broadcastOnline();
   });
   sock.on('disconnect', () => {
-    online.delete(uid);
+    online.delete(sock.id);
     broadcastOnline();
   });
 });
@@ -953,16 +1030,21 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
 
 app.get('/api/admin/online', adminAuth, (req, res) => {
   const stats = getOnlineStats();
-  const users = Array.from(online.values()).map(u => ({
-    id: u.id,
-    user: u.user || null,
-    ip: String(u.ip || '').replace('::ffff:', ''),
-    connectedAt: u.connectedAt,
-    duration: Math.floor((Date.now() - u.connectedAt) / 1000),
-    page: u.page,
-    watching: u.watching,
-    device: /Mobile|Android|iPhone/i.test(u.ua) ? 'Mobile' : 'Desktop'
-  }));
+  const users = Array.from(online.values())
+    .filter(u => !(u.vid || '').startsWith('tmp-'))
+    .map(u => ({
+      id: u.id,
+      vid: u.vid,
+      user: u.user || (u.role === 'admin' ? 'admin' : null),
+      role: u.role || null,
+      ip: String(u.ip || '').replace('::ffff:', ''),
+      connectedAt: u.firstSeen || u.connectedAt,
+      duration: Math.floor((Date.now() - (u.firstSeen || u.connectedAt || Date.now())) / 1000),
+      page: u.watching ? 'watching' : (u.page || 'home'),
+      watching: u.watching,
+      device: /Mobile|Android|iPhone/i.test(u.ua) ? 'Mobile' : 'Desktop'
+    }))
+    .sort((a, b) => (b.duration || 0) - (a.duration || 0));
   res.json({
     success: true,
     data: users,
