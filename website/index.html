@@ -717,7 +717,7 @@ window.addEventListener('scroll',function(){if($('navMore')&&$('navMore').classL
     var a=e.target&&e.target.closest?e.target.closest('a[target="_blank"]'):null;
     if(a&&a.href&&!/(youtube|imdb|tmdb)/i.test(a.href)){e.preventDefault();}
   },true);
-  setInterval(function(){try{window.open=blockOpen;}catch(ex){}},800);
+  setInterval(function(){try{window.open=blockOpen;}catch(ex){}},5000);
   // Close stray popups opened as about:blank / same-tab tricks when possible
   window.addEventListener('message',function(ev){
     if(!ev.data||typeof ev.data!=='object')return;
@@ -1395,40 +1395,48 @@ function loadHome(){
   var contP=S.token
     ?(window.FlixExtra?FlixExtra.loadContinueFromServer():Promise.resolve(cleanContinueLocal()))
     :Promise.resolve([]);
-  var calls=[
+  // Paint fast: hero + catalog first. Adult rows load after so XXX doesn't block home.
+  return Promise.all([
     api('/hero').catch(function(){return {success:false,data:[]};}),
     api('/catalog/home').catch(function(){return {success:false,data:[]};}),
-    contP.catch(function(){return [];}),
-    adultModeOn()?api('/discover/adult').catch(function(){return {success:false,data:[]};}):Promise.resolve({success:true,data:[]}),
-    adultModeOn()?api('/discover/adult?page=2').catch(function(){return {success:false,data:[]};}):Promise.resolve({success:true,data:[]}),
-    adultModeOn()?api('/discover/adult?page=3').catch(function(){return {success:false,data:[]};}):Promise.resolve({success:true,data:[]})
-  ];
-  return Promise.all(calls).then(function(rs){
+    contP.catch(function(){return [];})
+  ]).then(function(rs){
     var g=function(r){try{return r&&r.data&&r.data.length?r.data:[];}catch(e){return[];}};
     var hero=g(rs[0]);
     var catalog=Array.isArray(rs[1]&&rs[1].data)?rs[1].data:[];
     if(hero.length)initH(hero);
-    else if(catalog[0]&&catalog[0].items&&catalog[0].items.length)initH(catalog[0].items.filter(function(i){return!!i.backdrop;}).slice(0,20));
+    else if(catalog[0]&&catalog[0].items&&catalog[0].items.length)initH(catalog[0].items.filter(function(i){return!!i.backdrop;}).slice(0,12));
     else $('hero').style.display='none';
     var cont=S.token?(Array.isArray(rs[2])?rs[2]:[]).filter(isValidContinueItem):[];
     if(S.token&&!cont.length)cont=cleanContinueLocal();
-    var adultSeen={};
-    var adult=[];
-    [g(rs[3]),g(rs[4]),g(rs[5])].forEach(function(list){
-      list.forEach(function(item){if(!adultSeen[item.id]){adultSeen[item.id]=1;adult.push(item);}});
-    });
     var secs=[];
     if(cont.length)secs.push({title:(window.FlixExtra?FlixExtra.t('continueWatching'):'Continue Watching'),items:cont.slice(0,18),ap:'',cw:true});
-    if(adult.length){
-      secs.push({title:'XXX · Adult',items:adult.slice(0,40),ap:'/discover/adult'});
-      if(adult.length>40)secs.push({title:'XXX · More Adult',items:adult.slice(40,80),ap:'/discover/adult?page=2'});
-      if(adult.length>80)secs.push({title:'XXX · Even More',items:adult.slice(80,120),ap:'/discover/adult?page=3'});
-    }
     catalog.forEach(function(row){
-      if(row&&row.items&&row.items.length)secs.push({title:row.title,items:row.items.slice(0,40),ap:row.ap||''});
+      if(row&&row.items&&row.items.length)secs.push({title:row.title,items:row.items.slice(0,36),ap:row.ap||''});
     });
-    if(!secs.length){setR('<div class="notice"><h3>Setup Required</h3><p>Add TMDB_API_KEY to .env then restart</p></div>');return;}
+    if(!secs.length&&!cont.length){setR('<div class="notice"><h3>Setup Required</h3><p>Add TMDB_API_KEY to .env then restart</p></div>');return;}
     setR(rowsH(secs));initArr();
+    if(!adultModeOn())return;
+    return Promise.all([
+      api('/discover/adult?page=1').catch(function(){return {success:false,data:[]};}),
+      api('/discover/adult?page=2').catch(function(){return {success:false,data:[]};})
+    ]).then(function(ar){
+      if(S.section&&S.section!=='home')return;
+      var seen={};var adult=[];
+      ar.forEach(function(r){(r&&r.data||[]).forEach(function(item){if(!seen[item.id]){seen[item.id]=1;adult.push(item);}});});
+      if(!adult.length)return;
+      var extra=[];
+      extra.push({title:'XXX · Adult',items:adult.slice(0,40),ap:'/discover/adult'});
+      if(adult.length>40)extra.push({title:'XXX · More Adult',items:adult.slice(40,80),ap:'/discover/adult?page=2'});
+      // Re-render with adult rows after Continue Watching
+      var rebuilt=[];
+      if(cont.length)rebuilt.push({title:(window.FlixExtra?FlixExtra.t('continueWatching'):'Continue Watching'),items:cont.slice(0,18),ap:'',cw:true});
+      rebuilt=rebuilt.concat(extra);
+      catalog.forEach(function(row){
+        if(row&&row.items&&row.items.length)rebuilt.push({title:row.title,items:row.items.slice(0,36),ap:row.ap||''});
+      });
+      setR(rowsH(rebuilt));initArr();
+    });
   });
 }
 
@@ -1444,41 +1452,26 @@ function loadMovies(){
     ['/discover/genre/16/movie','🎨 Animation','/browse/movie?genre=16'],
     ['/discover/genre/35/movie','😂 Comedy','/browse/movie?genre=35'],
     ['/discover/genre/80/movie','🕵️ Crime','/browse/movie?genre=80'],
-    ['/discover/genre/99/movie','🎥 Documentary','/browse/movie?genre=99'],
     ['/discover/genre/18/movie','🎭 Drama','/browse/movie?genre=18'],
-    ['/discover/genre/10751/movie','👨‍👩‍👧 Family','/browse/movie?genre=10751'],
     ['/discover/genre/14/movie','🧙 Fantasy','/browse/movie?genre=14'],
-    ['/discover/genre/36/movie','📜 History','/browse/movie?genre=36'],
     ['/discover/genre/27/movie','👻 Horror','/browse/movie?genre=27'],
-    ['/discover/genre/10402/movie','🎵 Music','/browse/movie?genre=10402'],
     ['/discover/genre/9648/movie','🧩 Mystery','/browse/movie?genre=9648'],
     ['/discover/genre/10749/movie','❤️ Romance','/browse/movie?genre=10749'],
     ['/discover/genre/878/movie','🚀 Science Fiction','/browse/movie?genre=878'],
-    ['/discover/genre/10770/movie','📺 TV Movie','/browse/movie?genre=10770'],
     ['/discover/genre/53/movie','🔫 Thriller','/browse/movie?genre=53'],
-    ['/discover/genre/10752/movie','⚔️ War','/browse/movie?genre=10752'],
-    ['/discover/genre/37/movie','🤠 Western','/browse/movie?genre=37']
+    ['/discover/genre/10752/movie','⚔️ War','/browse/movie?genre=10752']
   ];
-  // Prefetch denser browse pages for popular shelves
-  var denser=[
-    api('/browse/movie?pages=3').catch(function(){return null;}),
-    api('/browse/movie?sort=vote_average.desc&pages=2').catch(function(){return null;}),
-    api('/browse/movie?genre=28&pages=2').catch(function(){return null;}),
-    api('/browse/movie?genre=27&pages=2').catch(function(){return null;}),
-    api('/browse/movie?genre=878&pages=2').catch(function(){return null;})
-  ];
-  return Promise.all(calls.map(function(c){return api(c[0]);}).concat(denser)).then(function(all){
-    var rs=all.slice(0,calls.length);
-    var extra=all.slice(calls.length);
-    var secs=calls.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,40):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
-    // Merge denser browse results into matching shelves
-    if(extra[0]&&extra[0].data)secs[0]&&(secs[0].items=extra[0].data.slice(0,40));
-    if(extra[1]&&extra[1].data){var tr=secs.find(function(s){return s.title.indexOf('Top Rated')>=0;});if(tr)tr.items=extra[1].data.slice(0,40);}
-    if(extra[2]&&extra[2].data){var ar=secs.find(function(s){return s.title.indexOf('Action')>=0;});if(ar)ar.items=extra[2].data.slice(0,40);}
-    if(extra[3]&&extra[3].data){var hr=secs.find(function(s){return s.title.indexOf('Horror')>=0;});if(hr)hr.items=extra[3].data.slice(0,40);}
-    if(extra[4]&&extra[4].data){var sr=secs.find(function(s){return s.title.indexOf('Science')>=0;});if(sr)sr.items=extra[4].data.slice(0,40);}
+  var first=calls.slice(0,6), rest=calls.slice(6);
+  return Promise.all(first.map(function(c){return api(c[0]);})).then(function(rs){
+    var secs=first.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,36):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
     if(secs[0]&&secs[0].items.length)initH(secs[0].items.filter(function(i){return!!i.backdrop;}));
     setR(secs.length?rowsH(secs):'<div class="empty">No movies</div>');initArr();
+    if(!rest.length)return;
+    return Promise.all(rest.map(function(c){return api(c[0]);})).then(function(rs2){
+      if(S.section&&S.section!=='movies')return;
+      var more=rest.map(function(c,i){var r=rs2[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,36):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
+      setR(rowsH(secs.concat(more)));initArr();
+    });
   });
 }
 
@@ -1493,34 +1486,23 @@ function loadTV(){
     ['/discover/genre/16/tv','🎨 Animation','/browse/tv?genre=16'],
     ['/discover/genre/35/tv','😂 Comedy','/browse/tv?genre=35'],
     ['/discover/genre/80/tv','🕵️ Crime','/browse/tv?genre=80'],
-    ['/discover/genre/99/tv','🎥 Documentary','/browse/tv?genre=99'],
     ['/discover/genre/18/tv','🎭 Drama','/browse/tv?genre=18'],
     ['/discover/genre/10751/tv','👨‍👩‍👧 Family','/browse/tv?genre=10751'],
-    ['/discover/genre/10762/tv','🧒 Kids','/browse/tv?genre=10762'],
     ['/discover/genre/9648/tv','🧩 Mystery','/browse/tv?genre=9648'],
-    ['/discover/genre/10763/tv','📰 News','/browse/tv?genre=10763'],
-    ['/discover/genre/10764/tv','🎤 Reality','/browse/tv?genre=10764'],
     ['/discover/genre/10765/tv','🚀 Sci-Fi & Fantasy','/browse/tv?genre=10765'],
-    ['/discover/genre/10766/tv','💗 Soap','/browse/tv?genre=10766'],
-    ['/discover/genre/10767/tv','🎙️ Talk','/browse/tv?genre=10767'],
-    ['/discover/genre/10768/tv','⚔️ War & Politics','/browse/tv?genre=10768'],
-    ['/discover/genre/37/tv','🤠 Western','/browse/tv?genre=37']
+    ['/discover/genre/10768/tv','⚔️ War & Politics','/browse/tv?genre=10768']
   ];
-  return Promise.all(calls.map(function(c){return api(c[0]);}).concat([
-    api('/browse/tv?pages=3').catch(function(){return null;}),
-    api('/browse/tv?sort=vote_average.desc&pages=2').catch(function(){return null;}),
-    api('/browse/tv?genre=18&pages=2').catch(function(){return null;}),
-    api('/browse/tv?genre=10765&pages=2').catch(function(){return null;})
-  ])).then(function(all){
-    var rs=all.slice(0,calls.length);
-    var extra=all.slice(calls.length);
-    var secs=calls.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,40):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
-    if(extra[0]&&extra[0].data)secs[0]&&(secs[0].items=extra[0].data.slice(0,40));
-    if(extra[1]&&extra[1].data){var tr=secs.find(function(s){return s.title.indexOf('Top Rated')>=0;});if(tr)tr.items=extra[1].data.slice(0,40);}
-    if(extra[2]&&extra[2].data){var dr=secs.find(function(s){return s.title.indexOf('Drama')>=0;});if(dr)dr.items=extra[2].data.slice(0,40);}
-    if(extra[3]&&extra[3].data){var sf=secs.find(function(s){return s.title.indexOf('Sci-Fi')>=0;});if(sf)sf.items=extra[3].data.slice(0,40);}
+  var first=calls.slice(0,5), rest=calls.slice(5);
+  return Promise.all(first.map(function(c){return api(c[0]);})).then(function(rs){
+    var secs=first.map(function(c,i){var r=rs[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,36):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
     if(secs[0]&&secs[0].items.length)initH(secs[0].items.filter(function(i){return!!i.backdrop;}));
     setR(secs.length?rowsH(secs):'<div class="empty">No TV shows</div>');initArr();
+    if(!rest.length)return;
+    return Promise.all(rest.map(function(c){return api(c[0]);})).then(function(rs2){
+      if(S.section&&S.section!=='tv')return;
+      var more=rest.map(function(c,i){var r=rs2[i];return{title:c[1],items:r&&r.data&&r.data.length?r.data.slice(0,36):[],ap:c[2]};}).filter(function(s){return s.items.length>0;});
+      setR(rowsH(secs.concat(more)));initArr();
+    });
   });
 }
 

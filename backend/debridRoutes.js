@@ -290,7 +290,7 @@ async function fetchAddonStreams(token, path) {
   if ((tio || []).length >= 6) {
     const timed = await Promise.race([
       Promise.all([cometP.catch(() => []), mfP.catch(() => [])]),
-      new Promise(resolve => setTimeout(() => resolve([[], []]), 3500))
+      new Promise(resolve => setTimeout(() => resolve([[], []]), 1200))
     ]);
     const [comet, mf] = timed;
     return dedupeStreams([...(tio || []), ...(comet || []), ...(mf || [])]);

@@ -268,13 +268,12 @@ app.get('/api/trending/browse', async (req, res) => {
 app.get('/api/hero', async (req, res) => {
   try {
     const adult = await allowAdult(req);
-    const c = await getC(`hero:trailers:v3:a${adult ? 1 : 0}`);
+    const c = await getC(`hero:trailers:v4:a${adult ? 1 : 0}`);
     if (c) return res.json({ success: true, data: c });
-    const [day, week, now1, now2, pop] = await Promise.all([
+    const [day, week, now1, pop] = await Promise.all([
       tmdb('/trending/all/day'),
       tmdb('/trending/all/week'),
       tmdb('/movie/now_playing', { page: 1 }),
-      tmdb('/movie/now_playing', { page: 2 }),
       tmdb('/movie/popular', { page: 1 })
     ]);
     const pool = [];
@@ -289,16 +288,16 @@ app.get('/api/hero', async (req, res) => {
         pool.push({ ...r, media_type: type });
       });
     };
-    push(day); push(week); push(now1, 'movie'); push(now2, 'movie'); push(pop, 'movie');
+    push(day); push(week); push(now1, 'movie'); push(pop, 'movie');
     if (!adult) pool.splice(0, pool.length, ...pool.filter(r => !r.adult));
     pool.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    const candidates = pool.slice(0, 40);
+    const candidates = pool.slice(0, 24);
     const out = [];
     // Batched video lookups (avoid stampeding TMDB)
-    for (let i = 0; i < candidates.length && out.length < 20; i += 6) {
-      const batch = candidates.slice(i, i + 6);
+    for (let i = 0; i < candidates.length && out.length < 12; i += 8) {
+      const batch = candidates.slice(i, i + 8);
       await Promise.all(batch.map(async (r) => {
-        if (out.length >= 20) return;
+        if (out.length >= 12) return;
         try {
           const vids = await tmdb(`/${r.media_type}/${r.id}/videos`);
           const trailer = (vids?.results || []).find(v =>
@@ -310,8 +309,8 @@ app.get('/api/hero', async (req, res) => {
       }));
     }
     out.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    const data = out.slice(0, 20);
-    await setC(`hero:trailers:v3:a${adult ? 1 : 0}`, data, 1800);
+    const data = out.slice(0, 12);
+    await setC(`hero:trailers:v4:a${adult ? 1 : 0}`, data, 3600);
     res.json({ success: true, data });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -329,7 +328,7 @@ app.get('/api/discover/adult', async (req, res) => {
       });
     }
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const ck = `adult:cat:v5:${page}`;
+    const ck = `adult:cat:v6:${page}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c.r, totalPages: c.tp, page });
     const all = [];
@@ -340,22 +339,19 @@ app.get('/api/discover/adult', async (req, res) => {
       'pornstar', 'uncensored', 'blue movie', 'adult comedy', 'erotica',
       'sex comedy', 'erotic thriller', 'adult anime', 'jav', 'av idol'
     ];
-    // Rotate 10 queries per page; also pull adjacent search pages
-    const start = ((page - 1) * 8) % queries.length;
+    // Rotate fewer queries per page (faster cold cache); discover pages fill the rest
+    const start = ((page - 1) * 6) % queries.length;
     const qSlice = [];
-    for (let i = 0; i < 10; i++) qSlice.push(queries[(start + i) % queries.length]);
-    for (const q of qSlice) {
+    for (let i = 0; i < 6; i++) qSlice.push(queries[(start + i) % queries.length]);
+    await Promise.all(qSlice.map(async (q) => {
       const d = await tmdb('/search/movie', { query: q, page, include_adult: true });
       if (d?.results) all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-      if (page < 4) {
-        const d2 = await tmdb('/search/movie', { query: q, page: page + 1, include_adult: true });
-        if (d2?.results) all.push(...d2.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-      }
-    }
-    for (let p = page; p < page + 5; p++) {
+    }));
+    await Promise.all([0, 1, 2].map(async (off) => {
+      const p = page + off;
       const dm = await tmdb('/discover/movie', { page: p, include_adult: true, sort_by: 'popularity.desc' });
       if (dm?.results) all.push(...dm.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-    }
+    }));
     const seen = new Set();
     const r = all
       .filter(x => {
@@ -364,7 +360,7 @@ app.get('/api/discover/adult', async (req, res) => {
         return true;
       })
       .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    await setC(ck, { r, tp: 80 }, 1800);
+    await setC(ck, { r, tp: 80 }, 3600);
     res.json({ success: true, data: r, totalPages: 80, page });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -375,7 +371,7 @@ app.get('/api/discover/adult', async (req, res) => {
 app.get('/api/catalog/home', async (req, res) => {
   try {
     const adult = await allowAdult(req);
-    const ck = `home:catalog:v1:a${adult ? 1 : 0}`;
+    const ck = `home:catalog:v2:a${adult ? 1 : 0}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
 
@@ -391,7 +387,7 @@ app.get('/api/catalog/home', async (req, res) => {
       [9648, 'Mystery'], [10751, 'Family'], [10762, 'Kids'], [10764, 'Reality']
     ];
 
-    const fetchBrowse = async (type, extra = {}, pages = 2) => {
+    const fetchBrowse = async (type, extra = {}, pages = 1) => {
       const all = [];
       for (let p = 1; p <= pages; p++) {
         const d = await tmdb(`/discover/${type}`, {
@@ -411,13 +407,13 @@ app.get('/api/catalog/home', async (req, res) => {
     ] = await Promise.all([
       tmdb('/trending/all/day', { page: 1 }),
       tmdb('/trending/all/week', { page: 1 }),
+      fetchBrowse('movie', {}, 1),
       fetchBrowse('movie', {}, 2),
-      fetchBrowse('movie', {}, 3),
-      fetchBrowse('movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 300 }, 2),
-      fetchBrowse('tv', {}, 3),
-      fetchBrowse('tv', { sort_by: 'vote_average.desc', 'vote_count.gte': 200 }, 2),
-      fetchBrowse('tv', { with_genres: '16', with_origin_country: 'JP' }, 2),
-      fetchBrowse('movie', { with_genres: '16', with_origin_country: 'JP' }, 2)
+      fetchBrowse('movie', { sort_by: 'vote_average.desc', 'vote_count.gte': 300 }, 1),
+      fetchBrowse('tv', {}, 2),
+      fetchBrowse('tv', { sort_by: 'vote_average.desc', 'vote_count.gte': 200 }, 1),
+      fetchBrowse('tv', { with_genres: '16', with_origin_country: 'JP' }, 1),
+      fetchBrowse('movie', { with_genres: '16', with_origin_country: 'JP' }, 1)
     ]);
 
     const mapTrend = (d) => filterAdult(
@@ -437,22 +433,16 @@ app.get('/api/catalog/home', async (req, res) => {
     const onair = filterAdult((onAirApi?.results || []).map(x => mapItem({ ...x, media_type: 'tv' })), adult);
     const up = filterAdult((upApi?.results || []).map(x => mapItem({ ...x, media_type: 'movie' })), adult);
 
-    const genreMovieRows = [];
-    for (const [id, name] of movieGenres) {
-      genreMovieRows.push({
-        title: `Movies · ${name}`,
-        items: await fetchBrowse('movie', { with_genres: String(id) }, 2),
-        ap: `/browse/movie?genre=${id}`
-      });
-    }
-    const genreTvRows = [];
-    for (const [id, name] of tvGenres) {
-      genreTvRows.push({
-        title: `TV · ${name}`,
-        items: await fetchBrowse('tv', { with_genres: String(id) }, 2),
-        ap: `/browse/tv?genre=${id}`
-      });
-    }
+    const genreMovieRows = await Promise.all(movieGenres.map(async ([id, name]) => ({
+      title: `Movies · ${name}`,
+      items: await fetchBrowse('movie', { with_genres: String(id) }, 1),
+      ap: `/browse/movie?genre=${id}`
+    })));
+    const genreTvRows = await Promise.all(tvGenres.map(async ([id, name]) => ({
+      title: `TV · ${name}`,
+      items: await fetchBrowse('tv', { with_genres: String(id) }, 1),
+      ap: `/browse/tv?genre=${id}`
+    })));
 
     const sections = [
       { title: 'Trending Today', items: mapTrend(trendingDay), ap: '/trending/day' },
@@ -469,10 +459,10 @@ app.get('/api/catalog/home', async (req, res) => {
       { title: 'Anime Movies', items: animeMovie, ap: '/browse/movie?anime=1' },
       ...genreMovieRows,
       ...genreTvRows
-    ].map(s => ({ ...s, items: (s.items || []).slice(0, 40) }))
+    ].map(s => ({ ...s, items: (s.items || []).slice(0, 36) }))
       .filter(s => s.items && s.items.length);
 
-    await setC(ck, sections, 900);
+    await setC(ck, sections, 1800);
     res.json({ success: true, data: sections });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
