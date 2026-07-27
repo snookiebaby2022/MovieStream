@@ -34,7 +34,7 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
     f.src = src;
     f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; accelerometer; gyroscope';
     f.setAttribute('allowfullscreen', '');
-    f.setAttribute('referrerpolicy', 'no-referrer');
+    f.setAttribute('referrerpolicy', 'origin-when-cross-origin');
     // No sandbox — embed hosts refuse sandboxed players ("disable sandbox")
     document.body.appendChild(f);
     try { parent.postMessage({ type: 'fn-player-ready' }, '*'); } catch (e) {}

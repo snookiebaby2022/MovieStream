@@ -2193,19 +2193,25 @@ function pEmb(url,idx,gen){
     S.popupHits=0;S.playerReadyAt=Date.now();
     if(window.FlixExtra)FlixExtra.trackPlay('embed',true);
     var playUrl=withAutoplay(url);
-    var wrapped='/player.html?u='+encodeURIComponent(playUrl);
-    var tools=pwTools('<button type="button" onclick="openDirectEmbed()">Direct</button><button type="button" onclick="setPlayerMode(\'external\')">External</button>');
-    $('pw').innerHTML=tools+'<iframe id="emb" src="'+wrapped+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
     S._directUrl=playUrl;
+    // Fire Stick / app WebViews often break nested iframes (player.html → embed) with 403.
+    var frameSrc=isNativeApp()?playUrl:('/player.html?u='+encodeURIComponent(playUrl));
+    var tools=pwTools('<button type="button" onclick="openDirectEmbed()">Direct</button><button type="button" onclick="setPlayerMode(\'external\')">External</button>');
+    // Avoid no-referrer — many embed CDNs return 403 without a referrer.
+    $('pw').innerHTML=tools+'<iframe id="emb" src="'+frameSrc+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="origin-when-cross-origin" loading="eager"></iframe>';
     var frame=$('emb'),loaded=false;
     if(frame){
       frame.addEventListener('load',function(){loaded=true;if(gen&&gen!==S.playGen)return;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · Embed');});
       frame.addEventListener('error',function(){if(gen&&gen!==S.playGen)return;mFail(idx);tryS(idx+1);});
     }
     S.failTimer=setTimeout(function(){
-      if(!loaded&&!S.failed[idx]){setSt('sld','Slow server — tap Next or switch Player');}
-    },isNativeApp()?18000:14000);
-    setTimeout(function(){if(!S.failed[idx]&&(!gen||gen===S.playGen))setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · Embed');},4000);
+      if(gen&&gen!==S.playGen)return;
+      if(!loaded&&!S.failed[idx]){
+        setSt('sld',isNativeApp()?'TV player blocked/slow — tap Next':'Slow server — tap Next or switch Player');
+        if(isNativeApp()){mFail(idx);tryS(idx+1);}
+      }
+    },14000);
+    setTimeout(function(){if(!S.failed[idx]&&(!gen||gen===S.playGen))setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+(isNativeApp()?' · if 403 tap Next':' · Embed'));},4000);
   };
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
@@ -2213,7 +2219,7 @@ function openDirectEmbed(){
   if(!S._directUrl)return;
   destroyPlayer();
   var tools=pwTools();
-  $('pw').innerHTML=tools+'<iframe id="emb" src="'+S._directUrl+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="no-referrer" loading="eager"></iframe>';
+  $('pw').innerHTML=tools+'<iframe id="emb" src="'+S._directUrl+'" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="origin-when-cross-origin" loading="eager"></iframe>';
   setSt('sok','▶ Direct embed');
 }
 function pExt(url,idx,gen){

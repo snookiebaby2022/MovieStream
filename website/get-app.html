@@ -54,17 +54,18 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
           <li><b>2.</b> Allow “Install unknown apps” for your browser/Files.</li>
           <li><b>3.</b> Open FlixNova → Sign Up / Log In → Watch.</li>
         </ol>
-        <a class="btn" id="apkBtn" href="https://od.lk/d/MzJfNTAzNzkxNjVf/FlixNova-android-debug.apk" rel="noopener">Download Android APK</a>
+        <a class="btn" id="apkBtn" href="/downloads/FlixNova-android-debug.apk" rel="noopener">Download Android APK</a>
         <div class="code" id="apkUrl"></div>
       </section>
 
       <section class="card">
         <h2>Fire Stick / Fire TV</h2>
-        <p>Install the same APK with Downloader (or ADB).</p>
+        <p>Install the same APK with Downloader (or ADB). <b>Update required</b> if you see 403 Forbidden on play.</p>
         <ol class="steps">
           <li><b>1.</b> Settings → My Fire TV → Developer Options → <b>Apps from Unknown Sources</b> ON.</li>
           <li><b>2.</b> Install <b>Downloader</b> from the Amazon store.</li>
           <li><b>3.</b> Paste the APK URL below → Download → Install → Open FlixNova.</li>
+          <li><b>4.</b> If a title shows <b>403</b>, press <b>Next</b> for another server (or update the APK).</li>
         </ol>
         <button class="btn ghost" type="button" id="copyApk">Copy APK URL for Downloader</button>
         <div class="code" id="apkUrl2"></div>
@@ -83,11 +84,11 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
       </section>
     </div>
 
-    <p class="note">Get App from the site header opens this page. The Android APK downloads from the hosted link below (OpenDrive).</p>
+    <p class="note">Get App from the site header opens this page. Fire Stick users: reinstall the latest APK if embeds show 403 Forbidden.</p>
   </div>
   <script>
     (function () {
-      var url = 'https://od.lk/d/MzJfNTAzNzkxNjVf/FlixNova-android-debug.apk';
+      var url = location.origin + '/downloads/FlixNova-android-debug.apk';
       var a = document.getElementById('apkUrl');
       var b = document.getElementById('apkUrl2');
       if (a) a.textContent = url;
