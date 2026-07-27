@@ -54,18 +54,64 @@ function clientIp(sock) {
 
 function getOnlineStats() {
   const ips = new Set();
-  let currentlyWatching = 0;
+  const watchingIps = new Set();
   for (const u of online.values()) {
-    ips.add(u.ip || u.vid || u.id);
-    if (u.watching && (u.watching.title || u.watching.tmdbId)) currentlyWatching++;
+    if ((u.vid || '').startsWith('tmp-')) continue;
+    const key = u.ip || u.vid || u.id;
+    ips.add(key);
+    if (u.watching && (u.watching.title || u.watching.tmdbId)) watchingIps.add(key);
   }
   return {
     count: ips.size,
-    connections: online.size,
-    currentlyWatching,
+    connections: [...online.values()].filter(u => !(u.vid || '').startsWith('tmp-')).length,
+    currentlyWatching: watchingIps.size,
     totalViews,
     totalWatches
   };
+}
+
+function scoreSession(u) {
+  let s = 0;
+  if (u.watching && (u.watching.title || u.watching.tmdbId)) s += 100;
+  if (u.user) s += 20;
+  if (u.role === 'admin') s += 10;
+  if (u.page && u.page !== 'admin') s += 5;
+  s += Math.min(30, Math.floor(((Date.now() - (u.firstSeen || Date.now())) / 1000) / 60));
+  return s;
+}
+
+function mergedOnlineUsers() {
+  const byKey = new Map();
+  for (const u of online.values()) {
+    if ((u.vid || '').startsWith('tmp-')) continue;
+    const key = u.ip || u.vid || u.id;
+    const cur = byKey.get(key);
+    if (!cur) {
+      byKey.set(key, {
+        ...u,
+        tabs: 1,
+        firstSeen: u.firstSeen || u.connectedAt || Date.now()
+      });
+      continue;
+    }
+    cur.tabs += 1;
+    cur.firstSeen = Math.min(cur.firstSeen || Date.now(), u.firstSeen || u.connectedAt || Date.now());
+    if (scoreSession(u) >= scoreSession(cur)) {
+      cur.id = u.id;
+      cur.vid = u.vid;
+      cur.ua = u.ua;
+      cur.page = u.page;
+      cur.watching = u.watching;
+      cur.user = u.user || cur.user;
+      cur.role = u.role || cur.role;
+    } else {
+      cur.user = cur.user || u.user;
+      cur.role = cur.role || u.role;
+      if (!cur.watching && u.watching) cur.watching = u.watching;
+    }
+    cur.lastSeen = Math.max(cur.lastSeen || 0, u.lastSeen || 0);
+  }
+  return Array.from(byKey.values());
 }
 
 function broadcastOnline() {
@@ -1030,8 +1076,7 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
 
 app.get('/api/admin/online', adminAuth, (req, res) => {
   const stats = getOnlineStats();
-  const users = Array.from(online.values())
-    .filter(u => !(u.vid || '').startsWith('tmp-'))
+  const users = mergedOnlineUsers()
     .map(u => ({
       id: u.id,
       vid: u.vid,
@@ -1042,6 +1087,7 @@ app.get('/api/admin/online', adminAuth, (req, res) => {
       duration: Math.floor((Date.now() - (u.firstSeen || u.connectedAt || Date.now())) / 1000),
       page: u.watching ? 'watching' : (u.page || 'home'),
       watching: u.watching,
+      tabs: u.tabs || 1,
       device: /Mobile|Android|iPhone/i.test(u.ua) ? 'Mobile' : 'Desktop'
     }))
     .sort((a, b) => (b.duration || 0) - (a.duration || 0));
