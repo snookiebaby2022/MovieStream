@@ -1168,37 +1168,92 @@ app.post('/api/admin/debrid/test', adminAuth, async (req, res) => {
   try {
     const token = (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').trim();
     if (!token) return res.status(400).json({ success: false, error: 'No site RD token configured' });
-    const { tmdbId = '27205', type = 'movie', season = 1, episode = 1 } = req.body || {};
+    const { tmdbId = '27205', type = 'movie', season = 1, episode = 1, adult = false, title = '' } = req.body || {};
     const media = type === 'tv' ? 'tv' : 'movie';
     let imdb = '';
+    let metaTitle = String(title || '');
     if (KEY) {
       try {
-        const ext = await axios.get(`${TMDB}/${media}/${tmdbId}/external_ids`, {
-          params: { api_key: KEY }, timeout: 8000
-        });
+        const [ext, det] = await Promise.all([
+          axios.get(`${TMDB}/${media}/${tmdbId}/external_ids`, { params: { api_key: KEY }, timeout: 8000 }),
+          axios.get(`${TMDB}/${media}/${tmdbId}`, { params: { api_key: KEY }, timeout: 8000 })
+        ]);
         imdb = ext.data?.imdb_id || '';
+        if (!metaTitle) metaTitle = det.data?.title || det.data?.name || '';
       } catch {}
     }
-    if (!imdb) return res.status(400).json({ success: false, error: 'Could not resolve IMDB id' });
-    const cfg = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
-    const pathStr = media === 'tv'
-      ? `/stream/series/${imdb}:${parseInt(season, 10) || 1}:${parseInt(episode, 10) || 1}.json`
-      : `/stream/movie/${imdb}.json`;
+    const pathStr = imdb
+      ? (media === 'tv'
+        ? `/stream/series/${imdb}:${parseInt(season, 10) || 1}:${parseInt(episode, 10) || 1}.json`
+        : `/stream/movie/${imdb}.json`)
+      : null;
     const t0 = Date.now();
-    const r = await axios.get(`https://torrentio.strem.fun/${cfg}${pathStr}`, {
-      headers: { 'User-Agent': 'FlixNova-Admin', Accept: 'application/json' },
-      timeout: 25000,
-      validateStatus: s => s < 500
-    });
-    const streams = (r.data?.streams || []).filter(s => /^https?:\/\//i.test(s.url || s.externalUrl || ''));
+    const TORRENTIO = 'https://torrentio.strem.fun';
+    const COMET = 'https://comet.elfhosted.com';
+    const cfg = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
+    const cometB64 = Buffer.from(JSON.stringify({
+      cachedOnly: false, removeTrash: true, resultFormat: ['all'],
+      maxResultsPerResolution: 0, maxSize: 0,
+      debridService: 'realdebrid', debridApiKey: token,
+      debridServices: [], enableTorrent: false, debridStreamProxyPassword: '',
+      languages: { exclude: [], priority: [] }, resolutions: {}, options: {}
+    })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+
+    async function countAddon(url, label) {
+      try {
+        const r = await axios.get(url, {
+          headers: { 'User-Agent': 'FlixNova-Admin', Accept: 'application/json' },
+          timeout: 22000, validateStatus: s => s < 500
+        });
+        const streams = (r.data?.streams || []).filter(s => /^https?:\/\//i.test(s.url || s.externalUrl || ''));
+        return { provider: label, ok: r.status < 400, streamCount: streams.length, sample: streams.slice(0, 3).map(s => (s.title || s.name || '').split('\n')[0]) };
+      } catch (e) {
+        return { provider: label, ok: false, streamCount: 0, error: e.message };
+      }
+    }
+
+    const results = [];
+    if (pathStr) {
+      results.push(await countAddon(`${TORRENTIO}/${cfg}${pathStr}`, 'torrentio'));
+      results.push(await countAddon(`${COMET}/${cometB64}${pathStr}`, 'comet'));
+      const mfCfg = (process.env.MEDIAFUSION_CONFIG || '').trim().replace(/^\/+|\/+$/g, '');
+      if (mfCfg) {
+        results.push(await countAddon(`https://mediafusion.elfhosted.com/${mfCfg}${pathStr}`, 'mediafusion'));
+      } else {
+        results.push({ provider: 'mediafusion', ok: false, streamCount: 0, error: 'Set MEDIAFUSION_CONFIG env to enable' });
+      }
+    }
+
+    // Adult / title ApiBay probe (count only — no RD magnet spam in admin test)
+    let apibay = { provider: 'apibay', ok: false, streamCount: 0 };
+    try {
+      const q = imdb || metaTitle || 'test';
+      const bayUrl = adult
+        ? `https://apibay.org/q.php?q=${encodeURIComponent(q)}&cat=500`
+        : `https://apibay.org/q.php?q=${encodeURIComponent(q)}`;
+      const br = await axios.get(bayUrl, { timeout: 12000, validateStatus: s => s < 500 });
+      const list = Array.isArray(br.data) ? br.data.filter(x => x && x.info_hash && x.id !== '0') : [];
+      apibay = {
+        provider: 'apibay',
+        ok: true,
+        streamCount: list.length,
+        sample: list.slice(0, 3).map(x => x.name)
+      };
+    } catch (e) {
+      apibay.error = e.message;
+    }
+    results.push(apibay);
+
     res.json({
       success: true,
       data: {
-        imdbId: imdb,
+        imdbId: imdb || null,
         tmdbId,
         type: media,
-        streamCount: streams.length,
-        sample: streams.slice(0, 5).map(s => (s.title || s.name || '').split('\n')[0]),
+        title: metaTitle,
+        adult: !!adult,
+        streamCount: results.reduce((n, r) => n + (r.streamCount || 0), 0),
+        providers: results,
         elapsed: `${Date.now() - t0}ms`
       }
     });

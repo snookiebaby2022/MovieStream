@@ -1,8 +1,7 @@
 /**
- * Real-Debrid via Torrentio (Stremio addon).
- * Token resolution order:
- *  1) Client header/body (per-user key)
- *  2) REALDEBRID_API_TOKEN in server .env (site-wide)
+ * Real-Debrid streams via multiple Stremio providers + adult/title torrent search.
+ * Providers: Torrentio, Comet, optional MediaFusion (MEDIAFUSION_CONFIG env).
+ * XXX / sparse titles: ApiBay (TPB) search → RD magnet resolve (cached preferred).
  */
 const express = require('express');
 const axios = require('axios');
@@ -10,8 +9,13 @@ const { verifyToken } = require('./authRoutes');
 const { User } = require('./models');
 
 const router = express.Router();
-const TORRENTIO = 'https://torrentio.strem.fun';
+const TORRENTIO = (process.env.TORRENTIO_URL || 'https://torrentio.strem.fun').replace(/\/$/, '');
+const COMET = (process.env.COMET_URL || 'https://comet.elfhosted.com').replace(/\/$/, '');
+const MEDIAFUSION = (process.env.MEDIAFUSION_URL || 'https://mediafusion.elfhosted.com').replace(/\/$/, '');
+/** Optional path segment from MediaFusion “Share Manifest URL” (encrypted user data) */
+const MEDIAFUSION_CONFIG = (process.env.MEDIAFUSION_CONFIG || '').toString().trim().replace(/^\/+|\/+$/g, '');
 const RD_API = 'https://api.real-debrid.com/rest/1.0';
+const APIBAY = 'https://apibay.org';
 
 function ua() {
   return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -46,6 +50,14 @@ function parseSize(title) {
   return m ? m[1] : '';
 }
 
+function formatBytes(n) {
+  const b = Number(n) || 0;
+  if (b >= 1e9) return `${(b / 1e9).toFixed(2)} GB`;
+  if (b >= 1e6) return `${(b / 1e6).toFixed(0)} MB`;
+  if (b > 0) return `${(b / 1e3).toFixed(0)} KB`;
+  return '';
+}
+
 function parseSeeders(title) {
   const m = String(title || '').match(/👤\s*(\d+)/);
   return m ? parseInt(m[1], 10) : 0;
@@ -55,14 +67,13 @@ function parseSeeders(title) {
 function browserScore(title, url, name) {
   const t = `${name || ''} ${title || ''} ${url || ''}`.toLowerCase();
   let score = 40;
-  // [RD+] = already cached on Real-Debrid (instant). [RD download] often becomes failed_* stubs.
   if (/\[rd\+\]/.test(t)) score += 90;
   if (/\[rd download\]/.test(t)) score -= 60;
   if (/\.mp4(\?|$)|[\s.\-_]mp4[\s.\-_]/i.test(t)) score += 50;
   if (/x264|h\.?264|avc/.test(t)) score += 35;
   if (/web-?dl|webrip|hdtv/.test(t)) score += 8;
   if (/1080p/.test(t)) score += 18;
-  if (/720p/.test(t)) score += 22; // often lighter / more compatible
+  if (/720p/.test(t)) score += 22;
   if (/480p|dvdrip|hdrip/.test(t)) score += 6;
   if (/2160p|4k|uhd/.test(t)) score -= 30;
   if (/x265|h\.?265|hevc|10bit|hdr10|dolby\s*vision|\bdv\b/.test(t)) score -= 45;
@@ -77,6 +88,7 @@ function isLikelyBrowserPlayable(title, url, name) {
 }
 
 const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?code[_\s-]?35|"error_code"\s*:\s*35|unavailable for legal reasons|file was removed from debrid/i;
+
 async function requireAdFree(req, res) {
   const userTok = verifyToken(
     req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
@@ -125,8 +137,6 @@ async function probeStreamUrl(url) {
     const buf = Buffer.from(r.data || []);
     const text = buf.toString('utf8', 0, Math.min(buf.length, 4000));
 
-    // ONLY trust total size from Content-Range (…/TOTAL).
-    // Content-Length on a Range request is often just the chunk size (e.g. 4096) and must NOT mark streams as stubs.
     const cr = String(r.headers['content-range'] || '');
     const crm = cr.match(/\/(\d+)\s*$/);
     const totalBytes = crm ? (parseInt(crm[1], 10) || 0) : 0;
@@ -146,12 +156,10 @@ async function probeStreamUrl(url) {
       }
     } catch {}
 
-    // Tiny full-file videos via Content-Range total only (RD copyright stub MP4s)
     if (totalBytes > 0 && totalBytes < 8 * 1024 * 1024 && /video|octet-stream|mp4/i.test(ct)) {
       return { url, ok: false, reason: 'copyright_stub' };
     }
 
-    // Working media usually redirects to video/octet-stream (even with Range)
     if (status >= 200 && status < 400 && /video|audio|mpegurl|octet-stream|mp2t|mp4/i.test(ct)) {
       return { url, ok: true, reason: 'media', bytes: totalBytes || undefined };
     }
@@ -161,17 +169,396 @@ async function probeStreamUrl(url) {
     if (/text\/html/i.test(ct) && INFRINGE_RE.test(text)) {
       return { url, ok: false, reason: 'copyright' };
     }
-    // Unknown — keep (don't over-prune)
     return { url, ok: true, reason: 'unknown' };
   } catch (e) {
-    // Network blip — keep link
     return { url, ok: true, reason: 'probe_error' };
   }
 }
 
+function mapAddonStreams(raw, provider) {
+  return (raw || [])
+    .map((s, i) => {
+      const playUrl = s.url || s.externalUrl || '';
+      if (!/^https?:\/\//i.test(playUrl)) return null;
+      if (/magnet:/i.test(playUrl)) return null;
+      const title = s.title || s.description || s.name || `Stream ${i + 1}`;
+      const name = s.name || provider;
+      if (INFRINGE_RE.test(title) || INFRINGE_RE.test(name)) return null;
+      // Skip Comet/MediaFusion config error notices
+      if (/invalid api key|obsolete configuration|please (re-)?configure|check your configuration/i.test(title + ' ' + name)) {
+        return null;
+      }
+      const quality = parseQuality(title + ' ' + name);
+      const isHls = /\.m3u8(\?|$)/i.test(playUrl) || /hls/i.test(playUrl);
+      const bScore = browserScore(title, playUrl, name);
+      const cached = /\[rd\+\]|⚡|cached/i.test(name + ' ' + title);
+      return {
+        source: String(name).replace(/\n/g, ' ').slice(0, 40) || provider,
+        title: String(title).split('\n')[0].slice(0, 80),
+        quality,
+        size: parseSize(title) || formatBytes(s.behaviorHints?.videoSize),
+        seeders: parseSeeders(title),
+        type: isHls ? 'hls' : 'direct',
+        url: playUrl,
+        embedUrl: playUrl,
+        debrid: true,
+        cached,
+        browserOk: isLikelyBrowserPlayable(title, playUrl, name),
+        browserScore: bScore,
+        provider,
+        priority: i + 1
+      };
+    })
+    .filter(Boolean);
+}
+
+function cometConfigB64(token) {
+  const cfg = {
+    cachedOnly: false,
+    sortCachedUncachedTogether: false,
+    removeTrash: true,
+    resultFormat: ['all'],
+    maxResultsPerResolution: 0,
+    maxSize: 0,
+    debridService: 'realdebrid',
+    debridApiKey: token,
+    debridServices: [],
+    enableTorrent: false,
+    debridStreamProxyPassword: '',
+    languages: { exclude: [], priority: [] },
+    resolutions: {},
+    options: {
+      remove_ranks_under: -10000000000,
+      allow_english_in_languages: false,
+      remove_unknown_languages: false
+    }
+  };
+  return Buffer.from(JSON.stringify(cfg), 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+async function fetchJsonStreams(url, label) {
+  try {
+    const r = await axios.get(url, {
+      headers: { 'User-Agent': ua(), Accept: 'application/json' },
+      timeout: 22000,
+      validateStatus: s => s < 500
+    });
+    if (r.status >= 400) {
+      console.warn(`Debrid/${label}: HTTP ${r.status}`);
+      return [];
+    }
+    return mapAddonStreams(r.data?.streams || [], label);
+  } catch (e) {
+    console.warn(`Debrid/${label}:`, e.message);
+    return [];
+  }
+}
+
+async function fetchTorrentio(token, path) {
+  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
+  const cfgAll = `realdebrid=${encodeURIComponent(token)}`;
+  let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgClean}${path}`, 'torrentio');
+  if (!streams.length) {
+    streams = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, 'torrentio');
+  }
+  return streams;
+}
+
+async function fetchComet(token, path) {
+  const b64 = cometConfigB64(token);
+  return fetchJsonStreams(`${COMET}/${b64}${path}`, 'comet');
+}
+
+async function fetchMediaFusion(path) {
+  if (!MEDIAFUSION_CONFIG) return [];
+  return fetchJsonStreams(`${MEDIAFUSION}/${MEDIAFUSION_CONFIG}${path}`, 'mediafusion');
+}
+
+function titleMatchScore(torrentName, title) {
+  const words = String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !/^(the|and|for|xxx|adult)$/.test(w));
+  if (!words.length) return 0;
+  const n = String(torrentName || '').toLowerCase();
+  let hits = 0;
+  for (const w of words) if (n.includes(w)) hits++;
+  return hits / words.length;
+}
+
+async function searchApibay(query, { adult = false } = {}) {
+  const q = String(query || '').trim();
+  if (!q || q === '0') return [];
+  const urls = [];
+  if (adult) urls.push(`${APIBAY}/q.php?q=${encodeURIComponent(q)}&cat=500`);
+  urls.push(`${APIBAY}/q.php?q=${encodeURIComponent(q)}`);
+
+  const rows = [];
+  await Promise.all(urls.map(async (url) => {
+    try {
+      const r = await axios.get(url, {
+        headers: { 'User-Agent': ua(), Accept: 'application/json' },
+        timeout: 12000,
+        validateStatus: s => s < 500
+      });
+      const list = Array.isArray(r.data) ? r.data : [];
+      for (const row of list) {
+        if (!row || row.id === '0' || !row.info_hash) continue;
+        rows.push(row);
+      }
+    } catch (e) {
+      console.warn('ApiBay:', e.message);
+    }
+  }));
+
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const hash = String(row.info_hash || '').toLowerCase();
+    if (!/^[a-f0-9]{40}$/.test(hash) || seen.has(hash)) continue;
+    seen.add(hash);
+    out.push({
+      hash,
+      name: row.name || hash,
+      seeders: parseInt(row.seeders, 10) || 0,
+      size: parseInt(row.size, 10) || 0,
+      imdb: row.imdb || '',
+      category: String(row.category || '')
+    });
+  }
+  out.sort((a, b) => (b.seeders - a.seeders) || (b.size - a.size));
+  return out;
+}
+
+async function rdInstantCached(token, hashes) {
+  const cached = new Set();
+  if (!hashes.length) return cached;
+  // RD accepts up to ~100 hashes; chunk to be safe
+  for (let i = 0; i < hashes.length; i += 40) {
+    const chunk = hashes.slice(i, i + 40);
+    try {
+      const r = await axios.get(`${RD_API}/torrents/instantAvailability/${chunk.join('/')}`, {
+        headers: { Authorization: `Bearer ${token}`, 'User-Agent': ua() },
+        timeout: 15000,
+        validateStatus: () => true
+      });
+      if (r.status === 200 && r.data && typeof r.data === 'object') {
+        for (const [h, info] of Object.entries(r.data)) {
+          const rd = info?.rd;
+          if (Array.isArray(rd) && rd.length) cached.add(String(h).toLowerCase());
+        }
+      }
+    } catch {}
+  }
+  return cached;
+}
+
+async function rdDeleteTorrent(token, id) {
+  if (!id) return;
+  try {
+    await axios.delete(`${RD_API}/torrents/delete/${id}`, {
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': ua() },
+      timeout: 8000,
+      validateStatus: () => true
+    });
+  } catch {}
+}
+
+async function resolveHashViaRd(token, torrent) {
+  const magnet = `magnet:?xt=urn:btih:${torrent.hash}&dn=${encodeURIComponent(torrent.name || torrent.hash)}`;
+  let id = null;
+  try {
+    const added = await axios.post(
+      `${RD_API}/torrents/addMagnet`,
+      new URLSearchParams({ magnet }).toString(),
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': ua(),
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 15000
+      }
+    );
+    id = added.data?.id;
+    if (!id) return null;
+
+    let info = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const ir = await axios.get(`${RD_API}/torrents/info/${id}`, {
+        headers: { Authorization: `Bearer ${token}`, 'User-Agent': ua() },
+        timeout: 12000
+      });
+      info = ir.data;
+      if (info?.status === 'waiting_files_selection') {
+        const files = Array.isArray(info.files) ? info.files : [];
+        const videoIds = files
+          .filter(f => /\.(mp4|mkv|avi|m4v|mov|wmv|webm)$/i.test(f.path || ''))
+          .map(f => f.id);
+        const pick = videoIds.length ? videoIds : files.map(f => f.id).filter(Boolean);
+        if (pick.length) {
+          await axios.post(
+            `${RD_API}/torrents/selectFiles/${id}`,
+            new URLSearchParams({ files: pick.join(',') }).toString(),
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'User-Agent': ua(),
+                'Content-Type': 'application/x-www-form-urlencoded'
+              },
+              timeout: 12000
+            }
+          );
+        }
+      }
+      if (info?.status === 'downloaded' && Array.isArray(info.links) && info.links.length) break;
+      if (['error', 'magnet_error', 'virus', 'dead'].includes(info?.status)) {
+        await rdDeleteTorrent(token, id);
+        return null;
+      }
+      // Cached torrents usually finish in 1–2 polls; don't wait long for downloads
+      if (attempt < 5 && info?.status !== 'downloaded') {
+        await new Promise(r => setTimeout(r, 700));
+      }
+    }
+
+    if (!info || info.status !== 'downloaded' || !info.links?.length) {
+      await rdDeleteTorrent(token, id);
+      return null;
+    }
+
+    // Prefer largest video-like hoster link
+    const links = info.links.slice().sort((a, b) => String(b).length - String(a).length);
+    let playUrl = '';
+    let filename = torrent.name || 'RD';
+    for (const link of links.slice(0, 3)) {
+      try {
+        const ur = await axios.post(
+          `${RD_API}/unrestrict/link`,
+          new URLSearchParams({ link }).toString(),
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'User-Agent': ua(),
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            timeout: 15000
+          }
+        );
+        if (ur.data?.download) {
+          playUrl = ur.data.download;
+          filename = ur.data.filename || filename;
+          break;
+        }
+      } catch {}
+    }
+
+    await rdDeleteTorrent(token, id);
+    if (!playUrl) return null;
+
+    const title = filename;
+    const name = `[RD+] ApiBay`;
+    const bScore = browserScore(title, playUrl, name);
+    return {
+      source: name,
+      title: String(title).slice(0, 80),
+      quality: parseQuality(title),
+      size: formatBytes(torrent.size),
+      seeders: torrent.seeders || 0,
+      type: /\.m3u8(\?|$)/i.test(playUrl) ? 'hls' : 'direct',
+      url: playUrl,
+      embedUrl: playUrl,
+      debrid: true,
+      cached: true,
+      browserOk: isLikelyBrowserPlayable(title, playUrl, name),
+      browserScore: bScore,
+      provider: 'apibay',
+      priority: 1
+    };
+  } catch (e) {
+    if (id) await rdDeleteTorrent(token, id);
+    console.warn('RD resolve:', e.response?.data?.error || e.message);
+    return null;
+  }
+}
+
+async function fetchApibayRdStreams(token, { imdb, title, year, adult }) {
+  const queries = [];
+  if (imdb) queries.push({ q: imdb, byImdb: true });
+  if (title) {
+    const y = year ? ` ${year}` : '';
+    queries.push({ q: `${title}${y}`.trim(), byImdb: false });
+    if (adult) queries.push({ q: title, byImdb: false });
+  }
+  if (!queries.length) return [];
+
+  const found = [];
+  const seen = new Set();
+  for (const { q, byImdb } of queries) {
+    const rows = await searchApibay(q, { adult: !!adult });
+    for (const row of rows) {
+      if (seen.has(row.hash)) continue;
+      if (byImdb && imdb) {
+        if (row.imdb && row.imdb !== imdb && !String(row.name).includes(imdb)) {
+          // keep if seeders high and title-ish — still prefer imdb match
+          if (row.imdb && row.imdb !== imdb) continue;
+        }
+      } else if (title) {
+        const score = titleMatchScore(row.name, title);
+        if (score < 0.45) continue;
+        if (year && !String(row.name).includes(String(year)) && score < 0.7) continue;
+      }
+      // Adult: prefer porn categories (5xx) when searching titles
+      if (adult && !byImdb && row.category && !/^5/.test(row.category) && titleMatchScore(row.name, title) < 0.75) {
+        continue;
+      }
+      seen.add(row.hash);
+      found.push(row);
+    }
+  }
+
+  found.sort((a, b) => (b.seeders - a.seeders) || (b.size - a.size));
+  const candidates = found.slice(0, adult ? 20 : 12);
+  if (!candidates.length) return [];
+
+  const cached = await rdInstantCached(token, candidates.map(c => c.hash));
+  // Prefer known-cached; if API gone/empty, still try top seeded (limit stricter)
+  let toResolve = candidates.filter(c => cached.has(c.hash));
+  if (!toResolve.length) {
+    toResolve = candidates.filter(c => c.seeders >= (adult ? 2 : 5)).slice(0, 5);
+  } else {
+    toResolve = toResolve.slice(0, 8);
+  }
+
+  const streams = [];
+  // Resolve sequentially to avoid RD rate limits
+  for (const t of toResolve) {
+    if (streams.length >= 8) break;
+    const s = await resolveHashViaRd(token, t);
+    if (s) streams.push(s);
+  }
+  return streams;
+}
+
+function dedupeStreams(list) {
+  const seen = new Set();
+  const out = [];
+  for (const s of list) {
+    const key = String(s.url || '').split('?')[0].toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
 router.get('/status', async (req, res) => {
   const siteConfigured = !!siteToken();
-  // Never use the site-wide RD token for unauthenticated status (leaks account email)
   const userTok = (
     req.headers['x-rd-token'] ||
     req.body?.token ||
@@ -218,7 +605,6 @@ router.post('/validate', async (req, res) => {
     if (!urls.length) return res.status(400).json({ success: false, error: 'urls required' });
 
     const results = [];
-    // Small concurrency so we don't hammer RD
     const queue = urls.slice();
     const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
       while (queue.length) {
@@ -228,7 +614,6 @@ router.post('/validate', async (req, res) => {
     });
     await Promise.all(workers);
 
-    // Only remove clear copyright hits — never probe_error / unknown
     const bad = results
       .filter(r => !r.ok && (r.reason === 'copyright' || r.reason === 'copyright_stub'))
       .map(r => r.url);
@@ -249,9 +634,11 @@ router.post('/streams', async (req, res) => {
   try {
     if (!(await requireAdFree(req, res))) return;
 
-    // Prefer site-wide RD key for paying users
     const token = siteToken() || tokenFrom(req);
-    const { imdbId, type, season, episode, tmdbId } = req.body || {};
+    const {
+      imdbId, type, season, episode, tmdbId,
+      title, year, adult
+    } = req.body || {};
     if (!token) {
       return res.status(400).json({
         success: false,
@@ -262,114 +649,110 @@ router.post('/streams', async (req, res) => {
     let imdb = (imdbId || '').toString().trim();
     if (imdb && !imdb.startsWith('tt')) imdb = 'tt' + imdb.replace(/\D/g, '');
 
-    if (!imdb && tmdbId) {
+    let metaTitle = (title || '').toString().trim();
+    let metaYear = year ? String(year).replace(/\D/g, '').slice(0, 4) : '';
+    let isAdult = adult === true || adult === 1 || adult === '1' || adult === 'true';
+
+    if (tmdbId) {
       const KEY = process.env.TMDB_API_KEY || '';
       const media = type === 'tv' ? 'tv' : 'movie';
       if (KEY) {
         try {
-          const ext = await axios.get(`https://api.themoviedb.org/3/${media}/${tmdbId}/external_ids`, {
-            params: { api_key: KEY },
-            timeout: 8000
-          });
-          imdb = ext.data?.imdb_id || '';
+          const tasks = [];
+          if (!imdb) {
+            tasks.push(
+              axios.get(`https://api.themoviedb.org/3/${media}/${tmdbId}/external_ids`, {
+                params: { api_key: KEY },
+                timeout: 8000
+              }).then(r => { imdb = r.data?.imdb_id || imdb; }).catch(() => {})
+            );
+          }
+          tasks.push(
+            axios.get(`https://api.themoviedb.org/3/${media}/${tmdbId}`, {
+              params: { api_key: KEY },
+              timeout: 8000
+            }).then(r => {
+              const d = r.data || {};
+              if (!metaTitle) metaTitle = d.title || d.name || '';
+              if (!metaYear) {
+                const date = d.release_date || d.first_air_date || '';
+                metaYear = date.slice(0, 4);
+              }
+              if (d.adult) isAdult = true;
+            }).catch(() => {})
+          );
+          await Promise.all(tasks);
         } catch {}
       }
     }
 
-    if (!imdb || !imdb.startsWith('tt')) {
-      return res.status(400).json({ success: false, error: 'IMDB id required for debrid streams' });
+    let path = null;
+    if (imdb && imdb.startsWith('tt')) {
+      if (type === 'tv' || type === 'series') {
+        const s = parseInt(season, 10) || 1;
+        const e = parseInt(episode, 10) || 1;
+        path = `/stream/series/${imdb}:${s}:${e}.json`;
+      } else {
+        path = `/stream/movie/${imdb}.json`;
+      }
     }
 
-    let path;
-    if (type === 'tv' || type === 'series') {
-      const s = parseInt(season, 10) || 1;
-      const e = parseInt(episode, 10) || 1;
-      path = `/stream/series/${imdb}:${s}:${e}.json`;
-    } else {
-      path = `/stream/movie/${imdb}.json`;
+    console.log('Debrid multi:', { path, imdb, adult: isAdult, title: metaTitle?.slice(0, 40), mediafusion: !!MEDIAFUSION_CONFIG });
+
+    const providerTasks = [];
+    if (path) {
+      providerTasks.push(fetchTorrentio(token, path));
+      providerTasks.push(fetchComet(token, path));
+      providerTasks.push(fetchMediaFusion(path));
     }
 
-    async function fetchTorrentio(cfg) {
-      const url = `${TORRENTIO}/${cfg}${path}`;
-      const r = await axios.get(url, {
-        headers: { 'User-Agent': ua(), Accept: 'application/json' },
-        timeout: 25000,
-        validateStatus: s => s < 500
-      });
-      return r;
+    const needApibay = isAdult || !path;
+    // Also fill gaps when addons return little
+    const addonResults = await Promise.all(providerTasks);
+    let streams = dedupeStreams(addonResults.flat());
+
+    if (needApibay || streams.length < 4) {
+      try {
+        const extra = await fetchApibayRdStreams(token, {
+          imdb: imdb && imdb.startsWith('tt') ? imdb : '',
+          title: metaTitle,
+          year: metaYear,
+          adult: isAdult
+        });
+        streams = dedupeStreams(streams.concat(extra));
+      } catch (e) {
+        console.warn('ApiBay RD:', e.message);
+      }
     }
 
-    // Prefer clean releases; retry without filter if empty (some titles only have edge sources)
-    const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
-    const cfgAll = `realdebrid=${encodeURIComponent(token)}`;
-    console.log('Debrid/Torrentio:', path);
-
-    let r = await fetchTorrentio(cfgClean);
-    if (r.status >= 400) {
-      return res.status(502).json({ success: false, error: `Torrentio HTTP ${r.status}` });
-    }
-    let raw = r.data?.streams || [];
-    if (!raw.length) {
-      r = await fetchTorrentio(cfgAll);
-      if (r.status < 400) raw = r.data?.streams || [];
+    if (!streams.length && !imdb && !metaTitle) {
+      return res.status(400).json({ success: false, error: 'IMDB id or title required for debrid streams' });
     }
 
-    let streams = raw
-      .map((s, i) => {
-        const playUrl = s.url || s.externalUrl || '';
-        if (!/^https?:\/\//i.test(playUrl)) return null;
-        if (/magnet:/i.test(playUrl)) return null;
-        const title = s.title || s.name || `Stream ${i + 1}`;
-        const name = s.name || '';
-        // Skip links torrentio already flagged as removed / infringing
-        if (INFRINGE_RE.test(title) || INFRINGE_RE.test(name)) return null;
-        const quality = parseQuality(title + ' ' + name);
-        const isHls = /\.m3u8(\?|$)/i.test(playUrl) || /hls/i.test(playUrl);
-        const bScore = browserScore(title, playUrl, name);
-        const cached = /\[RD\+\]/i.test(name + ' ' + title);
-        return {
-          source: name.replace(/\n/g, ' ').slice(0, 40) || 'RD',
-          title: title.split('\n')[0].slice(0, 80),
-          quality,
-          size: parseSize(title),
-          seeders: parseSeeders(title),
-          type: isHls ? 'hls' : 'direct',
-          url: playUrl,
-          embedUrl: playUrl,
-          debrid: true,
-          cached,
-          browserOk: isLikelyBrowserPlayable(title, playUrl, name),
-          browserScore: bScore,
-          priority: i + 1
-        };
-      })
-      .filter(Boolean);
-
-    // Prefer cached [RD+] + browser-friendly (mp4/x264) over downloads / 4K HEVC
     streams.sort((a, b) =>
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
       (b.browserScore - a.browserScore) ||
       (b.seeders || 0) - (a.seeders || 0)
     );
 
-    // If enough cached [RD+] links exist, skip [RD download] (those often become failed_* stubs)
     const cachedOnly = streams.filter(s => s.cached);
     if (cachedOnly.length >= 6) streams = cachedOnly;
 
-    // Return quickly — do NOT bulk-probe resolves here (Torrentio rate-limits → 502s).
-    // Client drops failed_* stub videos on play; we prefer cached [RD+] above.
     streams = streams.slice(0, 40);
     const friendly = streams.filter(s => s.browserOk);
+    const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
 
     res.json({
       success: true,
       data: {
-        imdbId: imdb,
+        imdbId: imdb || null,
         streams,
         totalSources: streams.length,
         browserFriendly: friendly.length,
         cached: streams.filter(s => s.cached).length,
-        provider: 'realdebrid+torrentio'
+        providers,
+        provider: providers.join('+') || 'none',
+        adult: isAdult
       }
     });
   } catch (e) {

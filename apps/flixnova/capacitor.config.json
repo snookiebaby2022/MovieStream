@@ -18,6 +18,10 @@
       "real-debrid.com",
       "*.cdn.real-debrid.com",
       "torrentio.strem.fun",
+      "comet.elfhosted.com",
+      "*.elfhosted.com",
+      "mediafusion.elfhosted.com",
+      "*.download.real-debrid.com",
       "*.jsdelivr.net",
       "cdn.jsdelivr.net"
     ]

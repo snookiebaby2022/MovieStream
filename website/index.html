@@ -654,7 +654,7 @@ function verifyRd(){
     }
   }).catch(function(e){$('rdOk').style.display='none';$('rdErr').textContent=e.message;$('rdErr').style.display='block';});
 }
-function fetchDebridStreams(imdbId,type,sn,ep,tmdbId){
+function fetchDebridStreams(imdbId,type,sn,ep,tmdbId,extra){
   // Paying / Ad-Free only — free users stay on embeds
   if(!isAdFreeUser()||!S.token)return Promise.resolve(null);
   var headers={
@@ -664,10 +664,21 @@ function fetchDebridStreams(imdbId,type,sn,ep,tmdbId){
   };
   var token=getRdToken();
   if(token)headers['x-rd-token']=token;
+  var x=extra||{};
+  var item=S.item||{};
   return fetch('/api/debrid/streams',{
     method:'POST',
     headers:headers,
-    body:JSON.stringify({imdbId:imdbId||'',type:type==='tv'?'tv':'movie',season:sn||1,episode:ep||1,tmdbId:tmdbId})
+    body:JSON.stringify({
+      imdbId:imdbId||'',
+      type:type==='tv'?'tv':'movie',
+      season:sn||1,
+      episode:ep||1,
+      tmdbId:tmdbId,
+      title:x.title||item.title||'',
+      year:x.year||item.year||'',
+      adult:!!(x.adult||item.adult)
+    })
   }).then(function(r){
     return r.json().then(function(d){
       if(!d)d={success:false};
@@ -1607,6 +1618,7 @@ function openModal(item){
           S.item.year=det.data.year||S.item.year;
           S.item.rating=det.data.rating||S.item.rating;
           S.item.overview=det.data.overview||S.item.overview;
+          S.item.adult=!!(det.data.adult||S.item.adult);
           saveContinue(S.item,S.sn,S.ep);
         }
       }
@@ -1621,15 +1633,21 @@ function openModal(item){
           }else showPE('No embed servers right now. Try again, or unlock Ad-Free £1 for Real-Debrid.');
         });
       }
-      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding Real-Debrid streams...</span></div>';
-      return fetchDebridStreams(imdb,type,S.sn,S.ep,id).then(function(rd){
+      var isAdult=!!(S.item&&S.item.adult);
+      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding Real-Debrid streams'+(isAdult?' (XXX)':'')+'...</span></div>';
+      return fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item&&S.item.title,year:S.item&&S.item.year,adult:isAdult}).then(function(rd){
         if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
           S.siteRd=true;refreshRdBtn();
           handleSrc({sources:rd.data.streams,debrid:true});
-          setSt('sok','▶ Real-Debrid · Ad-Free');
+          var prov=(rd.data.providers&&rd.data.providers.length)?rd.data.providers.join('+'):'RD';
+          setSt('sok','▶ Real-Debrid · '+prov+(isAdult?' · XXX':''));
           return;
         }
         var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no RD links';
+        if(isAdult){
+          showPE('No XXX streams found yet ('+why+'). Try another title — adult relies on torrent/RD indexes.');
+          return;
+        }
         return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
           if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
             handleSrc(emb.data);
@@ -1779,7 +1797,7 @@ function pEp(tid,sn,ep,el){
     if(!premium)return loadEmb();
     var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
     return imdbP.then(function(idb){
-      return fetchDebridStreams(idb,'tv',sn,ep,tid).then(function(rd){
+      return fetchDebridStreams(idb,'tv',sn,ep,tid,{title:S.item&&S.item.title,year:S.item&&S.item.year,adult:!!(S.item&&S.item.adult)}).then(function(rd){
         if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
           handleSrc({sources:rd.data.streams,debrid:true});
           setSt('sok','▶ Real-Debrid · Ad-Free');
@@ -2299,8 +2317,10 @@ function retryAll(){
   };
   if(!isAdFreeUser()){emb().catch(function(e){showPE(e.message);});return;}
   var imdb=S.item.imdbId;
-  fetchDebridStreams(imdb,type,S.sn,S.ep,id).then(function(rd){
+  var isAdult=!!S.item.adult;
+  fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item.title,year:S.item.year,adult:isAdult}).then(function(rd){
     if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){handleSrc({sources:rd.data.streams,debrid:true});return;}
+    if(isAdult){showPE('No XXX streams found on retry.');return;}
     return emb();
   }).catch(function(e){showPE(e.message);});
 }
