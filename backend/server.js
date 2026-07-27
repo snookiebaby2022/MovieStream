@@ -45,21 +45,73 @@ app.post('/api/pay/webhook', express.raw({ type: 'application/json' }), handleWe
 const online = new Map();
 let totalViews = 0, totalWatches = 0;
 
+function clientIp(sock) {
+  const xf = sock.handshake.headers['x-forwarded-for'];
+  if (xf) return String(xf).split(',')[0].trim().replace('::ffff:', '');
+  return String(sock.handshake.address || '').replace('::ffff:', '');
+}
+
+function getOnlineStats() {
+  const ips = new Set();
+  let currentlyWatching = 0;
+  for (const u of online.values()) {
+    ips.add(u.ip || u.id);
+    if (u.watching) currentlyWatching++;
+  }
+  return {
+    count: ips.size,
+    connections: online.size,
+    currentlyWatching,
+    totalViews,
+    totalWatches
+  };
+}
+
+function broadcastOnline() {
+  const s = getOnlineStats();
+  io.emit('online-count', s.count);
+  io.emit('online-stats', s);
+}
+
 io.on('connection', sock => {
   const uid = crypto.randomBytes(8).toString('hex');
   online.set(uid, {
     id: uid,
-    ip: sock.handshake.address,
+    ip: clientIp(sock),
     ua: sock.handshake.headers['user-agent'] || '',
     connectedAt: Date.now(),
     page: 'home',
-    watching: null
+    watching: null,
+    user: null
   });
-  io.emit('online-count', online.size);
-  sock.on('page-view',      d => { totalViews++; const u=online.get(uid); if(u) u.page=d.page||'home'; });
-  sock.on('watching',       d => { totalWatches++; const u=online.get(uid); if(u) u.watching=d; });
-  sock.on('stop-watching',  () => { const u=online.get(uid); if(u) u.watching=null; });
-  sock.on('disconnect',     () => { online.delete(uid); io.emit('online-count', online.size); });
+  broadcastOnline();
+  sock.emit('online-count', getOnlineStats().count);
+  sock.on('page-view', d => {
+    totalViews++;
+    const u = online.get(uid);
+    if (u) u.page = (d && d.page) || 'home';
+  });
+  sock.on('identify', d => {
+    const u = online.get(uid);
+    if (!u || !d) return;
+    const name = String(d.username || d.user || '').slice(0, 40);
+    if (name) u.user = name;
+  });
+  sock.on('watching', d => {
+    totalWatches++;
+    const u = online.get(uid);
+    if (u) u.watching = d || null;
+    broadcastOnline();
+  });
+  sock.on('stop-watching', () => {
+    const u = online.get(uid);
+    if (u) u.watching = null;
+    broadcastOnline();
+  });
+  sock.on('disconnect', () => {
+    online.delete(uid);
+    broadcastOnline();
+  });
 });
 
 // ─── Middleware ───────────────────────────────────────────
@@ -198,14 +250,28 @@ async function discRoute(req, res, path, type, ck, ttl = 3600, extra = {}) {
 
 // ─── PUBLIC ROUTES ────────────────────────────────────────
 
-app.get('/api/health', (req, res) => res.json({
-  status: 'OK', uptime: Math.floor(process.uptime()), timestamp: Date.now(),
-  onlineUsers: online.size, totalViews, totalWatches,
-  services: { mongodb: mok?'connected':'unavailable', redis: rok?'connected':'memory',
-    tmdb: KEY?'configured':'NOT SET', scrapers: scraper.getScraperStatus().length }
-}));
+app.get('/api/health', (req, res) => {
+  const s = getOnlineStats();
+  res.json({
+    status: 'OK', uptime: Math.floor(process.uptime()), timestamp: Date.now(),
+    onlineUsers: s.count, connections: s.connections, currentlyWatching: s.currentlyWatching,
+    totalViews: s.totalViews, totalWatches: s.totalWatches,
+    services: { mongodb: mok?'connected':'unavailable', redis: rok?'connected':'memory',
+      tmdb: KEY?'configured':'NOT SET', scrapers: scraper.getScraperStatus().length }
+  });
+});
 
-app.get('/api/online', (req, res) => res.json({ success: true, count: online.size, totalViews }));
+app.get('/api/online', (req, res) => {
+  const s = getOnlineStats();
+  res.json({
+    success: true,
+    count: s.count,
+    connections: s.connections,
+    currentlyWatching: s.currentlyWatching,
+    totalViews: s.totalViews,
+    totalWatches: s.totalWatches
+  });
+});
 
 app.get('/api/trending', async (req, res) => {
   try {
@@ -880,14 +946,32 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       process: pm2d, disk, redis: ri,
       system: { totalMem: Math.round(total/1048576), usedMem: Math.round((total-free)/1048576), freeMem: Math.round(free/1048576), memPercent: Math.round((total-free)/total*100), loadAvg: os.loadavg().map(l=>l.toFixed(2)), uptime: Math.floor(os.uptime()), cpuCount: os.cpus().length, platform: os.platform(), hostname: os.hostname() },
       node: { version: process.version, uptime: Math.floor(process.uptime()), memory: { used: Math.round(process.memoryUsage().heapUsed/1048576), total: Math.round(process.memoryUsage().heapTotal/1048576) } },
-      online: { count: online.size, totalViews, totalWatches }
+      online: getOnlineStats()
     }});
   } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.get('/api/admin/online', adminAuth, (req, res) => {
-  const users = Array.from(online.values()).map(u => ({ id: u.id, ip: u.ip.replace('::ffff:',''), connectedAt: u.connectedAt, duration: Math.floor((Date.now()-u.connectedAt)/1000), page: u.page, watching: u.watching, device: /Mobile|Android|iPhone/i.test(u.ua)?'Mobile':'Desktop' }));
-  res.json({ success: true, data: users, count: users.length, totalViews, totalWatches });
+  const stats = getOnlineStats();
+  const users = Array.from(online.values()).map(u => ({
+    id: u.id,
+    user: u.user || null,
+    ip: String(u.ip || '').replace('::ffff:', ''),
+    connectedAt: u.connectedAt,
+    duration: Math.floor((Date.now() - u.connectedAt) / 1000),
+    page: u.page,
+    watching: u.watching,
+    device: /Mobile|Android|iPhone/i.test(u.ua) ? 'Mobile' : 'Desktop'
+  }));
+  res.json({
+    success: true,
+    data: users,
+    count: stats.count,
+    connections: stats.connections,
+    currentlyWatching: stats.currentlyWatching,
+    totalViews: stats.totalViews,
+    totalWatches: stats.totalWatches
+  });
 });
 
 app.get('/api/admin/scrapers', adminAuth, (req, res) => res.json({ success: true, data: scraper.getScraperStatus() }));

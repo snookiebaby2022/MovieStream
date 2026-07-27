@@ -169,7 +169,7 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
   .hdr-scroll{gap:6px;padding-right:4px}
   .nav{display:flex}
   .nb{padding:6px 10px;font-size:12px}
-  .hdr-actions .opill,#getAppBtn,#langSel{display:none}
+  .hdr-actions #getAppBtn,.hdr-actions #langSel{display:none}
   .sbar{flex:0 0 132px;max-width:132px;min-width:110px;margin-left:0}
   .sbar input{padding:8px 10px;font-size:12px}
   .auth-btn{padding:6px 9px;font-size:10px}
@@ -184,7 +184,7 @@ body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--
 body.app-shell #hdr{height:auto;min-height:56px;padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:8px}
 body.app-shell .hdr-scroll{gap:6px}
 body.app-shell .nav{display:flex}
-body.app-shell .hdr-actions .opill,body.app-shell #getAppBtn,body.app-shell #langSel{display:none}
+body.app-shell .hdr-actions #getAppBtn,body.app-shell #langSel{display:none}
 body.app-shell .sbar{flex:0 0 140px;max-width:140px;min-width:120px;margin-left:0}
 body.app-shell .har{display:flex}
 body.app-shell .hdots{left:4%;right:auto;max-width:70%}
@@ -559,6 +559,7 @@ function ensureAdFreeReady(){
     if(!d||!d.success||!d.data)return isAdFreeUser();
     S.user={username:d.data.username,adFree:!!d.data.adFree};
     S._userSynced=true;
+    sockIdentify();
     if(window.FlixExtra)FlixExtra.setAdFree(!!d.data.adFree);
     refreshAuthBtn();
     syncAdultUi();
@@ -798,6 +799,7 @@ function submitAuth(){
     if(!d.success){err.textContent=d.error||'Failed';err.style.display='block';return;}
     var wasRegister=S.authMode==='register';
     S.token=d.token;S.user={username:d.username,adFree:!!(d.adFree)};S._userSynced=true;localStorage.setItem('fn_token',d.token);
+    sockIdentify();
     if(window.FlixExtra)FlixExtra.setAdFree(!!d.adFree);
     closeAuth();closeWatchGate();refreshAuthBtn();syncWatchlistUp();
     if(window.FlixExtra){FlixExtra.loadProfiles();FlixExtra.loadPayStatus();}
@@ -895,14 +897,35 @@ function removeContinue(item,btn){
   if(row&&!row.querySelector('.card'))row.remove();
 }
 
-// ── SOCKET ─────────────────────────────────────────────────
+// ── SOCKET / LIVE ONLINE ───────────────────────────────────
 var sock=null;
+function setOnlineCount(n){
+  var el=document.getElementById('oc');
+  if(!el)return;
+  var v=Math.max(0,parseInt(n,10)||0);
+  el.textContent=String(v);
+}
+function refreshOnlineCount(){
+  fetch(API+'/online',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.success&&typeof d.count==='number')setOnlineCount(d.count);
+  }).catch(function(){});
+}
+function sockIdentify(){
+  if(S.user&&S.user.username)sockEmit('identify',{username:S.user.username});
+}
 try{
-  sock=io({transports:['websocket','polling']});
-  sock.on('connect',function(){sockEmit('page-view',{page:'home'});});
-  sock.on('online-count',function(n){var e=document.getElementById('oc');if(e)e.textContent=n;});
+  sock=io({transports:['websocket','polling'],reconnection:true,reconnectionDelay:1500});
+  sock.on('connect',function(){
+    sockEmit('page-view',{page:S.section||'home'});
+    sockIdentify();
+    refreshOnlineCount();
+  });
+  sock.on('online-count',function(n){setOnlineCount(n);});
+  sock.on('online-stats',function(s){if(s&&typeof s.count==='number')setOnlineCount(s.count);});
 }catch(ex){console.log('Socket N/A');}
 function sockEmit(ev,d){try{if(sock&&sock.connected)sock.emit(ev,d);}catch(ex){}}
+setInterval(refreshOnlineCount,12000);
+refreshOnlineCount();
 
 // ── UTILS ──────────────────────────────────────────────────
 function $(id){return document.getElementById(id);}

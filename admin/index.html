@@ -826,7 +826,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="brand-mark">F</div>
         <div>
           <div class="login-title">Flix<b>Nova</b></div>
-          <div class="version-chip">Admin Panel v3.3 · mobile</div>
+          <div class="version-chip">Admin Panel v3.4 · mobile</div>
         </div>
       </div>
       <div class="login-kicker">A polished control room for moderation, system health, cache, logs, scrapers, and live traffic.</div>
@@ -852,7 +852,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="sb-mark">F</div>
         <div>
           <div class="sb-title">Flix<b>Nova</b></div>
-          <div class="sb-badge">Admin Panel v3.3</div>
+          <div class="sb-badge">Admin Panel v3.4</div>
         </div>
       </div>
     </div>
@@ -939,7 +939,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="stat-grid" id="statGrid">
           <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">🟢</div><div class="stat-label">App Status</div><div class="stat-value" id="s-status">...</div><div class="stat-sub" id="s-uptime">loading</div></div>
           <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">👥</div><div class="stat-label">Online Now</div><div class="stat-value" id="s-online">0</div><div class="stat-sub" id="s-views">0 total views</div></div>
-          <div class="stat-card" style="--ac:var(--red)"><div class="stat-icon">🎬</div><div class="stat-label">Watching</div><div class="stat-value" id="s-watching">0</div><div class="stat-sub" id="s-watches">0 total streams</div></div>
+          <div class="stat-card" style="--ac:var(--red)"><div class="stat-icon">🎬</div><div class="stat-label">Watching Now</div><div class="stat-value" id="s-watching">0</div><div class="stat-sub" id="s-watches">0 total streams</div></div>
           <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">🧠</div><div class="stat-label">Memory</div><div class="stat-value" id="s-mem">...</div><div class="stat-sub" id="s-mem-sub">loading</div><div class="stat-bar"><div class="stat-bar-fill" id="s-mem-bar" style="width:0%"></div></div></div>
           <div class="stat-card" style="--ac:var(--yellow)"><div class="stat-icon">💾</div><div class="stat-label">Disk Used</div><div class="stat-value" id="s-disk">...</div><div class="stat-sub" id="s-disk-sub">loading</div><div class="stat-bar"><div class="stat-bar-fill" id="s-disk-bar" style="width:0%;background:linear-gradient(90deg,var(--yellow),rgba(255,255,255,.28))"></div></div></div>
           <div class="stat-card" style="--ac:var(--purple)"><div class="stat-icon">⚡</div><div class="stat-label">Redis Keys</div><div class="stat-value" id="s-redis">...</div><div class="stat-sub" id="s-redis-sub">cache entries</div></div>
@@ -1001,9 +1001,9 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
 
       <div class="page" id="page-online">
         <div class="stat-grid">
-          <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">👥</div><div class="stat-label">Online Now</div><div class="stat-value" id="o-count">0</div></div>
+          <div class="stat-card" style="--ac:var(--green)"><div class="stat-icon">👥</div><div class="stat-label">Online Now</div><div class="stat-value" id="o-count">0</div><div class="stat-sub" id="o-conn">0 connections</div></div>
           <div class="stat-card" style="--ac:var(--blue)"><div class="stat-icon">👁️</div><div class="stat-label">Total Views</div><div class="stat-value" id="o-views">0</div></div>
-          <div class="stat-card" style="--ac:var(--red)"><div class="stat-icon">▶️</div><div class="stat-label">Watching</div><div class="stat-value" id="o-watching">0</div></div>
+          <div class="stat-card" style="--ac:var(--red)"><div class="stat-icon">▶️</div><div class="stat-label">Watching Now</div><div class="stat-value" id="o-watching">0</div></div>
           <div class="stat-card" style="--ac:var(--purple)"><div class="stat-icon">📱</div><div class="stat-label">Mobile</div><div class="stat-value" id="o-mobile">0</div></div>
         </div>
         <div class="panel">
@@ -1845,8 +1845,8 @@ async function loadStats(){
     const ups=proc.uptime?Math.floor((Date.now()-proc.uptime)/1000):node.uptime;
     document.getElementById('s-uptime').textContent='Uptime: '+fmtUp(ups);
     document.getElementById('s-online').textContent=online.count;
-    document.getElementById('s-views').textContent=(online.totalViews||0)+' total views';
-    document.getElementById('s-watching').textContent=online.totalWatches||0;
+    document.getElementById('s-views').textContent=(online.connections||online.count||0)+' tabs · '+(online.totalViews||0)+' views';
+    document.getElementById('s-watching').textContent=online.currentlyWatching||0;
     document.getElementById('s-watches').textContent=(online.totalWatches||0)+' total streams';
     document.getElementById('sb-online').textContent=online.count;
     const mp=Number(sys.memPercent)||0;
@@ -1930,11 +1930,17 @@ async function loadOnline(){
   const d=await af('/online');
   if(!d?.success)return;
   document.getElementById('o-count').textContent=d.count||0;
+  const oc=document.getElementById('o-conn');
+  if(oc)oc.textContent=(d.connections||d.count||0)+' connections';
   document.getElementById('o-views').textContent=d.totalViews||0;
-  const watching=(d.data||[]).filter(u=>u.watching).length;
+  const watching=typeof d.currentlyWatching==='number'
+    ? d.currentlyWatching
+    : (d.data||[]).filter(u=>u.watching).length;
   const mobile=(d.data||[]).filter(u=>u.device==='Mobile').length;
   document.getElementById('o-watching').textContent=watching;
   document.getElementById('o-mobile').textContent=mobile;
+  const badge=document.getElementById('sb-online');
+  if(badge)badge.textContent=d.count||0;
   const tbody=document.getElementById('onlineTable');
   if(!d.data.length){
     tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">No users online</td></tr>';
@@ -1943,8 +1949,9 @@ async function loadOnline(){
   tbody.innerHTML=d.data.map(u=>{
     const dur=u.duration||0;
     const ds=dur>3600?Math.floor(dur/3600)+'h '+Math.floor((dur%3600)/60)+'m':dur>60?Math.floor(dur/60)+'m '+(dur%60)+'s':dur+'s';
+    const label=u.user||String(u.id||'').slice(0,6);
     return `<tr>
-      <td><span class="badge badge-purple">${esc(String(u.id||'').slice(0,6))}</span></td>
+      <td><span class="badge badge-purple">${esc(label)}</span></td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${esc(u.ip||'')}</td>
       <td><span class="badge ${u.device==='Mobile'?'badge-yellow':'badge-blue'}">${esc(u.device||'Unknown')}</span></td>
       <td style="font-size:13px">${esc(u.page||'home')}</td>
