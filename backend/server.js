@@ -676,7 +676,7 @@ app.get('/api/sources/:tmdbId/:type', async (req, res) => {
     const { season, episode, nocache, all } = req.query;
     // Default clean-only (fewer popup-prone hosts). ?all=1 unlocks fallback servers.
     const clean = all !== '1' && all !== 'true';
-    const ck = `src6:${tmdbId}:${type}:${season||0}:${episode||0}:${clean?'c':'a'}`;
+    const ck = `src7:${tmdbId}:${type}:${season||0}:${episode||0}:${clean?'c':'a'}`;
     if (!nocache) {
       const c = await getC(ck);
       if (c) { console.log(`Cache hit: ${ck}`); return res.json({ success: true, data: c, cached: true }); }

@@ -2058,10 +2058,10 @@ function handleSrc(data){
     return !/copyright infringement|infringing|unavailable for legal/i.test(t);
   });
   if(!S.src.length){showPE('No playable Real-Debrid links (blocked for copyright). Try Embed backups.');return;}
-  // On the app, prefer browser-friendly RD streams first
-  if(isNativeApp()&&S.debridMode){
+  // Prefer browser-friendly RD streams first (mp4/x264 over 4K HEVC)
+  if(S.debridMode){
     S.src=S.src.slice().sort(function(a,b){
-      return (b.browserOk?1:0)-(a.browserOk?1:0) || (b.browserScore||0)-(a.browserScore||0);
+      return (b.browserOk?1:0)-(a.browserOk?1:0) || (b.browserScore||0)-(a.browserScore||0) || (b.cached?1:0)-(a.cached?1:0);
     });
   }
   var moreBtn=$('moreSrvBtn');

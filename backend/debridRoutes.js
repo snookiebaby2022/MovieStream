@@ -68,6 +68,7 @@ function browserScore(title, url, name) {
   const t = `${name || ''} ${title || ''} ${url || ''}`.toLowerCase();
   let score = 40;
   if (/\[rd\+\]/.test(t)) score += 90;
+  if (/⚡/.test(t) && !/\[rd\+\]/.test(t)) score += 70; // Comet cached
   if (/\[rd download\]/.test(t)) score -= 60;
   if (/\.mp4(\?|$)|[\s.\-_]mp4[\s.\-_]/i.test(t)) score += 50;
   if (/x264|h\.?264|avc/.test(t)) score += 35;
@@ -276,6 +277,29 @@ async function fetchComet(token, path) {
 async function fetchMediaFusion(path) {
   if (!MEDIAFUSION_CONFIG) return [];
   return fetchJsonStreams(`${MEDIAFUSION}/${MEDIAFUSION_CONFIG}${path}`, 'mediafusion');
+}
+
+/** Prefer fast Torrentio; merge Comet without blocking forever */
+async function fetchAddonStreams(token, path) {
+  const tioP = fetchTorrentio(token, path);
+  const cometP = fetchComet(token, path);
+  const mfP = fetchMediaFusion(path);
+
+  const tio = await tioP.catch(() => []);
+  // If Torrentio already has plenty, only wait briefly for Comet/MediaFusion
+  if ((tio || []).length >= 6) {
+    const timed = await Promise.race([
+      Promise.all([cometP.catch(() => []), mfP.catch(() => [])]),
+      new Promise(resolve => setTimeout(() => resolve([[], []]), 3500))
+    ]);
+    const [comet, mf] = timed;
+    return dedupeStreams([...(tio || []), ...(comet || []), ...(mf || [])]);
+  }
+  const [comet, mf] = await Promise.all([
+    cometP.catch(() => []),
+    mfP.catch(() => [])
+  ]);
+  return dedupeStreams([...(tio || []), ...(comet || []), ...(mf || [])]);
 }
 
 function titleMatchScore(torrentName, title) {
@@ -699,19 +723,14 @@ router.post('/streams', async (req, res) => {
 
     console.log('Debrid multi:', { path, imdb, adult: isAdult, title: metaTitle?.slice(0, 40), mediafusion: !!MEDIAFUSION_CONFIG });
 
-    const providerTasks = [];
+    let streams = [];
     if (path) {
-      providerTasks.push(fetchTorrentio(token, path));
-      providerTasks.push(fetchComet(token, path));
-      providerTasks.push(fetchMediaFusion(path));
+      streams = await fetchAddonStreams(token, path);
     }
 
-    const needApibay = isAdult || !path;
-    // Also fill gaps when addons return little
-    const addonResults = await Promise.all(providerTasks);
-    let streams = dedupeStreams(addonResults.flat());
-
-    if (needApibay || streams.length < 4) {
+    // ApiBay magnet resolve is slow — only for adult titles or when addons found nothing
+    const needApibay = isAdult || !streams.length;
+    if (needApibay) {
       try {
         const extra = await fetchApibayRdStreams(token, {
           imdb: imdb && imdb.startsWith('tt') ? imdb : '',
@@ -729,17 +748,21 @@ router.post('/streams', async (req, res) => {
       return res.status(400).json({ success: false, error: 'IMDB id or title required for debrid streams' });
     }
 
+    // Browser-playable first, then cached, then quality score
     streams.sort((a, b) =>
+      ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
       (b.browserScore - a.browserScore) ||
       (b.seeders || 0) - (a.seeders || 0)
     );
 
+    const friendly = streams.filter(s => s.browserOk);
     const cachedOnly = streams.filter(s => s.cached);
-    if (cachedOnly.length >= 6) streams = cachedOnly;
+    // Prefer a solid set of browser-friendly links over a wall of 4K HEVC [RD+]
+    if (friendly.length >= 4) streams = friendly;
+    else if (cachedOnly.length >= 8) streams = dedupeStreams(friendly.concat(cachedOnly));
 
     streams = streams.slice(0, 40);
-    const friendly = streams.filter(s => s.browserOk);
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
 
     res.json({
@@ -748,7 +771,7 @@ router.post('/streams', async (req, res) => {
         imdbId: imdb || null,
         streams,
         totalSources: streams.length,
-        browserFriendly: friendly.length,
+        browserFriendly: streams.filter(s => s.browserOk).length,
         cached: streams.filter(s => s.cached).length,
         providers,
         provider: providers.join('+') || 'none',
