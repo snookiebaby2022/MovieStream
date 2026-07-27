@@ -452,6 +452,85 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
 .tbl th{text-align:left;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 .tbl td{font-size:14px}
 .tbl tr:hover td{background:rgba(255,255,255,.02)}
+.tbl-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.user-cards{display:none;gap:12px}
+.user-card{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  background:rgba(255,255,255,.03);
+  padding:14px;
+}
+.user-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.user-card-name{font-size:16px;font-weight:800;letter-spacing:-.02em}
+.user-card-meta{font-size:12px;color:var(--muted);line-height:1.5;margin-top:4px}
+.user-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.user-card-actions .btn{min-height:44px;width:100%;white-space:normal;text-align:center;padding:10px 8px}
+.user-card-actions .btn.span2{grid-column:1 / -1}
+.modal-ov{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:1400;
+  align-items:flex-end;
+  justify-content:center;
+  padding:0;
+  background:rgba(0,0,0,.72);
+  backdrop-filter:blur(4px);
+}
+.modal-ov.on{display:flex}
+.modal-box{
+  width:100%;
+  max-width:480px;
+  max-height:min(92vh,720px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  background:linear-gradient(180deg,#161821,#0e1016);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:22px 22px 0 0;
+  padding:18px 16px 22px;
+  box-shadow:0 -20px 60px rgba(0,0,0,.45);
+}
+.modal-box h3{font-size:18px;font-weight:800;margin:0 0 6px}
+.modal-box p{font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.45}
+.modal-box .form-group{margin-bottom:12px}
+.modal-box .form-label{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.modal-box .form-input{width:100%;padding:12px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#fff}
+.modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.modal-actions .btn{min-height:46px}
+.plan-toggle{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.03);
+  margin:4px 0 14px;
+}
+.plan-toggle .lbl{font-size:14px;font-weight:700}
+.plan-toggle .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.switch{
+  position:relative;
+  width:52px;height:32px;
+  flex-shrink:0;
+}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{
+  position:absolute;inset:0;cursor:pointer;
+  background:rgba(255,255,255,.12);
+  border-radius:999px;transition:.2s;
+}
+.switch .slider:before{
+  content:'';position:absolute;height:24px;width:24px;left:4px;top:4px;
+  background:#fff;border-radius:50%;transition:.2s;
+}
+.switch input:checked + .slider{background:rgba(52,211,153,.55)}
+.switch input:checked + .slider:before{transform:translateX(20px)}
+@media (min-width:721px){
+  .modal-ov{align-items:center;padding:18px}
+  .modal-box{border-radius:18px;max-height:90vh}
+}
 
 .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid transparent}
 .badge-green{background:rgba(52,211,153,.12);color:#9bf0c7;border-color:rgba(52,211,153,.16)}
@@ -679,16 +758,23 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
   body{overflow:auto}
   .sidebar{
     transform:translateX(-102%);
-    width:290px;
-    flex-basis:290px;
+    width:min(320px,88vw);
+    flex-basis:min(320px,88vw);
   }
   body.sidebar-open .sidebar{transform:translateX(0)}
   body.sidebar-open .sidebar-backdrop{display:block}
   .main{margin-left:0;min-height:100vh}
-  .content{padding:18px}
-  .topbar{padding:14px 16px}
-  .page-title{font-size:18px}
-  .hero h1{font-size:27px}
+  .content{padding:14px}
+  .topbar{padding:12px 14px;gap:10px}
+  .page-title{font-size:17px}
+  .page-subtitle{font-size:12px}
+  .hero h1{font-size:24px}
+  .icon-btn{min-width:44px;min-height:44px}
+  .topbar-btn,.btn{min-height:42px}
+  .panel-head{flex-direction:column;align-items:stretch}
+  .panel-actions{width:100%}
+  .panel-actions .form-input{flex:1;min-width:0;width:100%!important}
+  .tbl-wrap{margin:0 -4px;padding:0 4px}
 }
 @media (min-width: 901px){
   body.sidebar-collapsed .sidebar{width:92px;flex-basis:92px}
@@ -706,9 +792,9 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
   body.sidebar-collapsed .nav-item .nav-icon{margin:0}
 }
 @media (max-width: 720px){
-  .topbar-right{width:100%;justify-content:flex-start}
+  .topbar-right{width:100%;justify-content:flex-start;flex-wrap:wrap}
   .topbar{flex-wrap:wrap}
-  .hero{padding:18px}
+  .hero{padding:16px}
   .hero-top{flex-direction:column}
   .hero-side{width:100%;min-width:0}
   .form-row{flex-direction:column;align-items:stretch}
@@ -717,6 +803,14 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
   .toolbar-grid,.stat-grid{grid-template-columns:1fr}
   .toast-wrap{left:14px;right:14px}
   .toast{min-width:0}
+  .login-card{padding:24px 18px}
+  /* Users: card layout instead of cramped table actions */
+  #page-users .users-table-wrap{display:none}
+  #page-users .user-cards{display:grid}
+  #page-users .panel-body{padding:14px}
+  /* Other tables stay scrollable */
+  .panel-body > .tbl,
+  .panel-body > table.tbl{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 </style>
 </head>
@@ -730,7 +824,7 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="brand-mark">F</div>
         <div>
           <div class="login-title">Flix<b>Nova</b></div>
-          <div class="version-chip">Admin Panel v3.0</div>
+          <div class="version-chip">Admin Panel v3.1 · mobile</div>
         </div>
       </div>
       <div class="login-kicker">A polished control room for moderation, system health, cache, logs, scrapers, and live traffic.</div>
@@ -938,15 +1032,18 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
               <div class="panel-sub">Grant / revoke Ad-Free and review accounts</div>
             </div>
             <div class="panel-actions">
-              <input class="form-input" id="userSearch" placeholder="Search username / email" style="width:220px" onkeydown="if(event.key==='Enter')loadUsers()">
+              <input class="form-input" id="userSearch" placeholder="Search username / email" onkeydown="if(event.key==='Enter')loadUsers()">
               <button class="btn btn-secondary btn-sm" onclick="loadUsers()">⟳ Refresh</button>
             </div>
           </div>
           <div class="panel-body">
-            <table class="tbl">
-              <thead><tr><th>User</th><th>Email</th><th>Joined</th><th>List</th><th>Plan</th><th></th></tr></thead>
-              <tbody id="usersTable"><tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
-            </table>
+            <div class="tbl-wrap users-table-wrap">
+              <table class="tbl">
+                <thead><tr><th>User</th><th>Email</th><th>Joined</th><th>List</th><th>Plan</th><th></th></tr></thead>
+                <tbody id="usersTable"><tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">Loading...</td></tr></tbody>
+              </table>
+            </div>
+            <div class="user-cards" id="usersCards"></div>
           </div>
         </div>
       </div>
@@ -1382,6 +1479,43 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
 
 <div class="toast-wrap" id="toasts"></div>
 
+<div class="modal-ov" id="userEditOv" onclick="if(event.target===this)closeUserEdit()">
+  <div class="modal-box" role="dialog" aria-labelledby="ueTitle">
+    <h3 id="ueTitle">Edit user / plan</h3>
+    <p>Change username, email, password, or Ad-Free plan. Works on mobile.</p>
+    <input type="hidden" id="ueId">
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input class="form-input" id="ueUser" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="ueEmail" type="email" autocomplete="email" placeholder="optional">
+    </div>
+    <div class="form-group">
+      <label class="form-label">New password</label>
+      <div class="pass-wrap" style="position:relative">
+        <input class="form-input" id="uePass" type="password" placeholder="Leave blank to keep current" autocomplete="new-password" style="padding-right:74px">
+        <button type="button" class="pass-toggle" id="uePassToggle" onclick="togglePassVisibility('uePass','uePassToggle')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;padding:6px 8px">Show</button>
+      </div>
+    </div>
+    <div class="plan-toggle">
+      <div>
+        <div class="lbl">Ad-Free plan</div>
+        <div class="sub" id="uePlanSub">Free · embeds only</div>
+      </div>
+      <label class="switch" title="Toggle Ad-Free">
+        <input type="checkbox" id="ueAdFree" onchange="syncUePlanLabel()">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeUserEdit()">Cancel</button>
+      <button type="button" class="btn btn-green" id="ueSaveBtn" onclick="saveUserEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const AAPI='/api/admin';
 let token=localStorage.getItem('adminToken');
@@ -1783,12 +1917,22 @@ async function loadUsers(){
   const q=document.getElementById('userSearch')?.value?.trim()||'';
   const d=await af('/users'+(q?('?q='+encodeURIComponent(q)):''));
   const tbody=document.getElementById('usersTable');
-  if(!d?.success){tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">'+(d?.error||'Failed to load')+'</td></tr>';return;}
+  const cards=document.getElementById('usersCards');
+  if(!d?.success){
+    const err=d?.error||'Failed to load';
+    tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">'+esc(err)+'</td></tr>';
+    if(cards)cards.innerHTML='<div class="user-card" style="color:var(--muted);text-align:center">'+esc(err)+'</div>';
+    return;
+  }
   document.getElementById('u-total').textContent=d.total??d.data.length;
   const adFree=d.data.filter(u=>u.adFree).length;
   document.getElementById('u-adfree').textContent=adFree;
   document.getElementById('u-free').textContent=Math.max(0,(d.total??d.data.length)-adFree);
-  if(!d.data.length){tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">No users found</td></tr>';return;}
+  if(!d.data.length){
+    tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">No users found</td></tr>';
+    if(cards)cards.innerHTML='<div class="user-card" style="color:var(--muted);text-align:center">No users found</div>';
+    return;
+  }
   tbody.innerHTML=d.data.map(u=>`
     <tr>
       <td><b>${esc(u.username)}</b></td>
@@ -1797,30 +1941,76 @@ async function loadUsers(){
       <td style="font-size:12px">${u.watchlistCount||0} · hist ${u.historyCount||0}</td>
       <td>${u.adFree?'<span class="badge badge-green">Ad-Free</span>':'<span class="badge badge-blue">Free</span>'}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-blue btn-sm" data-id="${esc(u.id)}" data-user="${esc(u.username)}" data-email="${esc(u.email||'')}" onclick="editUser(this.dataset.id,this.dataset.user,this.dataset.email)">Edit</button>
+        <button class="btn btn-blue btn-sm" data-id="${esc(u.id)}" data-user="${esc(u.username)}" data-email="${esc(u.email||'')}" data-adfree="${u.adFree?1:0}" onclick="openUserEdit(this.dataset.id,this.dataset.user,this.dataset.email,this.dataset.adfree==='1')">Edit / Plan</button>
         ${u.adFree
           ?`<button class="btn btn-secondary btn-sm" data-id="${esc(u.id)}" onclick="setUserAdFree(this.dataset.id,false)">Revoke</button>`
           :`<button class="btn btn-green btn-sm" data-id="${esc(u.id)}" onclick="setUserAdFree(this.dataset.id,true)">Grant Ad-Free</button>`}
         <button class="btn btn-secondary btn-sm" data-id="${esc(u.id)}" data-user="${esc(u.username)}" onclick="deleteUser(this.dataset.id,this.dataset.user)">Delete</button>
       </td>
     </tr>`).join('');
+  if(cards){
+    cards.innerHTML=d.data.map(u=>`
+      <div class="user-card">
+        <div class="user-card-top">
+          <div>
+            <div class="user-card-name">${esc(u.username)}</div>
+            <div class="user-card-meta">${esc(u.email||'No email')}<br>${u.createdAt?esc(new Date(u.createdAt).toLocaleDateString()):'—'} · list ${u.watchlistCount||0} · hist ${u.historyCount||0}</div>
+          </div>
+          ${u.adFree?'<span class="badge badge-green">Ad-Free</span>':'<span class="badge badge-blue">Free</span>'}
+        </div>
+        <div class="user-card-actions">
+          ${u.adFree
+            ?`<button class="btn btn-secondary span2" data-id="${esc(u.id)}" onclick="setUserAdFree(this.dataset.id,false)">Revoke Ad-Free</button>`
+            :`<button class="btn btn-green span2" data-id="${esc(u.id)}" onclick="setUserAdFree(this.dataset.id,true)">Grant Ad-Free</button>`}
+          <button class="btn btn-blue" data-id="${esc(u.id)}" data-user="${esc(u.username)}" data-email="${esc(u.email||'')}" data-adfree="${u.adFree?1:0}" onclick="openUserEdit(this.dataset.id,this.dataset.user,this.dataset.email,this.dataset.adfree==='1')">Edit</button>
+          <button class="btn btn-secondary" data-id="${esc(u.id)}" data-user="${esc(u.username)}" onclick="deleteUser(this.dataset.id,this.dataset.user)">Delete</button>
+        </div>
+      </div>`).join('');
+  }
 }
 async function setUserAdFree(id,on){
   const d=await af('/users/'+id,{method:'PATCH',body:{adFree:!!on}});
   if(d?.success){toast(on?'Ad-Free granted':'Ad-Free revoked','success');loadUsers();}
   else toast(d?.error||'Failed','error');
 }
-async function editUser(id,curUser,curEmail){
-  const username=prompt('Username',curUser||'');
-  if(username===null)return;
-  const email=prompt('Email (optional)',curEmail||'');
-  if(email===null)return;
-  const password=prompt('New password (leave blank to keep current)','')||'';
-  const body={username:username.trim(),email:email.trim()};
+function syncUePlanLabel(){
+  const on=!!document.getElementById('ueAdFree')?.checked;
+  const sub=document.getElementById('uePlanSub');
+  if(sub)sub.textContent=on?'Ad-Free · Real-Debrid unlocked':'Free · embeds only';
+}
+function openUserEdit(id,curUser,curEmail,adFree){
+  document.getElementById('ueId').value=id||'';
+  document.getElementById('ueUser').value=curUser||'';
+  document.getElementById('ueEmail').value=curEmail||'';
+  document.getElementById('uePass').value='';
+  document.getElementById('ueAdFree').checked=!!adFree;
+  syncUePlanLabel();
+  document.getElementById('userEditOv').classList.add('on');
+  document.body.style.overflow='hidden';
+  setTimeout(()=>document.getElementById('ueUser')?.focus(),50);
+}
+function closeUserEdit(){
+  document.getElementById('userEditOv')?.classList.remove('on');
+  document.body.style.overflow='';
+}
+async function saveUserEdit(){
+  const id=document.getElementById('ueId').value;
+  const username=(document.getElementById('ueUser').value||'').trim();
+  const email=(document.getElementById('ueEmail').value||'').trim();
+  const password=document.getElementById('uePass').value||'';
+  const adFree=!!document.getElementById('ueAdFree').checked;
+  if(username.length<3){toast('Username too short','error');return;}
+  const body={username,email,adFree};
   if(password)body.password=password;
+  const btn=document.getElementById('ueSaveBtn');
+  if(btn){btn.disabled=true;btn.textContent='Saving…';}
   const d=await af('/users/'+id,{method:'PATCH',body});
-  if(d?.success){toast('User updated','success');loadUsers();}
-  else toast(d?.error||'Failed','error');
+  if(btn){btn.disabled=false;btn.textContent='Save';}
+  if(d?.success){
+    toast(adFree?'User saved · Ad-Free on':'User saved · Free plan','success');
+    closeUserEdit();
+    loadUsers();
+  }else toast(d?.error||'Failed','error');
 }
 async function deleteUser(id,name){
   if(!confirm('Delete user "'+name+'"? This cannot be undone.'))return;
@@ -2064,7 +2254,12 @@ function initAdmin(){
 }
 
 window.addEventListener('resize',syncSidebarMode);
-window.addEventListener('keydown',e=>{if(e.key==='Escape')closeSidebar();});
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    closeUserEdit();
+    closeSidebar();
+  }
+});
 
 if(token){
   af('/stats').then(d=>{
