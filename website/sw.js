@@ -1,4 +1,4 @@
-const CACHE = 'flixnova-v37';
+const CACHE = 'flixnova-v38';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(self.skipWaiting());

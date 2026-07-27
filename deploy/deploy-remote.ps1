@@ -21,6 +21,11 @@ git reset --hard origin/main
 cd backend
 npm install --omit=dev
 pm2 restart moviestream --update-env || pm2 start ../ecosystem.config.js --name moviestream
+# Ensure socket.io is proxied (static *.js regex must not steal /socket.io/socket.io.js)
+if [ -f '$AppDir/deploy/nginx.flixnova.conf' ]; then
+  cp '$AppDir/deploy/nginx.flixnova.conf' /etc/nginx/sites-available/moviestream
+  ln -sfn /etc/nginx/sites-available/moviestream /etc/nginx/sites-enabled/moviestream
+fi
 nginx -t && systemctl reload nginx || true
 echo 'DEPLOY_OK'
 git rev-parse --short HEAD
