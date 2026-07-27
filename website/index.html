@@ -1230,8 +1230,20 @@ function bindHeroSwipe(){
   hero.addEventListener('touchcancel',function(){tracking=false;},{passive:true});
 }
 function stopHeroMedia(){
-  clearInterval(S.ht);S.ht=null;S.hPaused=false;
+  clearInterval(S.ht);S.ht=null;S.hPaused=true;
+  try{heroYtCmd('mute');heroYtCmd('pauseVideo');heroYtCmd('stopVideo');}catch(e){}
   var vid=$('hvid');if(vid){vid.classList.remove('on');vid.innerHTML='';}
+  // Also kill detail-page Trailer tab iframe if it was opened
+  var trail=$('tpTrail');if(trail)trail.innerHTML='';
+}
+function resumeHeroMedia(){
+  if(!$('hero')||$('hero').style.display==='none')return;
+  if(!S.hl||!S.hl.length)return;
+  S.hPaused=false;
+  var it=S.hl[S.hi];
+  if(it&&it.trailerKey)setHeroTrailer(it.trailerKey);
+  else syncHeroPauseBtn();
+  startHeroRotate();
 }
 
 // ── NAV ────────────────────────────────────────────────────
@@ -1577,6 +1589,8 @@ function doSearch(){
 function openModal(item){
   if(!item){console.error('openModal called with null');return;}
   if(!requireWatchAuth(item))return;
+  // Stop cinema trailer audio immediately — iframe keeps playing under the modal otherwise
+  stopHeroMedia();
   console.log('Opening modal for:',item.title,item.tmdbId||item.id);
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
   S.item=item;S.src=[];S.si=0;S.failed={};S.sn=item.season||1;S.ep=item.episode||1;
@@ -2329,10 +2343,13 @@ function closeModal(){
   if(S.autoNextTimer){clearTimeout(S.autoNextTimer);S.autoNextTimer=null;}
   $('ov').classList.remove('on');document.body.style.overflow='';
   $('pw').innerHTML='';$('srcbar').style.display='none';$('epnav').style.display='none';
+  var trail=$('tpTrail');if(trail)trail.innerHTML='';
   document.title='FlixNova - Watch Free Movies & TV Shows Online';
   S.item=null;S.src=[];S.failed={};S._extUrl='';S._directUrl='';
   sockEmit('stop-watching');
   try{if(location.pathname.indexOf('/watch/')===0)history.replaceState(null,'','/');}catch(ex){}
+  // Resume home cinema trailer only when still on the home hero
+  resumeHeroMedia();
 }
 function routeFromLocation(){
   var m=location.pathname.match(/^\/watch\/(movie|tv)\/(\d+)(?:\/(\d+)(?:\/(\d+))?)?/);
@@ -2350,7 +2367,14 @@ $('rdOv').addEventListener('click',function(e){if(e.target===e.currentTarget)clo
 $('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
 window.addEventListener('popstate',function(){if(!routeFromLocation())closeModal();});
 window.addEventListener('scroll',function(){$('hdr').classList.toggle('bg',window.scrollY>40);},{passive:true});
-document.addEventListener('visibilitychange',function(){if(document.hidden){var v=$('hvid');if(v)v.classList.remove('on');}});
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){
+    try{heroYtCmd('mute');heroYtCmd('pauseVideo');}catch(e){}
+    var v=$('hvid');if(v){v.classList.remove('on');v.innerHTML='';}
+  }else if(!$('ov').classList.contains('on')){
+    resumeHeroMedia();
+  }
+});
 var hs=document.createElement('script');hs.src='https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';document.head.appendChild(hs);
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
 api('/genres/movie').then(function(d){
