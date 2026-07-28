@@ -302,48 +302,99 @@ body.tv-mode{
 body.tv-mode #hdr{
   padding-left:var(--tv-pad-x);
   padding-right:var(--tv-pad-x);
-  min-height:64px;
+  min-height:72px;
 }
 body.tv-mode #main,body.tv-mode #hero .hc,body.tv-mode footer{
   padding-left:var(--tv-pad-x)!important;
   padding-right:var(--tv-pad-x)!important;
 }
-body.tv-mode .nb,body.tv-mode .auth-btn,body.tv-mode .bplay,body.tv-mode .binfo,body.tv-mode .pbtn{
-  font-size:15px;
-  padding:10px 16px;
+body.tv-mode .nb,body.tv-mode .auth-btn,body.tv-mode .bplay,body.tv-mode .binfo,body.tv-mode .pbtn,
+body.tv-mode .gvback,body.tv-mode .rowsa,body.tv-mode .loadmore,body.tv-mode .gp,body.tv-mode .sb,body.tv-mode .yp{
+  font-size:16px;
+  padding:12px 18px;
+  min-height:48px;
+  min-width:48px;
 }
-body.tv-mode .strip .card{width:158px}
+body.tv-mode .sc,body.tv-mode .pc,body.tv-mode .list-btn,body.tv-mode .tab{
+  font-size:14px;
+  padding:10px 16px;
+  min-height:44px;
+  border-radius:10px;
+}
+body.tv-mode .strip .card{width:180px}
+body.tv-mode .fgrid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
 body.tv-mode .fgrid .card,body.tv-mode .sg .card{width:100%}
 body.tv-mode .htt{font-size:clamp(42px,6vw,72px)}
-body.tv-mode .adtip,#langSel{display:none!important}
+body.tv-mode .adtip,#langSel,.opill{display:none!important}
 body.app-shell #getAppBtn{display:none!important}
+/* Flatten nav for D-pad — no More dropdown */
+body.tv-mode .tv-nav-extra{display:inline-flex!important}
+body.tv-mode .nav .nb-hide{display:inline-flex!important}
+body.tv-mode #navMore{display:none!important}
+body.tv-mode .hdr-actions .auth-btn{padding:10px 14px;font-size:14px}
+body.tv-mode .sbar{flex:0 0 220px;max-width:260px;min-width:180px}
+body.tv-mode .sbar input{font-size:16px;min-height:48px}
+body.tv-mode .sbar button{min-width:48px;min-height:48px;font-size:18px}
+/* Hover UI → focus UI (remotes have no hover) */
+body.tv-mode .card:focus,body.tv-mode .card:focus-within{
+  transform:scale(1.08);z-index:12;
+  box-shadow:0 12px 36px rgba(0,0,0,.8),0 0 0 3px var(--gold);
+}
+body.tv-mode .card:focus .cpanel,body.tv-mode .card:focus-within .cpanel{opacity:1;transform:none}
+body.tv-mode .card:focus .ci img,body.tv-mode .card:focus-within .ci img{transform:scale(1.06)}
+body.tv-mode .ar{opacity:.55;width:48px;height:48px;font-size:22px} /* always visible */
+body.tv-mode .sw:hover .ar,body.tv-mode .sw:focus-within .ar{opacity:1}
+body.tv-mode .heart,body.tv-mode .cw-x{display:none!important} /* use Wish/Continue from detail instead */
 body.tv-mode .nb:focus,body.tv-mode .auth-btn:focus,body.tv-mode .bplay:focus,body.tv-mode .binfo:focus,
 body.tv-mode .card:focus,body.tv-mode .sc:focus,body.tv-mode .pbtn:focus,body.tv-mode .epi:focus,
-body.tv-mode .pc:focus,body.tv-mode a:focus,body.tv-mode button:focus,body.tv-mode input:focus{
-  outline:3px solid var(--gold)!important;outline-offset:4px;transform:scale(1.06);
-  box-shadow:0 0 0 6px rgba(245,197,24,.18);
-  z-index:2;
+body.tv-mode .pc:focus,body.tv-mode a:focus,body.tv-mode button:focus,body.tv-mode input:focus,
+body.tv-mode .logo:focus,body.tv-mode .gvback:focus,body.tv-mode .rowsa:focus,body.tv-mode .loadmore:focus,
+body.tv-mode .gp:focus,body.tv-mode .sb:focus,body.tv-mode .yp:focus,body.tv-mode .tab:focus,
+body.tv-mode .sbar button:focus{
+  outline:3px solid var(--gold)!important;outline-offset:4px;
+  box-shadow:0 0 0 6px rgba(245,197,24,.22);
+  z-index:3;
 }
 body.tv-mode .card{scroll-snap-align:start;border-radius:10px}
-body.tv-mode .strip{scroll-snap-type:x mandatory;padding-bottom:12px}
+body.tv-mode .strip{scroll-snap-type:x mandatory;padding-bottom:16px;gap:10px}
 body.tv-mode .pw-tools{top:14px;left:14px;right:14px;z-index:40}
-body.tv-mode .pw-tools button{min-width:88px;min-height:48px;font-size:16px}
+body.tv-mode .pw-tools button{min-width:100px;min-height:52px;font-size:17px}
 body.tv-mode .pw-close{background:rgba(229,9,20,.92)!important;border-color:var(--red)!important;order:-1}
-body.tv-mode .mc{width:48px;height:48px;font-size:18px;top:16px;right:16px}
+body.tv-mode .mc{width:56px;height:56px;font-size:20px;top:16px;right:16px}
 body.tv-mode #modal{max-width:96vw}
-body.tv-mode .sbar input{font-size:16px;min-height:44px}
+body.tv-mode .epi{min-height:72px;padding:10px;gap:10px}
+body.tv-mode .epi:focus{background:rgba(245,197,24,.12)}
+body.tv-mode .bplay,body.tv-mode .binfo{min-width:140px;min-height:54px;font-size:18px}
+body.tv-mode .logo{cursor:pointer;border-radius:10px;padding:4px 8px}
+body.tv-mode .logo:focus{outline:3px solid var(--gold)!important;outline-offset:4px}
+.tv-nav-extra{display:none}
+.tv-hint{display:none}
+body.tv-mode .tv-hint{
+  display:flex;position:fixed;left:0;right:0;bottom:0;z-index:90;
+  justify-content:center;gap:18px;flex-wrap:wrap;
+  padding:8px 16px calc(8px + env(safe-area-inset-bottom));
+  background:linear-gradient(transparent,rgba(0,0,0,.88));
+  font-size:13px;color:rgba(255,255,255,.72);pointer-events:none;
+}
+body.tv-mode .tv-hint b{color:var(--gold);font-weight:700}
+body.tv-mode #main{padding-bottom:48px}
+body.tv-mode #ov.on ~ .tv-hint,body.tv-mode.modal-open .tv-hint{display:none}
 </style>
 
 </head>
 <body>
 <header id="hdr">
-  <div class="logo" onclick="goHome()"><div class="logo-i">F</div><div class="logo-t">Flix<b>Nova</b></div></div>
+  <div class="logo" tabindex="0" role="button" onclick="goHome()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goHome();}"><div class="logo-i">F</div><div class="logo-t">Flix<b>Nova</b></div></div>
   <div class="hdr-scroll" id="hdrScroll">
     <nav class="nav">
       <button class="nb on" id="nb-home" onclick="go('home',this)">Home</button>
       <button class="nb" id="nb-movies" onclick="go('movies',this)">Movies</button>
       <button class="nb" id="nb-tv" onclick="go('tv',this)">TV Shows</button>
       <button class="nb nb-hide" id="nb-new" onclick="go('new',this)">New &amp; Hot</button>
+      <button class="nb tv-nav-extra" type="button" onclick="go('anime',this)">Anime</button>
+      <button class="nb tv-nav-extra" type="button" onclick="go('genres',this)">Genres</button>
+      <button class="nb tv-nav-extra" type="button" onclick="go('list',this)">Wishlist</button>
+      <button class="nb tv-nav-extra" id="nb-adult-tv" type="button" onclick="go('adult',this)" style="display:none">XXX</button>
       <div class="nav-more" id="navMore">
         <button class="nb" type="button" onclick="toggleMoreNav(event)">More ▾</button>
         <div class="nav-drop" id="navDrop">
@@ -564,13 +615,27 @@ var PH='data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg
   window.FlixNovaIsApp=!!isApp;
   window.FlixNovaIsTv=!!isTv;
   function focusableCards(root){
-    (root||document).querySelectorAll('.card,.nb,.auth-btn,.bplay,.binfo,.sc,.pbtn,.pc,.epi').forEach(function(c){
+    var sel='.card,.nb,.auth-btn,.bplay,.binfo,.sc,.pbtn,.pc,.epi,.logo,.gvback,.rowsa,.loadmore,.gp,.sb,.yp,.tab,.sbar button,.pw-tools button,.mc,.list-btn';
+    (root||document).querySelectorAll(sel).forEach(function(c){
+      if(c.classList&&(c.classList.contains('heart')||c.classList.contains('cw-x'))){
+        c.setAttribute('tabindex','-1');
+        return;
+      }
       if(!c.hasAttribute('tabindex'))c.setAttribute('tabindex','0');
     });
+  }
+  function bootTvFocus(){
+    if(!(window.FlixNovaIsTv||document.body.classList.contains('tv-mode')))return;
+    setTimeout(function(){
+      if(document.activeElement&&document.activeElement!==document.body&&document.activeElement.tagName!=='HTML')return;
+      var el=document.querySelector('.bplay')||document.querySelector('#nb-home')||document.querySelector('.card');
+      if(el)try{el.focus();}catch(e){}
+    },600);
   }
   if(isTv||isApp){
     document.addEventListener('DOMContentLoaded',function(){
       focusableCards();
+      bootTvFocus();
       try{
         var mo=new MutationObserver(function(){focusableCards();});
         mo.observe(document.body,{childList:true,subtree:true});
@@ -584,6 +649,7 @@ var PH='data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg
     window.FlixNovaIsApp=true;
     window.FlixNovaIsTv=!!n.tv;
     focusableCards();
+    bootTvFocus();
   });
 })();
 
@@ -1106,6 +1172,8 @@ function syncAdultUi(){
   }
   var nav=$('nb-adult');
   if(nav)nav.style.display=on?'':'none';
+  var navTv=$('nb-adult-tv');
+  if(navTv)navTv.style.display=on?'':'none';
 }
 function toggleAdultMode(){
   if(window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive()){
@@ -1754,6 +1822,13 @@ function openModal(item){
     else history.replaceState({fnWatch:1},'',path);
   }catch(ex){}
   $('ov').classList.add('on');document.body.style.overflow='hidden';
+  document.body.classList.add('modal-open');
+  if(isTvApp()||isNativeApp()){
+    setTimeout(function(){
+      var el=document.querySelector('#pw .pw-close')||document.querySelector('.mc')||document.querySelector('#mListBtn');
+      if(el)try{el.focus();}catch(ex){}
+    },350);
+  }
   $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding servers...</span></div>';
   $('srcbar').style.display='none';$('schips').innerHTML='';$('srcst').textContent='';
   $('epnav').style.display=type==='tv'?'flex':'none';
@@ -2057,6 +2132,138 @@ function isNativeApp(){
 }
 function isTvApp(){
   return !!(window.FlixNovaIsTv||document.body.classList.contains('tv-mode')||(window.FlixNovaNative&&window.FlixNovaNative.tv));
+}
+function tvFocusEl(el){
+  if(!el)return false;
+  try{
+    el.focus();
+    if(el.scrollIntoView)el.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
+    return true;
+  }catch(e){return false;}
+}
+function tvCardRows(){
+  var rows=[];
+  document.querySelectorAll('#main .strip, #main .fgrid, #main .sg').forEach(function(r){
+    if(r.querySelector('.card'))rows.push(r);
+  });
+  return rows;
+}
+function tvMoveInStrip(card,dir){
+  var strip=card&&card.parentElement;
+  if(!strip||!(strip.classList.contains('strip')||strip.classList.contains('sg')||strip.classList.contains('fgrid')))return false;
+  var cards=[].slice.call(strip.querySelectorAll('.card'));
+  var i=cards.indexOf(card);
+  if(i<0)return false;
+  var n=dir>0?cards[i+1]:cards[i-1];
+  return n?tvFocusEl(n):false;
+}
+function tvMoveRow(card,dir){
+  var strip=card&&card.parentElement;
+  if(!strip)return false;
+  var rows=tvCardRows();
+  var ri=rows.indexOf(strip);
+  if(ri<0){
+    // card may be nested; find containing row
+    for(var i=0;i<rows.length;i++){if(rows[i].contains(card)){ri=i;strip=rows[i];break;}}
+  }
+  if(ri<0)return false;
+  var next=rows[ri+dir];
+  if(!next){
+    if(dir<0){
+      var hero=document.querySelector('.bplay')||document.querySelector('#nb-home');
+      return hero?tvFocusEl(hero):false;
+    }
+    return false;
+  }
+  var cards=[].slice.call(next.querySelectorAll('.card'));
+  if(!cards.length)return false;
+  // Prefer similarly indexed card
+  var curCards=[].slice.call(strip.querySelectorAll('.card'));
+  var idx=Math.max(0,curCards.indexOf(card));
+  var target=cards[Math.min(idx,cards.length-1)]||cards[0];
+  return tvFocusEl(target);
+}
+function tvHandleDpad(e){
+  if(!(isTvApp()||(isNativeApp()&&document.body.classList.contains('tv-mode'))))return false;
+  var t=e.target;
+  var key=e.key;
+  var inModal=$('ov')&&$('ov').classList.contains('on');
+  var tag=(t&&t.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'||tag==='select'){
+    if(key==='ArrowDown'&&!inModal){e.preventDefault();return tvFocusEl(document.querySelector('.card')||document.querySelector('.bplay'));}
+    return false;
+  }
+  // Player modal: Left/Right cycle sources, Up to Close
+  if(inModal){
+    if(key==='ArrowUp'){
+      var closeBtn=document.querySelector('#pw .pw-close')||document.querySelector('.mc');
+      if(closeBtn){e.preventDefault();return tvFocusEl(closeBtn);}
+    }
+    if(key==='ArrowLeft'||key==='ArrowRight'){
+      var chips=[].slice.call(document.querySelectorAll('#schips .sc:not(.dead), #pchips .pc'));
+      if(chips.length){
+        var cur=document.activeElement;
+        var ci=chips.indexOf(cur);
+        if(ci<0)ci=S.si||0;
+        var ni=key==='ArrowRight'?Math.min(chips.length-1,ci+1):Math.max(0,ci-1);
+        e.preventDefault();
+        return tvFocusEl(chips[ni]);
+      }
+      if(key==='ArrowRight'){e.preventDefault();nextSrc();return true;}
+      if(key==='ArrowLeft'&&typeof prevEp==='function'&&S.item&&S.item.type==='tv'){/* stay */}
+    }
+    if(key==='ArrowDown'){
+      var epi=document.querySelector('.epi.on')||document.querySelector('.epi');
+      if(epi){e.preventDefault();return tvFocusEl(epi);}
+      var tools=document.querySelector('#pw .pw-tools button');
+      if(tools){e.preventDefault();return tvFocusEl(tools);}
+    }
+    if(key==='MediaPlayPause'||key==='MediaPlay'||key==='MediaPause'){
+      var v=document.querySelector('#pw video');
+      if(v){
+        e.preventDefault();
+        try{if(v.paused)v.play();else v.pause();}catch(ex){}
+        return true;
+      }
+    }
+    return false;
+  }
+  // Browse: Enter activates focused control
+  if((key==='Enter'||key===' ')&&t){
+    if(t.classList&&(t.classList.contains('card')||t.classList.contains('nb')||t.classList.contains('logo')||t.classList.contains('auth-btn')||t.classList.contains('bplay')||t.classList.contains('binfo')||t.classList.contains('gp')||t.classList.contains('rowsa')||t.classList.contains('loadmore')||t.classList.contains('gvback'))){
+      e.preventDefault();
+      t.click();
+      return true;
+    }
+  }
+  var card=t&&t.closest?t.closest('.card'):null;
+  if(key==='ArrowRight'||key==='ArrowLeft'){
+    if(card){
+      if(tvMoveInStrip(card,key==='ArrowRight'?1:-1)){e.preventDefault();return true;}
+    }
+    // From hero / nav → first card
+    if(!card&&(t.classList&&(t.classList.contains('bplay')||t.classList.contains('binfo')||t.classList.contains('nb')||t.classList.contains('auth-btn')||t.classList.contains('logo')))){
+      if(key==='ArrowDown'||key==='ArrowRight'){
+        var first=document.querySelector('#main .card');
+        if(first){e.preventDefault();return tvFocusEl(first);}
+      }
+    }
+  }
+  if(key==='ArrowDown'){
+    if(card){if(tvMoveRow(card,1)){e.preventDefault();return true;}}
+    else{
+      var c0=document.querySelector('#main .card');
+      if(c0){e.preventDefault();return tvFocusEl(c0);}
+    }
+  }
+  if(key==='ArrowUp'){
+    if(card){
+      if(tvMoveRow(card,-1)){e.preventDefault();return true;}
+      var play=document.querySelector('.bplay')||document.querySelector('#nb-home');
+      if(play){e.preventDefault();return tvFocusEl(play);}
+    }
+  }
+  return false;
 }
 /** App WebView: proxy RD hosts so Range/auth/redirects work reliably */
 function nativePlayUrl(url){
@@ -2608,6 +2815,13 @@ function closeModal(){
   destroyPlayer();
   if(S.autoNextTimer){clearTimeout(S.autoNextTimer);S.autoNextTimer=null;}
   $('ov').classList.remove('on');document.body.style.overflow='';
+  document.body.classList.remove('modal-open');
+  if(isTvApp()){
+    setTimeout(function(){
+      var el=document.querySelector('.card')||document.querySelector('#nb-home');
+      if(el)try{el.focus();}catch(ex){}
+    },150);
+  }
   $('pw').innerHTML='';$('srcbar').style.display='none';$('epnav').style.display='none';
   var trail=$('tpTrail');if(trail)trail.innerHTML='';
   document.title='FlixNova - Watch Free Movies & TV Shows Online';
@@ -2638,24 +2852,13 @@ document.addEventListener('keydown',function(e){
     if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();FlixExtra.closePayPromo();}
     return;
   }
-  if(e.key==='/'&&!$('ov').classList.contains('on')){e.preventDefault();$('q').focus();return;}
-  // Fire Stick / Android TV remote
+  if(e.key==='/'&&(!$('ov')||!$('ov').classList.contains('on'))){e.preventDefault();$('q').focus();return;}
+  // Fire Stick / Android TV remote — spatial D-pad
   if(isTvApp()||isNativeApp()){
+    if(tvHandleDpad(e))return;
     var t=e.target;
     if((e.key==='Enter'||e.key===' ')&&t&&t.classList&&t.classList.contains('card')){
       e.preventDefault();t.click();return;
-    }
-    if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
-      var card=t&&t.closest?t.closest('.card'):null;
-      var strip=card&&card.parentElement;
-      if(strip&&(strip.classList.contains('strip')||strip.classList.contains('sg')||strip.classList.contains('fgrid'))){
-        var cards=[].slice.call(strip.querySelectorAll('.card'));
-        var i=cards.indexOf(card);
-        if(i>=0){
-          var n=e.key==='ArrowRight'?cards[i+1]:cards[i-1];
-          if(n){e.preventDefault();n.focus();try{n.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});}catch(ex){}}
-        }
-      }
     }
   }
 });
@@ -2718,5 +2921,6 @@ syncAdultUi();
 if(!routeFromLocation())go('home',$('nb-home'));
 maybeShowWelcome();
 </script>
+<div class="tv-hint" aria-hidden="true"><span><b>←→</b> titles</span><span><b>↑↓</b> rows</span><span><b>OK</b> select</span><span><b>Back</b> close</span></div>
 </body>
 </html>

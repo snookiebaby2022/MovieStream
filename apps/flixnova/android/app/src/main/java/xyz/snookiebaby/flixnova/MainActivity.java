@@ -10,8 +10,8 @@ import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-  private static final int VERSION_CODE = 2;
-  private static final String VERSION_NAME = "1.1.0";
+  private static final int VERSION_CODE = 3;
+  private static final String VERSION_NAME = "1.2.0";
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
@@ -52,7 +52,12 @@ public class MainActivity extends BridgeActivity {
       if (isTv) {
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
+        webView.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
         webView.requestFocus(View.FOCUS_DOWN);
+        // Re-assert focus after layout — Fire Stick often loses first focus
+        webView.postDelayed(() -> {
+          try { webView.requestFocus(View.FOCUS_DOWN); } catch (Exception ignored) {}
+        }, 1200);
       }
 
       final boolean tvFlag = isTv;
