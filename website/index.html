@@ -379,6 +379,42 @@ body.tv-mode .tv-hint{
 body.tv-mode .tv-hint b{color:var(--gold);font-weight:700}
 body.tv-mode #main{padding-bottom:48px}
 body.tv-mode #ov.on ~ .tv-hint,body.tv-mode.modal-open .tv-hint{display:none}
+/* Remote focus cursor — shows what you're on / what you pressed */
+#tvCursor{display:none}
+body.tv-mode #tvCursor{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  position:fixed;left:50%;bottom:46px;transform:translateX(-50%);
+  z-index:95;pointer-events:none;max-width:min(92vw,720px);
+  padding:10px 18px;border-radius:999px;
+  background:rgba(8,8,8,.92);border:2px solid rgba(245,197,24,.55);
+  box-shadow:0 10px 40px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.06) inset;
+  font-size:17px;line-height:1.25;color:#fff;letter-spacing:.02em;
+  transition:border-color .15s,background .15s,transform .12s,opacity .15s;
+  opacity:0;
+}
+body.tv-mode #tvCursor.on{opacity:1}
+body.tv-mode #tvCursor.ok{
+  border-color:var(--red);background:rgba(229,9,20,.94);
+  transform:translateX(-50%) scale(1.04);
+}
+body.tv-mode #tvCursor .tv-cur-k{
+  flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--gold);opacity:.95;
+}
+body.tv-mode #tvCursor.ok .tv-cur-k{color:#fff}
+body.tv-mode #tvCursor .tv-cur-v{
+  flex:1 1 auto;min-width:0;font-weight:700;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;text-align:center;
+}
+body.tv-mode #ov.on ~ #tvCursor,body.tv-mode.modal-open #tvCursor{bottom:18px}
+body.tv-mode .tv-focused{
+  outline:3px solid var(--gold)!important;outline-offset:4px;
+  box-shadow:0 0 0 8px rgba(245,197,24,.28)!important;z-index:4!important;
+}
+body.tv-mode .card.tv-focused{
+  transform:scale(1.1)!important;
+  box-shadow:0 14px 40px rgba(0,0,0,.85),0 0 0 4px var(--gold),0 0 0 10px rgba(245,197,24,.25)!important;
+}
 </style>
 
 </head>
@@ -2133,11 +2169,82 @@ function isNativeApp(){
 function isTvApp(){
   return !!(window.FlixNovaIsTv||document.body.classList.contains('tv-mode')||(window.FlixNovaNative&&window.FlixNovaNative.tv));
 }
+var _tvCurTimer=null,_tvCurEl=null;
+function tvCleanLabel(s){
+  return String(s||'').replace(/\s+/g,' ').trim().replace(/^[\u25B6\u25BA\u25B8▶►\s]+/,'').slice(0,72);
+}
+function tvLabelFor(el){
+  if(!el||el===document.body||el===document.documentElement)return '';
+  var c=el.classList||{contains:function(){return false;}};
+  if(c.contains('card')){
+    var n=el.querySelector('.cpname')||el.querySelector('.cxn')||el.querySelector('img[alt]');
+    var tit=n?(n.getAttribute&&n.getAttribute('alt'))||n.textContent:'';
+    return tvCleanLabel(tit)||'Title';
+  }
+  if(c.contains('logo'))return 'Home';
+  if(c.contains('bplay'))return 'Play';
+  if(c.contains('binfo'))return 'More info';
+  if(c.contains('pw-close')||(el.getAttribute&&el.getAttribute('aria-label')==='Close'))return 'Close';
+  if(c.contains('epi')){
+    var et=el.querySelector('.et')||el.querySelector('.epi-t')||el;
+    return tvCleanLabel(et.textContent)||'Episode';
+  }
+  if(c.contains('sc')||c.contains('pc'))return tvCleanLabel(el.textContent)||'Source';
+  if(c.contains('nb')||c.contains('auth-btn')||c.contains('pbtn')||c.contains('tab')||c.contains('list-btn')||c.contains('gp')||c.contains('sb')||c.contains('yp')||c.contains('rowsa')||c.contains('loadmore')||c.contains('gvback')){
+    return tvCleanLabel(el.textContent)||'Button';
+  }
+  if(el.id==='q'||(el.tagName==='INPUT'&&el.type==='search')||(el.closest&&el.closest('.sbar'))){
+    if(el.tagName==='BUTTON'||el.tagName==='A')return 'Search';
+    return 'Search box';
+  }
+  var aria=el.getAttribute&&(el.getAttribute('aria-label')||el.getAttribute('title'));
+  if(aria)return tvCleanLabel(aria);
+  if(el.tagName==='BUTTON'||el.tagName==='A'||el.getAttribute&&el.getAttribute('role')==='button'){
+    return tvCleanLabel(el.textContent)||'Button';
+  }
+  return '';
+}
+function tvEnsureCursor(){
+  var el=$('tvCursor');
+  if(el)return el;
+  el=document.createElement('div');
+  el.id='tvCursor';
+  el.setAttribute('aria-live','polite');
+  el.innerHTML='<span class="tv-cur-k">On</span><span class="tv-cur-v"></span>';
+  document.body.appendChild(el);
+  return el;
+}
+function tvUpdateCursor(el,opts){
+  if(!isTvApp())return;
+  opts=opts||{};
+  var bar=tvEnsureCursor();
+  var label=tvLabelFor(el);
+  if(!label){bar.classList.remove('on','ok');return;}
+  var k=bar.querySelector('.tv-cur-k');
+  var v=bar.querySelector('.tv-cur-v');
+  if(k)k.textContent=opts.ok?'OK':'On';
+  if(v)v.textContent=label;
+  bar.classList.add('on');
+  bar.classList.toggle('ok',!!opts.ok);
+  if(_tvCurEl&&_tvCurEl!==el)_tvCurEl.classList.remove('tv-focused');
+  if(el&&el.classList){el.classList.add('tv-focused');_tvCurEl=el;}
+  if(_tvCurTimer){clearTimeout(_tvCurTimer);_tvCurTimer=null;}
+  if(opts.ok){
+    _tvCurTimer=setTimeout(function(){
+      bar.classList.remove('ok');
+      if(k)k.textContent='On';
+    },700);
+  }
+}
+function tvFlashSelect(el){
+  tvUpdateCursor(el||document.activeElement,{ok:true});
+}
 function tvFocusEl(el){
   if(!el)return false;
   try{
     el.focus();
     if(el.scrollIntoView)el.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
+    tvUpdateCursor(el);
     return true;
   }catch(e){return false;}
 }
@@ -2230,8 +2337,9 @@ function tvHandleDpad(e){
   }
   // Browse: Enter activates focused control
   if((key==='Enter'||key===' ')&&t){
-    if(t.classList&&(t.classList.contains('card')||t.classList.contains('nb')||t.classList.contains('logo')||t.classList.contains('auth-btn')||t.classList.contains('bplay')||t.classList.contains('binfo')||t.classList.contains('gp')||t.classList.contains('rowsa')||t.classList.contains('loadmore')||t.classList.contains('gvback'))){
+    if(t.classList&&(t.classList.contains('card')||t.classList.contains('nb')||t.classList.contains('logo')||t.classList.contains('auth-btn')||t.classList.contains('bplay')||t.classList.contains('binfo')||t.classList.contains('gp')||t.classList.contains('rowsa')||t.classList.contains('loadmore')||t.classList.contains('gvback')||t.classList.contains('sc')||t.classList.contains('pc')||t.classList.contains('epi')||t.classList.contains('pw-close')||t.classList.contains('pbtn'))){
       e.preventDefault();
+      tvFlashSelect(t);
       t.click();
       return true;
     }
@@ -2840,6 +2948,17 @@ function routeFromLocation(){
   openModal(item);
   return true;
 }
+document.addEventListener('focusin',function(e){
+  if(!isTvApp())return;
+  var el=e.target;
+  if(!el||el===document.body)return;
+  tvUpdateCursor(el);
+},true);
+document.addEventListener('click',function(e){
+  if(!isTvApp())return;
+  var el=e.target&&e.target.closest?e.target.closest('a,button,[role="button"],.card,.nb,.sc,.pc,.epi,.logo,.auth-btn'):e.target;
+  if(el)tvFlashSelect(el);
+},true);
 document.addEventListener('keydown',function(e){
   // Fire Stick Back / Escape / BrowserBack — leave player without killing the app
   if(e.key==='Escape'||e.key==='BrowserBack'||e.keyCode===27||e.keyCode===166||e.keyCode===4){
@@ -2858,7 +2977,7 @@ document.addEventListener('keydown',function(e){
     if(tvHandleDpad(e))return;
     var t=e.target;
     if((e.key==='Enter'||e.key===' ')&&t&&t.classList&&t.classList.contains('card')){
-      e.preventDefault();t.click();return;
+      e.preventDefault();tvFlashSelect(t);t.click();return;
     }
   }
 });
@@ -2921,6 +3040,7 @@ syncAdultUi();
 if(!routeFromLocation())go('home',$('nb-home'));
 maybeShowWelcome();
 </script>
+<div id="tvCursor" aria-live="polite"><span class="tv-cur-k">On</span><span class="tv-cur-v"></span></div>
 <div class="tv-hint" aria-hidden="true"><span><b>←→</b> titles</span><span><b>↑↓</b> rows</span><span><b>OK</b> select</span><span><b>Back</b> close</span></div>
 </body>
 </html>
