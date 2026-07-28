@@ -225,8 +225,11 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .auth-btn.primary:hover{filter:brightness(1.08);background:var(--red)}
 .auth-btn.xxx{border-color:rgba(255,80,120,.35);color:#ff8ab0}
 .auth-btn.xxx.on{background:rgba(255,40,90,.22);border-color:#ff2d6a;color:#fff}
-#authOv,#rdOv,#watchGateOv,#payPromoOv,#welcomeOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
-#authOv.on,#rdOv.on,#watchGateOv.on,#payPromoOv.on,#welcomeOv.on{display:flex}
+#authOv,#rdOv,#watchGateOv,#payPromoOv,#welcomeOv,#appUpdateOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+#authOv.on,#rdOv.on,#watchGateOv.on,#payPromoOv.on,#welcomeOv.on,#appUpdateOv.on{display:flex}
+#appUpdateOv{z-index:1300}
+#appUpdateOv .auth-box{max-width:420px;text-align:left}
+#appUpdateOv .upd-ver{color:var(--gold);font-weight:700;font-size:15px;margin:8px 0 12px}
 #rdBtn{display:none}
 #rdBtn.on{border-color:var(--green);color:var(--green);background:rgba(70,211,105,.12)}
 .auth-box{width:100%;max-width:380px;background:var(--s1);border:1px solid var(--s4);border-radius:14px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.55)}
@@ -538,6 +541,7 @@ body.tv-mode .card.tv-focused{
   </div>
 </div>
 <div id="welcomeOv" onclick="if(event.target===this)closeWelcome(true)">
+
   <div class="gate-box" role="dialog" aria-labelledby="welcomeTitle">
     <div class="gate-kicker">Welcome to FlixNova</div>
     <h2 id="welcomeTitle">Sign up or log in to continue</h2>
@@ -546,6 +550,17 @@ body.tv-mode .card.tv-focused{
       <button type="button" class="pbtn" onclick="closeWelcome(false);openAuth('register')">Sign Up — it’s free</button>
       <button type="button" class="pbtn ghost" onclick="closeWelcome(false);openAuth('login')">Log In</button>
       <button type="button" class="pbtn ghost" onclick="closeWelcome(true)">Browse without watching</button>
+    </div>
+  </div>
+</div>
+<div id="appUpdateOv">
+  <div class="auth-box" role="dialog" aria-labelledby="appUpdateTitle">
+    <h2 id="appUpdateTitle">Update available</h2>
+    <p id="appUpdateBody">A newer FlixNova app is ready.</p>
+    <div class="upd-ver" id="appUpdateVer"></div>
+    <div class="promo-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button type="button" class="pbtn" id="appUpdateBtn" onclick="installAppUpdate()">Download update</button>
+      <button type="button" class="pbtn ghost" id="appUpdateLater" onclick="dismissAppUpdate()">Later</button>
     </div>
   </div>
 </div>
@@ -689,8 +704,54 @@ var PH='data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg
     window.FlixNovaIsTv=!!n.tv;
     focusableCards();
     bootTvFocus();
+    setTimeout(checkNativeAppUpdate,1200);
   });
+  // Capacitor sometimes injects after first paint
+  setTimeout(function(){
+    if(window.FlixNovaNative&&window.FlixNovaNative.versionCode)checkNativeAppUpdate();
+  },2500);
 })();
+
+var _appUpdate=null;
+function checkNativeAppUpdate(){
+  var n=window.FlixNovaNative||{};
+  if(!n.platform||!n.versionCode)return;
+  // Native TV APK has its own updater; skip WebView TV shell if flagged separately later
+  fetch('/api/app/version',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.success)return;
+    var remote=n.tv?d.tv:d.mobile;
+    if(!remote||!remote.versionCode)return;
+    var local=Number(n.versionCode)||0;
+    var latest=Number(remote.versionCode)||0;
+    if(latest<=local)return;
+    var skipKey='fn_skip_upd_'+latest;
+    try{if(!remote.forceUpdate&&sessionStorage.getItem(skipKey)==='1')return;}catch(e){}
+    _appUpdate=remote;
+    var ov=$('appUpdateOv');
+    if(!ov)return;
+    $('appUpdateTitle').textContent=remote.forceUpdate?'Update required':'Update available';
+    $('appUpdateBody').textContent=remote.notes||('FlixNova '+(remote.versionName||'')+' is ready. Download and install to continue.');
+    $('appUpdateVer').textContent='Installed v'+(n.versionName||local)+' → v'+(remote.versionName||latest);
+    var later=$('appUpdateLater');
+    if(later)later.style.display=remote.forceUpdate?'none':'inline-flex';
+    ov.classList.add('on');
+  }).catch(function(){});
+}
+function dismissAppUpdate(){
+  if(_appUpdate&&_appUpdate.forceUpdate)return;
+  try{if(_appUpdate)sessionStorage.setItem('fn_skip_upd_'+_appUpdate.versionCode,'1');}catch(e){}
+  var ov=$('appUpdateOv');if(ov)ov.classList.remove('on');
+}
+function installAppUpdate(){
+  if(!_appUpdate)return;
+  var url=_appUpdate.apkUrl||'/downloads/FlixNova-android.apk';
+  try{
+    // Prefer opening the APK URL; Android will hand off to the package installer / browser download
+    window.location.href=url;
+  }catch(e){
+    window.open(url,'_blank');
+  }
+}
 
 // ── ITEM STORE (THE FIX - no JSON in HTML attributes) ──────
 var STORE={};var STOREKEY=0;

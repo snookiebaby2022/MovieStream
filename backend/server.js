@@ -21,6 +21,7 @@ const debridRouter = require('./debridRoutes');
 const { router: featureRouter } = require('./featureRoutes');
 const { router: payRouter, handleWebhook } = require('./paymentRoutes');
 const { PlayEvent, User, ContactMessage, TitleRequest, Promo } = require('./models');
+const appVersions = require('./appVersions');
 
 function requireUser(req, res) {
   const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -399,40 +400,13 @@ app.get('/api/online', (req, res) => {
   });
 });
 
-// Native Android / Fire Stick APK version (for in-app update prompts)
+// Native Android / Fire Stick APK version (admin-managed; used by in-app update prompts)
 app.get('/api/app/version', (req, res) => {
-  res.json({
-    success: true,
-    platform: 'android',
-    mobile: {
-      packageId: 'xyz.snookiebaby.flixnova',
-      versionCode: 3,
-      versionName: '1.2.0',
-      apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-android.apk',
-      downloaderUrl: 'http://aftv.news/3777174',
-      downloaderCode: '3777174'
-    },
-    tv: {
-      packageId: 'xyz.snookiebaby.flixnova.tv',
-      versionCode: 4,
-      versionName: '1.0.3',
-      apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk',
-      downloaderUrl: 'http://aftv.news/5381210',
-      downloaderCode: '5381210'
-    },
-    // legacy fields (mobile)
-    versionCode: 3,
-    versionName: '1.2.0',
-    minVersionCode: 1,
-    apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-android.apk',
-    firetvApkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk',
-    downloaderUrl: 'http://aftv.news/5381210',
-    downloaderCode: '5381210',
-    mobileDownloaderCode: '3777174',
-    getAppUrl: 'https://snookiebaby.xyz/get-app.html#firetv',
-    notes: 'Phone Downloader: 3777174. Fire Stick Downloader: 5381210.',
-    forceUpdate: false
-  });
+  try {
+    res.json(appVersions.publicPayload(req));
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 app.get('/api/trending', async (req, res) => {
@@ -1081,6 +1055,62 @@ app.patch('/api/admin/contacts/:id', adminAuth, async (req, res) => {
 app.post('/api/admin/logout', adminAuth, (req, res) => {
   delete sess[req.headers['x-admin-token']]; saveS(); res.json({ success: true });
 });
+
+app.get('/api/admin/apps', adminAuth, (req, res) => {
+  try {
+    const data = appVersions.readRaw();
+    const files = {};
+    for (const t of ['mobile', 'tv']) {
+      const p = appVersions.apkPath(t);
+      try {
+        const st = fs.statSync(p);
+        files[t] = { exists: true, bytes: st.size, mtime: st.mtime.toISOString(), path: appVersions.APK_FILES[t] };
+      } catch {
+        files[t] = { exists: false, bytes: 0, mtime: null, path: appVersions.APK_FILES[t] };
+      }
+    }
+    res.json({ success: true, data: { ...data, files }, public: appVersions.publicPayload(req) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.put('/api/admin/apps', adminAuth, (req, res) => {
+  try {
+    const saved = appVersions.patchMeta(req.body || {});
+    res.json({ success: true, data: saved, public: appVersions.publicPayload(req) });
+  } catch (e) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+// Binary APK upload (no multipart lib) — send raw body with version headers
+app.put(
+  '/api/admin/apps/:target/apk',
+  adminAuth,
+  express.raw({ type: () => true, limit: '90mb' }),
+  (req, res) => {
+    try {
+      const target = String(req.params.target || '').toLowerCase();
+      if (target !== 'mobile' && target !== 'tv') {
+        return res.status(400).json({ success: false, error: 'target must be mobile or tv' });
+      }
+      const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+      const meta = {
+        versionCode: req.headers['x-version-code'],
+        versionName: req.headers['x-version-name'],
+        forceUpdate: String(req.headers['x-force-update'] || '') === '1',
+        notes: req.headers['x-notes'] ? decodeURIComponent(String(req.headers['x-notes'])) : undefined,
+        downloaderCode: req.headers['x-downloader-code'],
+        downloaderUrl: req.headers['x-downloader-url']
+      };
+      const result = appVersions.saveApkBuffer(target, buf, meta);
+      res.json({ success: true, data: result, public: appVersions.publicPayload(req) });
+    } catch (e) {
+      res.status(400).json({ success: false, error: e.message });
+    }
+  }
+);
 
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   try {

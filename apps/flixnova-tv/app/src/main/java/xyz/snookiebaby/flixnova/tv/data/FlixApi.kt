@@ -16,6 +16,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 interface FlixApiService {
+    @GET("/api/app/version")
+    suspend fun appVersion(): AppVersionResponse
+
     @POST("/api/auth/login")
     suspend fun login(@Body body: LoginBody): ApiOk<Any?>
 

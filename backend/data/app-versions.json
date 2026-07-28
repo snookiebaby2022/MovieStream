@@ -1,0 +1,25 @@
+{
+  "mobile": {
+    "packageId": "xyz.snookiebaby.flixnova",
+    "versionCode": 3,
+    "versionName": "1.2.0",
+    "apkUrl": "https://snookiebaby.xyz/downloads/FlixNova-android.apk",
+    "downloaderUrl": "http://aftv.news/3777174",
+    "downloaderCode": "3777174",
+    "minVersionCode": 1,
+    "forceUpdate": false,
+    "notes": ""
+  },
+  "tv": {
+    "packageId": "xyz.snookiebaby.flixnova.tv",
+    "versionCode": 5,
+    "versionName": "1.0.4",
+    "apkUrl": "https://snookiebaby.xyz/downloads/FlixNova-tv.apk",
+    "downloaderUrl": "http://aftv.news/5381210",
+    "downloaderCode": "5381210",
+    "minVersionCode": 1,
+    "forceUpdate": false,
+    "notes": "Update prompts + performance fixes"
+  },
+  "updatedAt": null
+}

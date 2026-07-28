@@ -1156,23 +1156,81 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
         <div class="panel">
           <div class="panel-head">
             <div>
-              <div class="panel-title">📱 Apps &amp; installs</div>
-              <div class="panel-sub">Android / Fire Stick APK and iOS Home Screen</div>
+              <div class="panel-title">📱 Apps &amp; updates</div>
+              <div class="panel-sub">Upload APKs and push version bumps to phones + Fire Stick</div>
             </div>
-            <a class="btn btn-secondary btn-sm" href="/get-app.html" target="_blank" rel="noreferrer">Open Get App page</a>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="loadAppVersions()">Refresh</button>
+              <a class="btn btn-secondary btn-sm" href="/get-app.html" target="_blank" rel="noreferrer">Get App page</a>
+            </div>
           </div>
           <div class="panel-body">
-            <div class="stack">
-              <div class="callout">
-                <div class="icon">🤖</div>
-                <div>
-                  <h3>Android / Fire Stick APK</h3>
-                  <p>Direct download for phones and Fire TV (sideload). Same build loads your live site.</p>
-                  <p style="margin-top:8px;font-size:13px">Downloader code: <b style="color:var(--gold);letter-spacing:.08em;font-size:18px">3777174</b></p>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-                    <a class="btn btn-green" href="/downloads/FlixNova-android.apk">⬇ Download APK</a>
-                    <button class="btn btn-secondary" onclick="navigator.clipboard.writeText('3777174');toast('Downloader code copied','success')">Copy Downloader code</button>
-                    <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(location.origin+'/downloads/FlixNova-android.apk');toast('APK URL copied','success')">Copy APK URL</button>
+            <p style="margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.5">
+              Publish a higher <b>versionCode</b> than what’s installed. Apps check <code>/api/app/version</code> on launch and prompt users to download the new APK.
+              Fire Stick / phones still need the user to confirm install (sideload).
+            </p>
+            <div class="stack" id="appsUpdatePanels">
+              <div class="callout" id="appsMobilePanel">
+                <div class="icon">📱</div>
+                <div style="flex:1;min-width:240px">
+                  <h3>Mobile app <span style="font-weight:500;color:var(--muted);font-size:12px">xyz.snookiebaby.flixnova</span></h3>
+                  <p id="appsMobileStatus" style="margin-top:6px;font-size:13px">Loading…</p>
+                  <div class="form-grid" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)">Version code
+                      <input id="appsMobileCode" type="number" min="1" class="inp" style="padding:8px 10px">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)">Version name
+                      <input id="appsMobileName" type="text" class="inp" style="padding:8px 10px" placeholder="1.2.1">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)">Downloader code
+                      <input id="appsMobileDl" type="text" class="inp" style="padding:8px 10px">
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:18px">
+                      <input id="appsMobileForce" type="checkbox"> Force update
+                    </label>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);margin-top:10px">Notes (shown in update prompt)
+                    <input id="appsMobileNotes" type="text" class="inp" style="padding:8px 10px" placeholder="Bug fixes and speed">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);margin-top:10px">APK file
+                    <input id="appsMobileFile" type="file" accept=".apk,application/vnd.android.package-archive">
+                  </label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                    <button type="button" class="btn btn-green" onclick="publishAppTarget('mobile')">⬆ Upload &amp; publish</button>
+                    <button type="button" class="btn btn-secondary" onclick="saveAppMetaOnly('mobile')">Save version only</button>
+                    <a class="btn btn-secondary" id="appsMobileLink" href="/downloads/FlixNova-android.apk">⬇ Current APK</a>
+                  </div>
+                </div>
+              </div>
+              <div class="callout" id="appsTvPanel">
+                <div class="icon">📺</div>
+                <div style="flex:1;min-width:240px">
+                  <h3>FlixNova TV <span style="font-weight:500;color:var(--muted);font-size:12px">xyz.snookiebaby.flixnova.tv</span></h3>
+                  <p id="appsTvStatus" style="margin-top:6px;font-size:13px">Loading…</p>
+                  <div class="form-grid" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)">Version code
+                      <input id="appsTvCode" type="number" min="1" class="inp" style="padding:8px 10px">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)">Version name
+                      <input id="appsTvName" type="text" class="inp" style="padding:8px 10px" placeholder="1.0.4">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)">Downloader code
+                      <input id="appsTvDl" type="text" class="inp" style="padding:8px 10px">
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:18px">
+                      <input id="appsTvForce" type="checkbox"> Force update
+                    </label>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);margin-top:10px">Notes (shown in update prompt)
+                    <input id="appsTvNotes" type="text" class="inp" style="padding:8px 10px" placeholder="Faster browsing">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);margin-top:10px">APK file
+                    <input id="appsTvFile" type="file" accept=".apk,application/vnd.android.package-archive">
+                  </label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                    <button type="button" class="btn btn-green" onclick="publishAppTarget('tv')">⬆ Upload &amp; publish</button>
+                    <button type="button" class="btn btn-secondary" onclick="saveAppMetaOnly('tv')">Save version only</button>
+                    <a class="btn btn-secondary" id="appsTvLink" href="/downloads/FlixNova-tv.apk">⬇ Current APK</a>
                   </div>
                 </div>
               </div>
@@ -1180,19 +1238,10 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
                 <div class="icon">🛠️</div>
                 <div>
                   <h3>Admin Android app</h3>
-                  <p>Capacitor shell that opens the admin panel. Use on your phone to manage users, plans, promo, and requests.</p>
+                  <p>Separate Capacitor shell for this panel. Not part of the auto-update channel above.</p>
                   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
                     <a class="btn btn-blue" href="/downloads/FlixNova-Admin-android.apk">⬇ Download Admin APK</a>
-                    <a class="btn btn-secondary" href="/admin/" target="_blank" rel="noreferrer">Open /admin in browser</a>
                   </div>
-                </div>
-              </div>
-              <div class="callout">
-                <div class="icon">🍎</div>
-                <div>
-                  <h3>iPhone / iPad</h3>
-                  <p>Safari → Share → <b>Add to Home Screen</b>. There is no App Store IPA without a Mac + Apple Developer account.</p>
-                  <a class="btn btn-secondary" href="/get-app.html#ios" target="_blank" rel="noreferrer" style="margin-top:10px">iOS install steps</a>
                 </div>
               </div>
             </div>
@@ -1803,7 +1852,7 @@ function showPage(id,navEl){
     requests:'Review missing-title requests from members',
     promo:'First-N free Ad-Free offer controls',
     catalog:'Force-refresh homepage / trending TMDB caches',
-    apps:'Android APK, Fire Stick, and iOS install links',
+    apps:'Upload APKs and push mobile / TV updates',
     analytics:'Play counts, RD hit rate, top titles',
     scrapers:'Monitor scraper coverage and source health',
     tester:'Probe search and source endpoints',
@@ -1823,6 +1872,7 @@ function showPage(id,navEl){
   if(id==='users')loadUsers();
   if(id==='requests')loadRequests();
   if(id==='promo')loadPromo();
+  if(id==='apps')loadAppVersions();
   if(id==='analytics')loadAnalytics();
   if(id==='scrapers')loadScrapers();
   if(id==='cache')loadCacheStats();
@@ -1842,11 +1892,103 @@ function refreshPage(){
   if(curPage==='users')loadUsers();
   if(curPage==='requests')loadRequests();
   if(curPage==='promo')loadPromo();
+  if(curPage==='apps')loadAppVersions();
   if(curPage==='analytics')loadAnalytics();
   if(curPage==='cache')loadCacheStats();
   if(curPage==='process')loadProcStatus();
   if(curPage==='config')loadConfig();
   if(curPage==='activity')loadActivity();
+}
+
+async function loadAppVersions(){
+  try{
+    const d=await af('/apps');
+    if(!d?.success){toast(d?.error||'Failed to load app versions','error');return;}
+    const{mobile,tv,files,updatedAt}=d.data||{};
+    const fmtBytes=n=>{
+      n=Number(n)||0;
+      if(n>1048576)return(n/1048576).toFixed(1)+' MB';
+      if(n>1024)return(n/1024).toFixed(0)+' KB';
+      return n+' B';
+    };
+    const fill=(prefix,meta,file)=>{
+      document.getElementById('apps'+prefix+'Code').value=meta?.versionCode??'';
+      document.getElementById('apps'+prefix+'Name').value=meta?.versionName||'';
+      document.getElementById('apps'+prefix+'Dl').value=meta?.downloaderCode||'';
+      document.getElementById('apps'+prefix+'Force').checked=!!meta?.forceUpdate;
+      document.getElementById('apps'+prefix+'Notes').value=meta?.notes||'';
+      const link=document.getElementById('apps'+prefix+'Link');
+      if(link&&meta?.apkUrl)link.href=meta.apkUrl;
+      const st=document.getElementById('apps'+prefix+'Status');
+      if(st){
+        const f=file||{};
+        st.innerHTML=`Live <b style="color:var(--gold)">${esc(meta?.versionName||'?')}</b> (code ${esc(meta?.versionCode)}) · APK ${f.exists?fmtBytes(f.bytes)+' · '+esc((f.mtime||'').slice(0,19).replace('T',' ')):'missing'}${updatedAt?' · config '+esc(String(updatedAt).slice(0,19).replace('T',' ')) :''}`;
+      }
+    };
+    fill('Mobile',mobile,files?.mobile);
+    fill('Tv',tv,files?.tv);
+  }catch(e){toast('Apps load failed: '+e.message,'error');}
+}
+
+function collectAppMeta(target){
+  const isTv=target==='tv';
+  const p=isTv?'Tv':'Mobile';
+  return{
+    versionCode:Number(document.getElementById('apps'+p+'Code').value)||undefined,
+    versionName:document.getElementById('apps'+p+'Name').value.trim(),
+    downloaderCode:document.getElementById('apps'+p+'Dl').value.trim(),
+    forceUpdate:!!document.getElementById('apps'+p+'Force').checked,
+    notes:document.getElementById('apps'+p+'Notes').value.trim()
+  };
+}
+
+async function saveAppMetaOnly(target){
+  try{
+    const body={};
+    body[target]=collectAppMeta(target);
+    const d=await af('/apps',{method:'PUT',body});
+    if(!d?.success){toast(d?.error||'Save failed','error');return;}
+    toast((target==='tv'?'TV':'Mobile')+' version published','success');
+    loadAppVersions();
+  }catch(e){toast(e.message,'error');}
+}
+
+async function publishAppTarget(target){
+  const isTv=target==='tv';
+  const fileEl=document.getElementById(isTv?'appsTvFile':'appsMobileFile');
+  const file=fileEl&&fileEl.files&&fileEl.files[0];
+  if(!file){
+    toast('Choose an APK file first (or use Save version only)','error');
+    return;
+  }
+  const meta=collectAppMeta(target);
+  if(!meta.versionCode||!meta.versionName){
+    toast('Set version code and name before upload','error');
+    return;
+  }
+  toast('Uploading APK…','info',8000);
+  try{
+    const headers={
+      'x-admin-token':token,
+      'Content-Type':'application/octet-stream',
+      'x-version-code':String(meta.versionCode),
+      'x-version-name':meta.versionName,
+      'x-force-update':meta.forceUpdate?'1':'0'
+    };
+    if(meta.notes)headers['x-notes']=encodeURIComponent(meta.notes);
+    if(meta.downloaderCode)headers['x-downloader-code']=meta.downloaderCode;
+    const r=await fetch(AAPI+'/apps/'+target+'/apk',{method:'PUT',headers,body:file});
+    if(r.status===401){
+      localStorage.removeItem('adminToken');token=null;
+      document.getElementById('loginWrap').style.display='flex';
+      return;
+    }
+    const d=await r.json();
+    if(!d?.success){toast(d?.error||'Upload failed','error');return;}
+    toast((isTv?'TV':'Mobile')+' APK published · '+meta.versionName,'success',5000);
+    if(fileEl)fileEl.value='';
+    loadAppVersions();
+  }catch(e){toast('Upload failed: '+e.message,'error');}
 }
 
 async function loadStats(){

@@ -115,3 +115,23 @@ data class StreamsBody(
     val year: String = "",
     val adult: Boolean = false
 )
+
+data class AppVersionChannel(
+    val packageId: String = "",
+    val versionCode: Int = 0,
+    val versionName: String = "",
+    val apkUrl: String = "",
+    val downloaderUrl: String = "",
+    val downloaderCode: String = "",
+    val forceUpdate: Boolean = false,
+    val notes: String = "",
+    val minVersionCode: Int = 1
+)
+
+data class AppVersionResponse(
+    val success: Boolean = false,
+    val mobile: AppVersionChannel? = null,
+    val tv: AppVersionChannel? = null,
+    val forceUpdate: Boolean = false,
+    val notes: String = ""
+)
