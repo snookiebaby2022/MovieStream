@@ -2,6 +2,7 @@ package xyz.snookiebaby.flixnova;
 
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
@@ -19,7 +20,6 @@ public class MainActivity extends BridgeActivity {
       boolean isTv = getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK)
           || getPackageManager().hasSystemFeature("amazon.hardware.fire_tv");
 
-      // Keep screen awake on TV while browsing / watching
       getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
       getWindow().addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
 
@@ -31,17 +31,17 @@ public class MainActivity extends BridgeActivity {
       if (ua == null || ua.isEmpty()) {
         ua = "Mozilla/5.0 (Linux; Android 12; SHIELD Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
       } else {
-        // Embed hosts often 403 Android WebView UAs that contain "; wv"
         ua = ua.replace("; wv", "").replace(" Version/4.0", "");
       }
-      // Markers used by the website for app / TV layout + update checks
       if (!ua.contains("FlixNovaApp")) ua = ua + " FlixNovaApp/" + VERSION_NAME;
       if (isTv && !ua.contains("FlixNovaTV")) ua = ua + " FlixNovaTV/1";
       settings.setUserAgentString(ua);
 
       settings.setMediaPlaybackRequiresUserGesture(false);
       settings.setDomStorageEnabled(true);
-      settings.setJavaScriptCanOpenWindowsAutomatically(true);
+      // Block embed ad scripts from opening new windows
+      settings.setJavaScriptCanOpenWindowsAutomatically(false);
+      settings.setSupportMultipleWindows(false);
       settings.setLoadWithOverviewMode(true);
       settings.setUseWideViewPort(true);
       settings.setSupportZoom(false);
@@ -49,14 +49,12 @@ public class MainActivity extends BridgeActivity {
       settings.setDisplayZoomControls(false);
       try { settings.setOffscreenPreRaster(true); } catch (Exception ignored) {}
 
-      // Prefer remote D-pad focus over touch mouse cursor on TV
       if (isTv) {
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
         webView.requestFocus(View.FOCUS_DOWN);
       }
 
-      // Expose native metadata to the live site (remote-updatable UI reads this)
       final boolean tvFlag = isTv;
       webView.postDelayed(() -> {
         try {
@@ -75,5 +73,47 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception ignored) {}
       }, 800);
     } catch (Exception ignored) {}
+  }
+
+  @Override
+  public void onBackPressed() {
+    try {
+      WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+      if (webView != null) {
+        // Ask the site to close the player modal first
+        webView.evaluateJavascript(
+            "(function(){try{if(window.__fnHardwareBack){window.__fnHardwareBack();return 'handled';}"
+                + "if(document.getElementById('ov')&&document.getElementById('ov').classList.contains('on')"
+                + "&&typeof closeModal==='function'){closeModal();return 'handled';}return 'pass';}catch(e){return 'pass';}})()",
+            value -> {
+              if (value != null && value.contains("handled")) return;
+              // Not in player — default Capacitor/WebView back
+              runOnUiThread(() -> {
+                try { MainActivity.super.onBackPressed(); } catch (Exception ignored) {}
+              });
+            });
+        return;
+      }
+    } catch (Exception ignored) {}
+    super.onBackPressed();
+  }
+
+  @Override
+  public boolean dispatchKeyEvent(KeyEvent event) {
+    if (event.getAction() == KeyEvent.ACTION_UP
+        && (event.getKeyCode() == KeyEvent.KEYCODE_BACK
+            || event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE)) {
+      // Also route Back key through JS close when possible
+      try {
+        WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+        if (webView != null) {
+          webView.evaluateJavascript(
+              "(function(){try{if(document.getElementById('ov')&&document.getElementById('ov').classList.contains('on')"
+                  + "&&typeof closeModal==='function'){closeModal();return true;}return false;}catch(e){return false;}})()",
+              value -> {});
+        }
+      } catch (Exception ignored) {}
+    }
+    return super.dispatchKeyEvent(event);
   }
 }
