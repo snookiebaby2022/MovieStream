@@ -2100,15 +2100,16 @@ function isDirectUrl(url,s){
 function isHardFailUrl(url,s){
   var u=String(url||'');
   var t=String((s&&(s.title||s.source))||'');
+  if(s&&s.hardCodec)return true;
+  if(s&&s.browserOk===false)return true;
   // On native app, skip formats WebView usually cannot decode
   if(isNativeApp()){
-    if(s&&s.browserOk===false)return true;
     if(/\.mkv(\?|$)/i.test(u))return true;
-    if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b/i.test(u+' '+t))return true;
+    if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b|\bhdr\b|hdr10|10-?bit/i.test(u+' '+t))return true;
     return false;
   }
-  // Desktop: only treat clearly bad codecs as hard-fail (MKV/H264 often still worth trying / External)
-  if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b/i.test(u+' '+t)&&!/x264|h\.?264|avc/i.test(t))return true;
+  // Desktop: hard codecs fail in Chrome more often than not
+  if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b|hdr10|\bhdr\b|10-?bit/i.test(u+' '+t)&&!/x264|h\.?264|avc/i.test(t))return true;
   return false;
 }
 function resolvePlayer(s,url){
@@ -2220,8 +2221,16 @@ function handleSrc(data){
   if(!S.src.length){showPE('No playable Real-Debrid links (blocked for copyright). Try Embed backups.');return;}
   // Prefer browser-friendly RD streams first (mp4/x264 over 4K HEVC)
   if(S.debridMode){
+    var soft=S.src.filter(function(s){return s.browserOk!==false&&!s.hardCodec;});
+    if(soft.length)S.src=soft;
+    var cached=S.src.filter(function(s){return s.cached;});
+    if(cached.length)S.src=cached;
     S.src=S.src.slice().sort(function(a,b){
-      return (b.browserOk?1:0)-(a.browserOk?1:0) || (b.browserScore||0)-(a.browserScore||0) || (b.cached?1:0)-(a.cached?1:0);
+      return (b.browserOk?1:0)-(a.browserOk?1:0)
+        || (a.hardCodec?1:0)-(b.hardCodec?1:0)
+        || (a.rdRisky?1:0)-(b.rdRisky?1:0)
+        || (b.cached?1:0)-(a.cached?1:0)
+        || (b.browserScore||0)-(a.browserScore||0);
     });
   }
   var moreBtn=$('moreSrvBtn');
@@ -2258,14 +2267,13 @@ function tryS(idx){
   setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
   if(!url){mFail(idx);tryS(idx+1);return;}
 
-  // Skip awkward RD files (HEVC/MKV) when a friendlier RD link exists
+  // Skip awkward RD files (HEVC/MKV/risky tags) when a friendlier RD link exists
   var mode=getPlayerMode();
-  if(mode!=='external'&&mode!=='embed'&&s.debrid&&isHardFailUrl(url,s)){
-    var anyOk=S.src.some(function(x,i){return i!==idx&&!S.failed[i]&&x.browserOk!==false&&!isHardFailUrl(x.embedUrl||x.url||'',x);});
+  if(mode!=='external'&&mode!=='embed'&&s.debrid&&(isHardFailUrl(url,s)||s.rdRisky)){
+    var anyOk=S.src.some(function(x,i){
+      return i!==idx&&!S.failed[i]&&x.browserOk!==false&&!x.hardCodec&&!isHardFailUrl(x.embedUrl||x.url||'',x);
+    });
     if(anyOk){mFail(idx);tryS(idx+1);return;}
-    // All remaining look "hard" — still try in-browser Auto/HTML5 first.
-    // External is a fallback after real playback failure (or if user picks External).
-    setSt('sld','Trying in browser…');
   }
 
   var engine=resolvePlayer(s,url);
@@ -2461,7 +2469,7 @@ function pDir(url,idx,gen){
     try{v.src=url;}catch(e){fail();return;}
     S.failTimer=setTimeout(function(){
       if(!settled&&v.readyState<2)fail();
-    },isNativeApp()?14000:10000);
+    },S.debridMode?(isNativeApp()?9000:7000):(isNativeApp()?14000:10000));
     v.play().catch(function(){});
     if(window.FlixExtra)FlixExtra.bindVideoExtras(v,url,!!S.debridMode);
   };

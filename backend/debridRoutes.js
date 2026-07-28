@@ -63,29 +63,45 @@ function parseSeeders(title) {
   return m ? parseInt(m[1], 10) : 0;
 }
 
-/** Higher = more likely to play in Chrome/Safari <video> */
+/** Higher = more likely to play in Chrome/Safari/Fire Stick WebView <video> */
 function browserScore(title, url, name) {
   const t = `${name || ''} ${title || ''} ${url || ''}`.toLowerCase();
   let score = 40;
   if (/\[rd\+\]/.test(t)) score += 90;
   if (/⚡/.test(t) && !/\[rd\+\]/.test(t)) score += 70; // Comet cached
-  if (/\[rd download\]/.test(t)) score -= 60;
-  if (/\.mp4(\?|$)|[\s.\-_]mp4[\s.\-_]/i.test(t)) score += 50;
-  if (/x264|h\.?264|avc/.test(t)) score += 35;
-  if (/web-?dl|webrip|hdtv/.test(t)) score += 8;
+  if (/\[rd download\]/.test(t)) score -= 80; // uncached — often useless for instant play
+  if (/\.mp4(\?|$)|[\s.\-_]mp4[\s.\-_]/i.test(t)) score += 55;
+  if (/x264|h\.?264|avc/.test(t)) score += 45;
+  if (/blu-?ray|bluray|bdrip|brrip|remux/.test(t)) score += 12;
+  if (/web-?dl|webrip|hdtv/.test(t)) score -= 15; // RD May-2026 keyword filter often hits these
+  if (/amzn|netflix|\bnf\b|\bhulu\b|\bd\+|\batvp\b|disney|\bhbo\b|\bcr\b/.test(t)) score -= 25;
+  if (/\byts\b|rarbg|sparkles|ion10/.test(t)) score -= 20;
   if (/1080p/.test(t)) score += 18;
-  if (/720p/.test(t)) score += 22;
-  if (/480p|dvdrip|hdrip/.test(t)) score += 6;
-  if (/2160p|4k|uhd/.test(t)) score -= 55;
-  if (/x265|h\.?265|hevc|10bit|hdr10|dolby\s*vision|\bdv\b/.test(t)) score -= 45;
-  if (/\bav1\b/.test(t)) score -= 50;
-  if (/\.mkv(\?|$)|[\s.\-_]mkv[\s.\-_]/i.test(t)) score -= 25;
+  if (/720p/.test(t)) score += 28;
+  if (/480p|dvdrip|hdrip/.test(t)) score += 10;
+  if (/2160p|4k|uhd/.test(t)) score -= 70;
+  // Hard codecs: browsers / Fire Stick WebView usually cannot decode
+  if (/x265|h\.?265|hevc|10-?bit|hdr10|\bhdr\b|dolby\s*vision|\bdv\b/.test(t)) score -= 120;
+  if (/\bav1\b/.test(t)) score -= 120;
+  if (/\.mkv(\?|$)|[\s.\-_]mkv[\s.\-_]/i.test(t)) score -= 30;
   if (/\.m3u8(\?|$)|hls/.test(t)) score += 40;
   return score;
 }
 
+function isHardCodec(title, url, name) {
+  const t = `${name || ''} ${title || ''} ${url || ''}`.toLowerCase();
+  return /x265|h\.?265|hevc|10-?bit|hdr10|\bhdr\b|dolby\s*vision|\bdv\b|\bav1\b/.test(t);
+}
+
 function isLikelyBrowserPlayable(title, url, name) {
+  if (isHardCodec(title, url, name)) return false;
   return browserScore(title, url, name) >= 55;
+}
+
+/** RD May 2026+ heuristic blocks — demote / skip these release tags when alternatives exist */
+function isRdKeywordRisky(title, name) {
+  const t = `${name || ''} ${title || ''}`.toLowerCase();
+  return /web-?dl|webrip|\bamzn\b|\bnf\b|netflix|\bhulu\b|\bd\+\b|\batvp\b|\bcr\b|\byts\b|rarbg/.test(t);
 }
 
 const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?code[_\s-]?35|"error_code"\s*:\s*35|unavailable for legal reasons|file was removed from debrid/i;
@@ -206,6 +222,8 @@ function mapAddonStreams(raw, provider) {
         cached,
         browserOk: isLikelyBrowserPlayable(title, playUrl, name),
         browserScore: bScore,
+        hardCodec: isHardCodec(title, playUrl, name),
+        rdRisky: isRdKeywordRisky(title, name),
         provider,
         priority: i + 1
       };
@@ -260,9 +278,15 @@ async function fetchJsonStreams(url, label) {
 }
 
 async function fetchTorrentio(token, path) {
-  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k,scr,cam,unknown`;
-  const cfgAll = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k`;
+  // Prefer SDR / non-4K / non-cam. HDR+DV+HEVC rarely plays in browser WebViews.
+  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k,hdr,dolbyvision,threed,scr,cam,unknown`;
+  const cfgSoft = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k,scr,cam,unknown`;
+  const cfgAll = `realdebrid=${encodeURIComponent(token)}`;
   let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgClean}${path}`, 'torrentio');
+  if (streams.filter(s => s.browserOk).length < 3) {
+    const more = await fetchJsonStreams(`${TORRENTIO}/${cfgSoft}${path}`, 'torrentio');
+    streams = dedupeStreams(streams.concat(more));
+  }
   if (!streams.length) {
     streams = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, 'torrentio');
   }
@@ -279,26 +303,19 @@ async function fetchMediaFusion(path) {
   return fetchJsonStreams(`${MEDIAFUSION}/${MEDIAFUSION_CONFIG}${path}`, 'mediafusion');
 }
 
-/** Prefer fast Torrentio; merge Comet without blocking forever */
+/** Prefer fast Torrentio; always merge Comet (Elfhosted patches RD infringing filters). */
 async function fetchAddonStreams(token, path) {
   const tioP = fetchTorrentio(token, path);
   const cometP = fetchComet(token, path);
   const mfP = fetchMediaFusion(path);
 
   const tio = await tioP.catch(() => []);
-  // If Torrentio already has plenty, only wait briefly for Comet/MediaFusion
-  if ((tio || []).length >= 6) {
-    const timed = await Promise.race([
-      Promise.all([cometP.catch(() => []), mfP.catch(() => [])]),
-      new Promise(resolve => setTimeout(() => resolve([[], []]), 1200))
-    ]);
-    const [comet, mf] = timed;
-    return dedupeStreams([...(tio || []), ...(comet || []), ...(mf || [])]);
-  }
-  const [comet, mf] = await Promise.all([
-    cometP.catch(() => []),
-    mfP.catch(() => [])
+  const waitMs = (tio || []).filter(s => s.browserOk).length >= 5 ? 1800 : 8000;
+  const timed = await Promise.race([
+    Promise.all([cometP.catch(() => []), mfP.catch(() => [])]),
+    new Promise(resolve => setTimeout(() => resolve([[], []]), waitMs))
   ]);
+  const [comet, mf] = timed;
   return dedupeStreams([...(tio || []), ...(comet || []), ...(mf || [])]);
 }
 
@@ -501,6 +518,8 @@ async function resolveHashViaRd(token, torrent) {
       cached: true,
       browserOk: isLikelyBrowserPlayable(title, playUrl, name),
       browserScore: bScore,
+      hardCodec: isHardCodec(title, playUrl, name),
+      rdRisky: isRdKeywordRisky(title, name),
       provider: 'apibay',
       priority: 1
     };
@@ -579,6 +598,51 @@ function dedupeStreams(list) {
     out.push(s);
   }
   return out;
+}
+
+/**
+ * Probe top candidates and drop copyright stubs / dead links before the client sees them.
+ * This is the durable fix for RD returning unplayable "premium" chips.
+ */
+async function validateTopStreams(streams, { want = 8, probeLimit = 14 } = {}) {
+  if (!streams.length) return [];
+  const ranked = streams.slice().sort((a, b) =>
+    ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
+    ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
+    ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
+    ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
+    (b.browserScore - a.browserScore) ||
+    ((b.seeders || 0) - (a.seeders || 0))
+  );
+
+  const candidates = ranked.slice(0, Math.min(probeLimit, ranked.length));
+  const validated = [];
+  const backlog = [];
+  const rejected = new Set();
+
+  const queue = candidates.slice();
+  const workers = Array.from({ length: Math.min(5, queue.length) }, async () => {
+    while (queue.length && validated.length < want) {
+      const s = queue.shift();
+      if (!s) break;
+      const result = await probeStreamUrl(s.url);
+      if (!result.ok && (result.reason === 'copyright' || result.reason === 'copyright_stub')) {
+        rejected.add(String(s.url || '').split('?')[0].toLowerCase());
+        continue;
+      }
+      if (result.ok || result.reason === 'unknown' || result.reason === 'probe_error') {
+        const row = { ...s, validated: true, probeReason: result.reason };
+        if (s.browserOk && !s.hardCodec) validated.push(row);
+        else backlog.push(row);
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  const notRejected = (s) => !rejected.has(String(s.url || '').split('?')[0].toLowerCase());
+  const picked = dedupeStreams(validated.concat(backlog.filter(s => s.browserOk && notRejected(s))));
+  if (picked.length >= 2) return picked.slice(0, Math.max(want, 12));
+  return dedupeStreams(picked.concat(ranked.filter(notRejected))).slice(0, 40);
 }
 
 router.get('/status', async (req, res) => {
@@ -728,8 +792,9 @@ router.post('/streams', async (req, res) => {
       streams = await fetchAddonStreams(token, path);
     }
 
-    // ApiBay magnet resolve is slow — only for adult titles or when addons found nothing
-    const needApibay = isAdult || !streams.length;
+    // ApiBay magnet resolve is slow — only for adult titles or when addons found nothing playable
+    const playableSoFar = streams.filter(s => s.browserOk && s.cached).length;
+    const needApibay = isAdult || !streams.length || playableSoFar < 2;
     if (needApibay) {
       try {
         const extra = await fetchApibayRdStreams(token, {
@@ -748,26 +813,49 @@ router.post('/streams', async (req, res) => {
       return res.status(400).json({ success: false, error: 'IMDB id or title required for debrid streams' });
     }
 
-    // Browser-playable first, then cached, then quality score
-    streams.sort((a, b) =>
+    // Progressive narrowing: only keep links that can actually play in-browser.
+    // Order matters — each step keeps a fallback if it would empty the list.
+    const narrow = (pred, min = 2) => {
+      const next = streams.filter(pred);
+      if (next.length >= min) streams = next;
+    };
+    narrow(s => s.browserOk && !s.hardCodec, 2);
+    narrow(s => s.cached, 2);
+    narrow(s => !s.rdRisky, 2);
+    narrow(s => s.quality !== '4K', 2);
+    // Drop uncached "[RD download]" leftovers when any cached remain
+    narrow(s => s.cached || !/\[rd download\]/i.test(`${s.source || ''} ${s.title || ''}`), 1);
+
+    // Sort before probe so we validate the best candidates first
+    streams = streams.slice().sort((a, b) =>
       ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
-      (b.browserScore - a.browserScore) ||
-      (b.seeders || 0) - (a.seeders || 0)
+      ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
+      ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
+      ((b.browserScore || 0) - (a.browserScore || 0)) ||
+      ((b.seeders || 0) - (a.seeders || 0))
     );
 
-    const friendly = streams.filter(s => s.browserOk);
-    const cachedOnly = streams.filter(s => s.cached);
-    // Prefer a solid set of browser-friendly links over a wall of 4K HEVC [RD+]
-    if (friendly.length >= 4) streams = friendly;
-    else if (cachedOnly.length >= 8) streams = dedupeStreams(friendly.concat(cachedOnly));
+    // Pre-validate so the UI does not show dead/copyright chips first
+    streams = await validateTopStreams(streams, { want: 10, probeLimit: 18 });
 
-    // Prefer 720p/1080p/HD when we have enough — skip 4K unless nothing else
-    const not4k = streams.filter(s => s.quality !== '4K');
-    if (not4k.length >= 3) streams = not4k;
+    // Final: if probes found playable browser links, hide the rest from Auto
+    const playable = streams.filter(s => s.validated && s.browserOk && !s.hardCodec);
+    if (playable.length >= 1) streams = playable;
+    else {
+      const soft = streams.filter(s => s.browserOk && !s.hardCodec);
+      if (soft.length) streams = soft;
+    }
 
-    streams = streams.slice(0, 40);
+    streams = streams.slice(0, 24);
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
+    console.log('Debrid result:', {
+      imdb,
+      total: streams.length,
+      browserFriendly: streams.filter(s => s.browserOk).length,
+      cached: streams.filter(s => s.cached).length,
+      providers
+    });
 
     res.json({
       success: true,
