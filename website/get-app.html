@@ -13,27 +13,25 @@
 :root{--bg:#0a0a0a;--card:#141414;--red:#e50914;--gold:#f5c518;--t2:#b3b3b3;--t3:#808080}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,rgba(229,9,20,.22),transparent),var(--bg);color:#fff;min-height:100vh;padding:28px 16px 48px}
-.wrap{max-width:860px;margin:0 auto}
+.wrap{max-width:900px;margin:0 auto}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
 .brand .mark{width:44px;height:44px;border-radius:10px;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px}
 .brand a{color:var(--t2);text-decoration:none;font-size:13px;margin-left:auto}
 h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
-.lead{color:var(--t2);font-size:15px;line-height:1.55;max-width:560px;margin-bottom:28px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.lead{color:var(--t2);font-size:15px;line-height:1.55;max-width:620px;margin-bottom:28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
 .card{background:linear-gradient(165deg,#1a1214,#121212);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 16px;position:relative;overflow:hidden}
 .card::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--red),var(--gold),transparent)}
 .card h2{font-size:18px;margin-bottom:8px}
-.card p{font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:12px;min-height:60px}
+.card p{font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:12px;min-height:52px}
 .steps{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
 .steps li{font-size:13px;color:var(--t2);padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px;border:1px solid rgba(255,255,255,.06)}
 .steps b{color:#fff}
-.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:10px;background:var(--red);color:#fff;text-decoration:none;font-weight:700;font-size:13px;border:0;cursor:pointer;font-family:inherit}
-.btn.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:10px;background:var(--red);color:#fff;text-decoration:none;font-weight:700;font-size:13px;border:0;cursor:pointer;font-family:inherit;width:100%}
+.btn.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#fff;margin-top:8px}
 .note{margin-top:22px;font-size:12px;color:var(--t3);line-height:1.5}
 .kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
 .code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:rgba(255,255,255,.06);padding:8px 10px;border-radius:8px;word-break:break-all;color:#ddd;margin-top:8px}
-.dl-code-box{margin:0 0 14px;padding:14px;border-radius:12px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.28);text-align:center}
-.dl-code{font-family:ui-monospace,Consolas,monospace;font-size:clamp(28px,8vw,40px);font-weight:800;letter-spacing:.12em;color:var(--gold);margin:8px 0 4px}
 </style>
 </head>
 <body>
@@ -44,72 +42,65 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
       <a href="/">← Back to site</a>
     </div>
     <div class="kicker">Install</div>
-    <h1>Watch on phone, tablet &amp; TV</h1>
-    <p class="lead">Same FlixNova account everywhere. Android &amp; Fire Stick use the APK. iPhone/iPad install via Safari Home Screen.</p>
+    <h1>Phone app + TV app (separate)</h1>
+    <p class="lead">Phones use the mobile app. Fire Stick / Android TV use <b style="color:#fff">FlixNova TV</b> — a native remote-friendly player. Same account on both.</p>
 
     <div class="grid">
       <section class="card">
         <h2>Android phone / tablet</h2>
-        <p>Download the FlixNova APK and install it (sideload). It opens the live site fullscreen.</p>
+        <p>Mobile FlixNova APK (website shell). Best for touch screens.</p>
         <ol class="steps">
-          <li><b>1.</b> Tap <b>Download APK</b> below.</li>
-          <li><b>2.</b> Allow “Install unknown apps” for your browser/Files.</li>
-          <li><b>3.</b> Open FlixNova → Sign Up / Log In → Watch.</li>
+          <li><b>1.</b> Tap <b>Download mobile APK</b>.</li>
+          <li><b>2.</b> Allow install from unknown sources.</li>
+          <li><b>3.</b> Open FlixNova → Sign in → Watch.</li>
         </ol>
-        <a class="btn" id="apkBtn" href="/downloads/FlixNova-android-1.2.0.apk" rel="noopener">Download Android APK</a>
+        <a class="btn" id="apkBtn" href="/downloads/FlixNova-android.apk" rel="noopener">Download mobile APK</a>
         <div class="code" id="apkUrl"></div>
       </section>
 
       <section class="card">
-        <h2>Fire Stick / Fire TV</h2>
-        <p>Install the same APK with the <b>Downloader</b> app (easiest), or paste the APK URL.</p>
-        <div class="dl-code-box">
-          <div class="kicker" style="margin:0">Code for Downloader App</div>
-          <div class="dl-code" id="dlCode">3777174</div>
-          <button class="btn" type="button" id="copyDlCode" style="width:100%;margin-top:10px">Copy Downloader code</button>
-        </div>
+        <h2>Fire Stick / Android TV</h2>
+        <p><b style="color:#fff">FlixNova TV</b> — native D-pad browse + ExoPlayer. Do <b>not</b> install the phone APK on TV.</p>
         <ol class="steps">
-          <li><b>1.</b> Settings → My Fire TV → Developer Options → <b>Apps from Unknown Sources</b> ON.</li>
-          <li><b>2.</b> Install <b>Downloader</b> from the Amazon store.</li>
-          <li><b>3.</b> Open Downloader → enter code <b>3777174</b> → Go → Download → Install.</li>
-          <li><b>4.</b> Open FlixNova → Sign Up / Log In → Watch.</li>
+          <li><b>1.</b> Enable <b>Apps from Unknown Sources</b>.</li>
+          <li><b>2.</b> Open <b>Downloader</b> → paste the TV APK URL below.</li>
+          <li><b>3.</b> Download → Install → open <b>FlixNova TV</b>.</li>
+          <li><b>4.</b> Sign in with the same account as the website.</li>
         </ol>
-        <button class="btn ghost" type="button" id="copyApk">Copy full APK URL instead</button>
-        <div class="code" id="apkUrl2"></div>
+        <a class="btn" id="tvApkBtn" href="/downloads/FlixNova-tv.apk" rel="noopener">Download FlixNova TV APK</a>
+        <button class="btn ghost" type="button" id="copyTvApk">Copy TV APK URL</button>
+        <div class="code" id="tvApkUrl"></div>
       </section>
 
       <section class="card" id="ios">
         <h2>iPhone / iPad</h2>
-        <p>Use Safari (required): Share → <b>Add to Home Screen</b>.</p>
+        <p>Use Safari: Share → <b>Add to Home Screen</b>.</p>
         <ol class="steps">
           <li><b>1.</b> Open FlixNova in <b>Safari</b>.</li>
-          <li><b>2.</b> Tap Share.</li>
-          <li><b>3.</b> Tap <b>Add to Home Screen</b> → Add.</li>
-          <li><b>4.</b> Open the icon → Sign in &amp; watch fullscreen.</li>
+          <li><b>2.</b> Tap Share → Add to Home Screen.</li>
+          <li><b>3.</b> Open the icon → Sign in &amp; watch.</li>
         </ol>
         <a class="btn" href="/">Open FlixNova</a>
       </section>
     </div>
 
-    <p class="note">Fire Stick tip: in Downloader, type code <b style="color:#fff">3777174</b> — faster than pasting a long URL. Reinstall if embeds show 403 Forbidden.</p>
+    <p class="note">Uninstall any old FlixNova WebView APK from the Fire Stick first, then install <b style="color:#fff">FlixNova TV</b>. Billing / subscribe still managed on phone or web at snookiebaby.xyz.</p>
   </div>
   <script>
     (function () {
-      var url = location.origin + '/downloads/FlixNova-android-1.2.0.apk';
-      var code = '3777174';
+      var mobile = location.origin + '/downloads/FlixNova-android.apk';
+      var tv = location.origin + '/downloads/FlixNova-tv.apk';
       var a = document.getElementById('apkUrl');
-      var b = document.getElementById('apkUrl2');
-      if (a) a.textContent = url;
-      if (b) b.textContent = url;
+      var t = document.getElementById('tvApkUrl');
+      if (a) a.textContent = mobile;
+      if (t) t.textContent = tv;
       var btn = document.getElementById('apkBtn');
-      if (btn) btn.href = url;
-      var copy = document.getElementById('copyApk');
+      if (btn) btn.href = mobile;
+      var tvBtn = document.getElementById('tvApkBtn');
+      if (tvBtn) tvBtn.href = tv;
+      var copy = document.getElementById('copyTvApk');
       if (copy) copy.onclick = function () {
-        navigator.clipboard.writeText(url).then(function () { copy.textContent = 'URL copied!'; }).catch(function () { prompt('Copy this URL:', url); });
-      };
-      var copyCode = document.getElementById('copyDlCode');
-      if (copyCode) copyCode.onclick = function () {
-        navigator.clipboard.writeText(code).then(function () { copyCode.textContent = 'Code copied!'; }).catch(function () { prompt('Copy this code:', code); });
+        navigator.clipboard.writeText(tv).then(function () { copy.textContent = 'TV URL copied!'; }).catch(function () { prompt('Copy this URL:', tv); });
       };
     })();
   </script>
