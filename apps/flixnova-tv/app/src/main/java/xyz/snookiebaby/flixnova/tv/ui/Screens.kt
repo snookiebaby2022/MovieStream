@@ -1,5 +1,6 @@
 package xyz.snookiebaby.flixnova.tv.ui
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,11 +36,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +74,27 @@ val Red = Color(0xFFE50914)
 val Gold = Color(0xFFF5C518)
 val TextMuted = Color(0xFFB3B3B3)
 
+/** TV-safe clickable: D-pad OK / Enter / Center activates onClick. */
+fun Modifier.tvClickable(focused: Boolean, onFocusedChange: (Boolean) -> Unit, onClick: () -> Unit): Modifier =
+    this
+        .onFocusChanged { onFocusedChange(it.isFocused) }
+        .onPreviewKeyEvent { ev ->
+            if (ev.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+            val code = ev.nativeKeyEvent.keyCode
+            val ok = code == AndroidKeyEvent.KEYCODE_DPAD_CENTER
+                || code == AndroidKeyEvent.KEYCODE_ENTER
+                || code == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER
+                || code == AndroidKeyEvent.KEYCODE_BUTTON_A
+                || ev.key == Key.DirectionCenter
+                || ev.key == Key.Enter
+            if (ok) {
+                onClick()
+                true
+            } else false
+        }
+        .focusable()
+        .clickable(onClick = onClick)
+
 @Composable
 fun FocusButton(
     label: String,
@@ -77,8 +105,7 @@ fun FocusButton(
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
-            .onFocusChanged { focused = it.isFocused }
-            .focusable()
+            .tvClickable(focused, { focused = it }, onClick)
             .clip(RoundedCornerShape(10.dp))
             .background(if (primary) Red else CardBg)
             .border(
@@ -86,7 +113,7 @@ fun FocusButton(
                 color = if (focused) Gold else Color.White.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(10.dp)
             )
-            .clickable(onClick = onClick)
+            .scale(if (focused) 1.05f else 1f)
             .padding(horizontal = 20.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -99,15 +126,14 @@ fun PosterCard(item: MediaItem, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
-            .width(140.dp)
-            .onFocusChanged { focused = it.isFocused }
-            .focusable()
+            .width(148.dp)
+            .tvClickable(focused, { focused = it }, onClick)
             .border(
                 width = if (focused) 3.dp else 0.dp,
                 color = Gold,
                 shape = RoundedCornerShape(10.dp)
             )
-            .clickable(onClick = onClick)
+            .scale(if (focused) 1.08f else 1f)
             .padding(4.dp)
     ) {
         AsyncImage(
@@ -265,6 +291,7 @@ fun HomeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("") }
+    val firstPoster = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         loading = true
@@ -295,6 +322,15 @@ fun HomeScreen(
             error = e.message
         } finally {
             loading = false
+        }
+    }
+
+    LaunchedEffect(loading, rows) {
+        if (!loading && rows.isNotEmpty()) {
+            try {
+                firstPoster.requestFocus()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -334,12 +370,17 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 contentPadding = PaddingValues(bottom = 40.dp)
             ) {
-                items(rows) { row ->
+                itemsIndexed(rows) { rowIndex, row ->
                     Text(row.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(row.items) { item ->
-                            PosterCard(item) { onOpen(item) }
+                        itemsIndexed(row.items) { itemIndex, item ->
+                            val mod = if (rowIndex == 0 && itemIndex == 0) {
+                                Modifier.focusRequester(firstPoster)
+                            } else Modifier
+                            Box(mod) {
+                                PosterCard(item) { onOpen(item) }
+                            }
                         }
                     }
                 }
@@ -359,6 +400,7 @@ fun BrowseScreen(
     var error by remember { mutableStateOf<String?>(null) }
     val title = if (kind == "tv") "TV Shows" else "Movies"
     val path = if (kind == "tv") "tv" else "movie"
+    val first = remember { FocusRequester() }
 
     LaunchedEffect(kind) {
         loading = true
@@ -373,6 +415,15 @@ fun BrowseScreen(
             error = e.message
         } finally {
             loading = false
+        }
+    }
+
+    LaunchedEffect(loading, items) {
+        if (!loading && items.isNotEmpty()) {
+            try {
+                first.requestFocus()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -394,7 +445,11 @@ fun BrowseScreen(
             loading -> CircularProgressIndicator(color = Red)
             error != null -> Text(error!!, color = Red)
             else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(items) { item -> PosterCard(item) { onOpen(item) } }
+                itemsIndexed(items) { index, item ->
+                    Box(if (index == 0) Modifier.focusRequester(first) else Modifier) {
+                        PosterCard(item) { onOpen(item) }
+                    }
+                }
             }
         }
     }
@@ -471,6 +526,7 @@ fun DetailScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val playFocus = remember { FocusRequester() }
 
     LaunchedEffect(tmdbId, type) {
         loading = true
@@ -489,6 +545,15 @@ fun DetailScreen(
             error = e.message
         } finally {
             loading = false
+        }
+    }
+
+    LaunchedEffect(loading, details) {
+        if (!loading && details != null) {
+            try {
+                playFocus.requestFocus()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -592,17 +657,19 @@ fun DetailScreen(
                         FocusButton(
                             label = if (busy) "Loading streams…" else "Play",
                             primary = true,
-                            onClick = { play(1) }
+                            onClick = { play(1) },
+                            modifier = Modifier.focusRequester(playFocus)
                         )
                     } else {
                         Text("Seasons", color = Color.White, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(d.seasons.filter { it.season_number > 0 }) { s ->
+                            itemsIndexed(d.seasons.filter { it.season_number > 0 }) { idx, s ->
                                 FocusButton(
                                     label = "S${s.season_number}",
                                     primary = s.season_number == season,
-                                    onClick = { loadSeason(s.season_number) }
+                                    onClick = { loadSeason(s.season_number) },
+                                    modifier = if (idx == 0) Modifier.focusRequester(playFocus) else Modifier
                                 )
                             }
                         }

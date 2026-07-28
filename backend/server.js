@@ -414,8 +414,8 @@ app.get('/api/app/version', (req, res) => {
     },
     tv: {
       packageId: 'xyz.snookiebaby.flixnova.tv',
-      versionCode: 2,
-      versionName: '1.0.1',
+      versionCode: 3,
+      versionName: '1.0.2',
       apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk',
       downloaderUrl: 'http://aftv.news/5381210',
       downloaderCode: '5381210'
