@@ -341,6 +341,8 @@
       s.onclick = function () { openSubPicker(video); };
       tools.appendChild(s);
     }
+    if (typeof window.showPlayerChrome === 'function') window.showPlayerChrome();
+    else if (typeof window.armPlayerChromeHide === 'function') window.armPlayerChromeHide();
   }
 
   function loadSubtitlesForCurrent(video) {
