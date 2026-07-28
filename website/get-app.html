@@ -32,6 +32,8 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
 .note{margin-top:22px;font-size:12px;color:var(--t3);line-height:1.5}
 .kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
 .code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:rgba(255,255,255,.06);padding:8px 10px;border-radius:8px;word-break:break-all;color:#ddd;margin-top:8px}
+.dl-code-box{margin:0 0 14px;padding:14px;border-radius:12px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.28);text-align:center}
+.dl-code{font-family:ui-monospace,Consolas,monospace;font-size:clamp(28px,8vw,40px);font-weight:800;letter-spacing:.12em;color:var(--gold);margin:8px 0 4px}
 </style>
 </head>
 <body>
@@ -61,15 +63,23 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
       <section class="card" id="firetv">
         <h2>Fire Stick / Android TV</h2>
         <p><b style="color:#fff">FlixNova TV</b> — native D-pad browse + ExoPlayer. Do <b>not</b> install the phone APK on TV.</p>
+        <div class="dl-code-box">
+          <div class="kicker" style="margin:0">Code for Downloader App</div>
+          <div class="dl-code" id="dlCode">5381210</div>
+          <button class="btn" type="button" id="copyDlCode" style="width:100%;margin-top:10px">Copy Downloader code</button>
+        </div>
         <ol class="steps">
           <li><b>1.</b> Enable <b>Apps from Unknown Sources</b>.</li>
-          <li><b>2.</b> Open <b>Downloader</b> → paste the TV APK URL below.</li>
-          <li><b>3.</b> Download → Install → open <b>FlixNova TV</b>.</li>
-          <li><b>4.</b> Sign in with the same account as the website.</li>
+          <li><b>2.</b> Install <b>Downloader</b> from the Amazon store.</li>
+          <li><b>3.</b> Open Downloader → enter code <b>5381210</b> → Go → Download → Install.</li>
+          <li><b>4.</b> Open <b>FlixNova TV</b> → Sign in with the same account as the website.</li>
         </ol>
-        <a class="btn" id="tvApkBtn" href="/downloads/FlixNova-tv.apk" rel="noopener">Download FlixNova TV APK</a>
+        <a class="btn" id="tvApkBtn" href="https://snookiebaby.xyz/downloads/FlixNova-tv.apk" rel="noopener">Download FlixNova TV APK</a>
+        <a class="btn ghost" id="aftvBtn" href="http://aftv.news/5381210" rel="noopener" style="margin-top:8px">Open Downloader short link</a>
         <button class="btn ghost" type="button" id="copyTvApk">Copy TV APK URL</button>
+        <button class="btn ghost" type="button" id="copyAftv">Copy aftv.news link</button>
         <div class="code" id="tvApkUrl"></div>
+        <div class="code" id="aftvUrl"></div>
       </section>
 
       <section class="card" id="ios">
@@ -84,24 +94,39 @@ h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin-bottom:10px}
       </section>
     </div>
 
-    <p class="note">Uninstall any old FlixNova WebView APK from the Fire Stick first, then install <b style="color:#fff">FlixNova TV</b>. Billing / subscribe still managed on phone or web at snookiebaby.xyz.</p>
+    <p class="note">Fire Stick tip: in Downloader type <b style="color:#fff">5381210</b> (or open <b style="color:#fff">http://aftv.news/5381210</b>). Direct APK: <b style="color:#fff">https://snookiebaby.xyz/downloads/FlixNova-tv.apk</b>. Uninstall any old FlixNova WebView APK first.</p>
   </div>
   <script>
     (function () {
       var mobile = location.origin + '/downloads/FlixNova-android.apk';
-      var tv = location.origin + '/downloads/FlixNova-tv.apk';
+      var tv = 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk';
+      var aftv = 'http://aftv.news/5381210';
+      var code = '5381210';
       var a = document.getElementById('apkUrl');
       var t = document.getElementById('tvApkUrl');
+      var af = document.getElementById('aftvUrl');
       if (a) a.textContent = mobile;
       if (t) t.textContent = tv;
+      if (af) af.textContent = aftv;
       var btn = document.getElementById('apkBtn');
       if (btn) btn.href = mobile;
       var tvBtn = document.getElementById('tvApkBtn');
       if (tvBtn) tvBtn.href = tv;
-      var copy = document.getElementById('copyTvApk');
-      if (copy) copy.onclick = function () {
-        navigator.clipboard.writeText(tv).then(function () { copy.textContent = 'TV URL copied!'; }).catch(function () { prompt('Copy this URL:', tv); });
-      };
+      var aftvBtn = document.getElementById('aftvBtn');
+      if (aftvBtn) aftvBtn.href = aftv;
+      function copyText(el, text, okLabel) {
+        if (!el) return;
+        el.onclick = function () {
+          navigator.clipboard.writeText(text).then(function () {
+            el.textContent = okLabel;
+          }).catch(function () {
+            prompt('Copy this:', text);
+          });
+        };
+      }
+      copyText(document.getElementById('copyTvApk'), tv, 'TV APK URL copied!');
+      copyText(document.getElementById('copyAftv'), aftv, 'aftv.news link copied!');
+      copyText(document.getElementById('copyDlCode'), code, 'Code copied!');
     })();
   </script>
 </body>
