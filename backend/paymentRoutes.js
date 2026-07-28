@@ -1,6 +1,6 @@
 /**
  * FlixNova Premium — £1/month Stripe subscription + launch promo (lifetime unlock).
- * New accounts get 24h trial (see entitlement.js / auth register).
+ * 48h watch trial starts on first play (browse after signup is free).
  */
 const express = require('express');
 const { User, Promo } = require('./models');
@@ -9,7 +9,8 @@ const {
   isEntitled,
   entitlementPayload,
   ensureTrialClock,
-  isLifetime
+  isLifetime,
+  startWatchTrial
 } = require('./entitlement');
 
 const router = express.Router();
@@ -126,6 +127,10 @@ router.get('/status', authOptional, async (req, res) => {
     entitled: ent.entitled,
     trialActive: ent.trialActive,
     trialEndsAt: ent.trialEndsAt,
+    trialStarted: ent.trialStarted,
+    trialExpired: ent.trialExpired,
+    canStartTrial: ent.canStartTrial,
+    trialHours: ent.trialHours,
     needsPay: ent.needsPay,
     subscriptionStatus: ent.subscriptionStatus,
     lifetimeUnlock: ent.lifetimeUnlock,
@@ -136,6 +141,39 @@ router.get('/status', authOptional, async (req, res) => {
     priceIdConfigured: !!STRIPE_PRICE_ID,
     promo: promo || undefined
   });
+});
+
+/** Start 48h watch trial on first play. Browse-only accounts use this when they hit Play. */
+router.post('/start-trial', authRequired, async (req, res) => {
+  try {
+    if (!dbReady(res)) return;
+    let user = await User.findById(req.user.id);
+    if (!user) return res.status(401).json({ success: false, error: 'Login required' });
+    const before = entitlementPayload(user);
+    if (before.entitled) {
+      return res.json({ success: true, started: false, already: true, ...before });
+    }
+    if (before.trialExpired || before.trialStarted) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your free trial has ended. Subscribe for £1/month to keep watching.',
+        code: 'TRIAL_ENDED',
+        ...before
+      });
+    }
+    const result = await startWatchTrial(user);
+    const ent = entitlementPayload(result.user);
+    res.json({
+      success: true,
+      started: !!result.started,
+      message: result.started
+        ? 'Your 48-hour free trial has started — enjoy premium streams!'
+        : 'Trial status updated',
+      ...ent
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 router.get('/promo', authOptional, async (req, res) => {

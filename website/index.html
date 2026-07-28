@@ -11,7 +11,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="FlixNova">
 <meta property="og:title" content="FlixNova — Watch Movies &amp; TV Shows">
-<meta property="og:description" content="Stream trending movies and TV shows in HD. 24 hours free, then £1/month for premium debrid streams.">
+<meta property="og:description" content="Stream trending movies and TV shows in HD. Browse free, 48-hour trial on first watch, then £1/month.">
 <meta property="og:url" content="https://snookiebaby.xyz/">
 <meta property="og:image" content="https://snookiebaby.xyz/icons/icon-512.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -375,7 +375,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
   </div>
 </header>
 <div class="adtip" id="adtip">
-  <b>New accounts:</b> 24 hours free premium streams. Then <b>Premium £1/month</b> to keep watching (debrid links only — no embeds).
+  <b>Browse free</b> after sign-up. First time you press Play you get a <b>48-hour trial</b>, then Premium is <b>£1/month</b>.
   <button type="button" onclick="dismissAdTip()" aria-label="Dismiss">✕</button>
 </div>
 <div id="hero">
@@ -451,7 +451,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
   <div class="gate-box" role="dialog" aria-labelledby="welcomeTitle">
     <div class="gate-kicker">Welcome to FlixNova</div>
     <h2 id="welcomeTitle">Sign up or log in to continue</h2>
-    <p>Create a free account to watch. You get <b style="color:var(--gold)">24 hours free</b>, then £1/month. First 10 customers can claim lifetime Premium free after sign-up.</p>
+    <p>Create a free account to browse. Press Play to start your <b style="color:var(--gold)">48-hour free trial</b>, then £1/month. First 10 customers can claim lifetime Premium free after sign-up.</p>
     <div class="gate-actions">
       <button type="button" class="pbtn" onclick="closeWelcome(false);openAuth('register')">Sign Up — it’s free</button>
       <button type="button" class="pbtn ghost" onclick="closeWelcome(false);openAuth('login')">Log In</button>
@@ -463,7 +463,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
   <div class="gate-box" role="dialog" aria-labelledby="gateTitle">
     <div class="gate-kicker">Account required</div>
     <h2 id="gateTitle">Sign up or log in to watch</h2>
-    <p>You need an account to play. New users get 24 hours free premium streams, then £1/month. First 10 customers can claim lifetime Premium free.</p>
+    <p>You need an account to play. Browse free after login — first Play starts a 48-hour trial, then £1/month. First 10 customers can claim lifetime Premium free.</p>
     <div class="gate-actions">
       <button type="button" class="pbtn" onclick="closeWatchGate();openAuth('register')">Sign Up</button>
       <button type="button" class="pbtn ghost" onclick="closeWatchGate();openAuth('login')">Log In</button>
@@ -481,7 +481,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
       <span id="promoRemainWrap"><span id="promoRemain">10</span> spots left.</span>
     </div>
     <p class="promo-price" id="promoPrice">£1 <span>per month · cancel anytime</span></p>
-    <p id="promoBlurb">24 hours free when you sign up. Then £1/month for premium debrid streams, no FlixNova ads, and the Adult/XXX catalog.</p>
+    <p id="promoBlurb">Sign up and browse free. The first time you press Play, your 48-hour trial starts. Then £1/month for premium debrid streams, no FlixNova ads, and Adult/XXX.</p>
     <ul class="promo-perks">
       <li><span>▶</span><span><b>Premium debrid links</b> — Real-Debrid and more (no iframe embeds)</span></li>
       <li><span>✕</span><span><b>Ad-Free player</b> — no FlixNova ads while you watch</span></li>
@@ -492,7 +492,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
       <button type="button" class="pbtn" id="promoPayBtn" onclick="FlixExtra.startCheckout()">Subscribe £1/month</button>
       <button type="button" class="pbtn ghost" onclick="FlixExtra.closePayPromo()">Not now</button>
     </div>
-    <div class="promo-note" id="promoNote">Sign in required. Trial users keep full access until the 24 hours end.</div>
+    <div class="promo-note" id="promoNote">Sign in required. Browsing is free — the 48-hour trial starts when you first press Play.</div>
   </div>
 </div>
 <div id="authOv">
@@ -603,11 +603,11 @@ function isAdFreeUser(){
   if(window.FlixExtra&&typeof FlixExtra.isAdFree==='function')return !!FlixExtra.isAdFree();
   try{return localStorage.getItem('fn_adfree')==='1';}catch(e){return false;}
 }
-/** Sync entitlement (/me) before allowing premium play */
+/** Sync entitlement; start 48h watch trial on first play if eligible */
 function ensureAdFreeReady(){
   if(!S.token)return Promise.resolve(false);
-  if(S.user&&typeof S.user.adFree==='boolean'&&S._userSynced)return Promise.resolve(!!S.user.adFree);
-  return uapi('/me').then(function(d){
+  if(S.user&&typeof S.user.adFree==='boolean'&&S._userSynced&&S.user.adFree)return Promise.resolve(true);
+  var applyMe=function(d){
     if(!d||!d.success||!d.data)return isAdFreeUser();
     S.user={
       username:d.data.username,
@@ -615,6 +615,8 @@ function ensureAdFreeReady(){
       entitled:!!d.data.entitled,
       trialActive:!!d.data.trialActive,
       trialEndsAt:d.data.trialEndsAt||null,
+      canStartTrial:!!d.data.canStartTrial,
+      trialExpired:!!d.data.trialExpired,
       needsPay:!!d.data.needsPay,
       lifetimeUnlock:!!d.data.lifetimeUnlock
     };
@@ -624,6 +626,37 @@ function ensureAdFreeReady(){
     refreshAuthBtn();
     syncAdultUi();
     return !!d.data.adFree;
+  };
+  return uapi('/me').then(function(d){
+    var ok=applyMe(d);
+    if(ok)return true;
+    if(d&&d.data&&d.data.canStartTrial){
+      return fetch('/api/pay/start-trial',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-user-token':S.token,'Authorization':'Bearer '+S.token},
+        body:'{}'
+      }).then(function(r){return r.json();}).then(function(t){
+        if(t&&t.success&&(t.adFree||t.entitled)){
+          S.user=S.user||{};
+          S.user.adFree=true;
+          S.user.entitled=true;
+          S.user.trialActive=!!t.trialActive;
+          S.user.trialEndsAt=t.trialEndsAt||null;
+          S.user.canStartTrial=false;
+          if(window.FlixExtra){
+            FlixExtra.setAdFree(true);
+            FlixExtra.F.trialActive=!!t.trialActive;
+            FlixExtra.F.trialEndsAt=t.trialEndsAt||null;
+          }
+          if(t.started){try{alert(t.message||'Your 48-hour free trial has started!');}catch(e){}}
+          refreshAuthBtn();
+          syncAdultUi();
+          return true;
+        }
+        return false;
+      }).catch(function(){return false;});
+    }
+    return false;
   }).catch(function(){return isAdFreeUser();});
 }
 function openWatchGate(item){
@@ -1740,7 +1773,7 @@ function openModal(item){
   ensureAdFreeReady().then(function(premium){
     if(!premium){
       $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Trial ended — subscribe to watch...</span></div>';
-      showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+      showPE('Your free trial has ended. Subscribe for £1/month to keep watching.');
       if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
       return null;
     }
@@ -1765,7 +1798,7 @@ function openModal(item){
       }
       premium=isAdFreeUser();
       if(!premium){
-        showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+        showPE('Your free trial has ended. Subscribe for £1/month to keep watching.');
         if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
         return;
       }
@@ -1925,7 +1958,7 @@ function pEp(tid,sn,ep,el){
   var imdb=S.item&&S.item.imdbId;
   ensureAdFreeReady().then(function(premium){
     if(!premium){
-      showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+      showPE('Your free trial has ended. Subscribe for £1/month to keep watching.');
       if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
       return;
     }
@@ -2555,7 +2588,7 @@ function retryAll(){
   $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Retrying...</span></div>';
   $('srcbar').style.display='none';
   if(!isAdFreeUser()){
-    showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+    showPE('Your free trial has ended. Subscribe for £1/month to keep watching.');
     if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
     return;
   }

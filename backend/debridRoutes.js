@@ -7,20 +7,24 @@ const express = require('express');
 const axios = require('axios');
 const { verifyToken } = require('./authRoutes');
 const { User } = require('./models');
-const { isEntitled, ensureTrialClock, entitlementPayload } = require('./entitlement');
+const { isEntitled, ensureTrialClock, entitlementPayload, startWatchTrial } = require('./entitlement');
 
 const router = express.Router();
 const TORRENTIO = (process.env.TORRENTIO_URL || 'https://torrentio.strem.fun').replace(/\/$/, '');
 const COMET = (process.env.COMET_URL || 'https://comet.elfhosted.com').replace(/\/$/, '');
 const MEDIAFUSION = (process.env.MEDIAFUSION_URL || 'https://mediafusion.elfhosted.com').replace(/\/$/, '');
 /** Optional path segment from MediaFusion “Share Manifest URL” (encrypted user data) */
-const MEDIAFUSION_CONFIG = (process.env.MEDIAFUSION_CONFIG || '').toString().trim().replace(/^\/+|\/+$/g, '');
+function mediaFusionConfig() {
+  return (process.env.MEDIAFUSION_CONFIG || '').toString().trim().replace(/^\/+|\/+$/g, '');
+}
 /** AIOStreams streams base (manifest URL without /manifest.json) */
-const AIOSTREAMS_BASE = (process.env.AIOSTREAMS_BASE_URL || '')
-  .toString()
-  .trim()
-  .replace(/\/$/, '')
-  .replace(/\/manifest\.json$/i, '');
+function aioStreamsBase() {
+  return (process.env.AIOSTREAMS_BASE_URL || '')
+    .toString()
+    .trim()
+    .replace(/\/$/, '')
+    .replace(/\/manifest\.json$/i, '');
+}
 const RD_API = 'https://api.real-debrid.com/rest/1.0';
 const APIBAY = 'https://apibay.org';
 
@@ -51,7 +55,7 @@ function configuredDebrids() {
 }
 
 function anyPremiumConfigured() {
-  return configuredDebrids().length > 0 || !!MEDIAFUSION_CONFIG || !!AIOSTREAMS_BASE;
+  return configuredDebrids().length > 0 || !!mediaFusionConfig() || !!aioStreamsBase();
 }
 
 function tokenFrom(req) {
@@ -172,13 +176,18 @@ async function requireEntitled(req, res) {
   }
   user = await ensureTrialClock(user);
   if (!isEntitled(user)) {
+    const started = await startWatchTrial(user);
+    user = started.user;
+  }
+  if (!isEntitled(user)) {
     const ent = entitlementPayload(user);
     res.status(403).json({
       success: false,
-      error: 'Your 24-hour free trial has ended. Subscribe for £1/month to keep watching.',
+      error: 'Your free trial has ended. Subscribe for £1/month to keep watching.',
       code: 'ADFREE_REQUIRED',
       needsPay: true,
-      trialEndsAt: ent.trialEndsAt
+      trialEndsAt: ent.trialEndsAt,
+      trialExpired: ent.trialExpired
     });
     return null;
   }
@@ -387,13 +396,15 @@ async function fetchComet(service, token, path) {
 }
 
 async function fetchMediaFusion(path) {
-  if (!MEDIAFUSION_CONFIG) return [];
-  return fetchJsonStreams(`${MEDIAFUSION}/${MEDIAFUSION_CONFIG}${path}`, 'mediafusion');
+  const cfg = mediaFusionConfig();
+  if (!cfg) return [];
+  return fetchJsonStreams(`${MEDIAFUSION}/${cfg}${path}`, 'mediafusion');
 }
 
 async function fetchAioStreams(path) {
-  if (!AIOSTREAMS_BASE) return [];
-  return fetchJsonStreams(`${AIOSTREAMS_BASE}${path}`, 'aiostreams');
+  const base = aioStreamsBase();
+  if (!base) return [];
+  return fetchJsonStreams(`${base}${path}`, 'aiostreams');
 }
 
 /** Parallel Torrentio/Comet per configured debrid + MediaFusion + AIOStreams */
@@ -762,8 +773,8 @@ async function validateTopStreams(streams, { want = 8, probeLimit = 14, keepUnpr
 router.get('/status', async (req, res) => {
   const siteConfigured = anyPremiumConfigured();
   const providers = configuredDebrids().map(d => d.id);
-  if (MEDIAFUSION_CONFIG) providers.push('mediafusion');
-  if (AIOSTREAMS_BASE) providers.push('aiostreams');
+  if (mediaFusionConfig()) providers.push('mediafusion');
+  if (aioStreamsBase()) providers.push('aiostreams');
   const userTok = (
     req.headers['x-rd-token'] ||
     req.body?.token ||
@@ -986,8 +997,8 @@ router.post('/streams', async (req, res) => {
       adult: isAdult,
       title: metaTitle?.slice(0, 40),
       providers: configuredDebrids().map(d => d.id),
-      mediafusion: !!MEDIAFUSION_CONFIG,
-      aiostreams: !!AIOSTREAMS_BASE
+      mediafusion: !!mediaFusionConfig(),
+      aiostreams: !!aioStreamsBase()
     });
 
     let streams = [];

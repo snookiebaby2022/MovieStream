@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { User, Comment, Rating } = require('./models');
-const { trialEndsFrom, entitlementPayload, ensureTrialClock } = require('./entitlement');
+const { entitlementPayload, ensureTrialClock } = require('./entitlement');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'flixnova-dev-secret-change-me';
@@ -76,8 +76,8 @@ router.post('/register', async (req, res) => {
     const user = await User.create({
       username: String(username).trim().toLowerCase(),
       email: email ? String(email).trim() : '',
-      passHash,
-      trialEndsAt: trialEndsFrom(new Date())
+      passHash
+      // trialEndsAt left empty — 48h watch trial starts on first play, not signup
     });
     const token = signToken({ id: String(user._id), username: user.username });
     const ent = entitlementPayload(user);
@@ -89,6 +89,7 @@ router.post('/register', async (req, res) => {
       entitled: ent.entitled,
       trialEndsAt: ent.trialEndsAt,
       trialActive: ent.trialActive,
+      canStartTrial: ent.canStartTrial,
       needsPay: ent.needsPay
     });
   } catch (e) {
@@ -140,6 +141,10 @@ router.get('/me', authRequired, async (req, res) => {
         lifetimeUnlock: ent.lifetimeUnlock,
         trialActive: ent.trialActive,
         trialEndsAt: ent.trialEndsAt,
+        trialStarted: ent.trialStarted,
+        trialExpired: ent.trialExpired,
+        canStartTrial: ent.canStartTrial,
+        trialHours: ent.trialHours,
         subscriptionStatus: ent.subscriptionStatus,
         needsPay: ent.needsPay,
         adFreeAt: user.adFreeAt,

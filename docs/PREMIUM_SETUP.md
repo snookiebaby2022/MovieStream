@@ -145,10 +145,12 @@ Empty optional keys are simply skipped — no errors.
 ## 8. Product rules (after this deploy)
 
 - **Embeds are off** — playback is premium debrid only.
-- **New / free accounts** get **24 hours** of full premium access from signup (legacy free accounts get one 24h window on first login after deploy).
+- **Browse free** after signup/login (catalog only).
+- **48-hour watch trial** starts on the **first Play** (not at signup).
 - After the trial: **£1/month** via Stripe to keep watching.
 - **First-10 promo** still grants **lifetime** Premium (admin can disable).
 - Existing one-time Ad-Free buyers are **grandfathered** as lifetime.
+- Admin → **Debrid Keys** can paste RD / AllDebrid / Premiumize / TorBox / MediaFusion / AIOStreams.
 
 ---
 

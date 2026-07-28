@@ -517,6 +517,8 @@
       F.promo = d.promo || null;
       F.trialActive = !!d.trialActive;
       F.trialEndsAt = d.trialEndsAt || null;
+      F.canStartTrial = !!d.canStartTrial;
+      F.trialHours = d.trialHours || 48;
       setAdFree(!!d.adFree || !!d.entitled);
       var btn = $('adfreeBtn');
       if (btn) {
@@ -568,12 +570,12 @@
     if (blurb) {
       blurb.textContent = active
         ? 'Sign up (or log in), then claim a free lifetime Premium spot — debrid streams, no FlixNova ads, and XXX catalog.'
-        : '24 hours free when you sign up. Then £1/month for premium debrid streams, no FlixNova ads, and Adult/XXX.';
+        : 'Sign up and browse free. First Play starts a 48-hour trial, then £1/month for premium streams.';
     }
     if (note) {
       note.textContent = active
         ? 'Must be signed in. When free spots are gone, Premium is £1/month.'
-        : 'Sign in required. After your free 24 hours, subscribe to keep watching.';
+        : 'Browsing is free. The 48-hour trial starts when you first press Play.';
     }
     if (payBtn) {
       payBtn.textContent = 'Subscribe ' + (F.payLabel || '£1/mo');

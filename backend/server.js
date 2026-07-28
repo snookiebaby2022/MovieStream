@@ -1195,6 +1195,7 @@ function isSecretEnvKey(k) {
 const ADMIN_WRITABLE_SECRETS = new Set([
   'STRIPE_SECRET_KEY',
   'STRIPE_WEBHOOK_SECRET',
+  'STRIPE_PRICE_ID',
   'SMTP_HOST',
   'SMTP_PORT',
   'SMTP_USER',
@@ -1205,8 +1206,33 @@ const ADMIN_WRITABLE_SECRETS = new Set([
   'ADFREE_PRICE_PENCE',
   'ADFREE_CURRENCY',
   'REALDEBRID_API_TOKEN',
-  'RD_API_TOKEN'
+  'RD_API_TOKEN',
+  'ALLDEBRID_API_TOKEN',
+  'PREMIUMIZE_API_TOKEN',
+  'TORBOX_API_TOKEN',
+  'MEDIAFUSION_CONFIG',
+  'MEDIAFUSION_URL',
+  'AIOSTREAMS_BASE_URL',
+  'TORRENTIO_URL',
+  'COMET_URL'
 ]);
+
+const DEBRID_ENV_KEYS = [
+  'REALDEBRID_API_TOKEN',
+  'ALLDEBRID_API_TOKEN',
+  'PREMIUMIZE_API_TOKEN',
+  'TORBOX_API_TOKEN',
+  'MEDIAFUSION_CONFIG',
+  'MEDIAFUSION_URL',
+  'AIOSTREAMS_BASE_URL'
+];
+
+function maskSecret(val) {
+  const s = String(val || '').trim();
+  if (!s) return '';
+  if (s.length <= 8) return '••••';
+  return s.slice(0, 4) + '…' + s.slice(-4);
+}
 
 function upsertEnvKey(key, value) {
   let raw = '';
@@ -1304,11 +1330,24 @@ app.put('/api/admin/integrations', adminAuth, (req, res) => {
   }
 });
 
-/** Admin Real-Debrid management */
+/** Admin Real-Debrid + multi-debrid keys */
 app.get('/api/admin/debrid', adminAuth, async (req, res) => {
   const token = (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').trim();
+  const providers = {};
+  for (const key of DEBRID_ENV_KEYS) {
+    const val = (process.env[key] || '').trim();
+    providers[key] = {
+      set: !!val,
+      hint: val ? maskSecret(val) : ''
+    };
+  }
   if (!token) {
-    return res.json({ success: true, configured: false, siteConfigured: false });
+    return res.json({
+      success: true,
+      configured: false,
+      siteConfigured: false,
+      providers
+    });
   }
   try {
     const r = await axios.get('https://api.real-debrid.com/rest/1.0/user', {
@@ -1319,13 +1358,14 @@ app.get('/api/admin/debrid', adminAuth, async (req, res) => {
       success: true,
       configured: true,
       siteConfigured: true,
+      providers,
       data: {
         username: r.data.username,
         email: r.data.email,
         premium: r.data.type === 'premium',
         expiration: r.data.expiration,
         points: r.data.points,
-        tokenHint: token.slice(0, 4) + '…' + token.slice(-4)
+        tokenHint: maskSecret(token)
       }
     });
   } catch (e) {
@@ -1334,8 +1374,46 @@ app.get('/api/admin/debrid', adminAuth, async (req, res) => {
       success: false,
       configured: true,
       siteConfigured: true,
+      providers,
       error: status === 401 ? 'Invalid Real-Debrid token' : (e.message || 'RD check failed')
     });
+  }
+});
+
+/** Save any combination of debrid / addon keys (empty string clears) */
+app.put('/api/admin/debrid/keys', adminAuth, (req, res) => {
+  try {
+    const body = req.body || {};
+    let saved = 0;
+    const cleared = [];
+    for (const key of DEBRID_ENV_KEYS) {
+      if (body[key] === undefined || body[key] === null) continue;
+      let val = String(body[key]).trim();
+      if (val === '***' || val === '••••') continue;
+      if (key === 'AIOSTREAMS_BASE_URL') {
+        val = val.replace(/\/$/, '').replace(/\/manifest\.json$/i, '');
+      }
+      if (key === 'MEDIAFUSION_CONFIG') {
+        val = val.replace(/^\/+|\/+$/g, '').replace(/\/manifest\.json$/i, '');
+        // Allow pasting full MediaFusion manifest URL
+        const m = val.match(/mediafusion[^/]*\/([^/]+)/i);
+        if (m && m[1] && !/^(app|configure|stremio)$/i.test(m[1])) val = m[1];
+      }
+      upsertEnvKey(key, val);
+      if (val) process.env[key] = val;
+      else delete process.env[key];
+      saved++;
+      if (!val) cleared.push(key);
+    }
+    if (!saved) return res.status(400).json({ success: false, error: 'No keys to save (leave blank fields unchanged, or paste new values)' });
+    res.json({
+      success: true,
+      message: `Saved ${saved} key(s). Restart app to fully apply.`,
+      needsRestart: true,
+      cleared
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -1605,8 +1683,8 @@ app.post('/api/admin/users', adminAuth, async (req, res) => {
       passHash,
       adFree,
       adFreeAt: adFree ? new Date() : null,
-      lifetimeUnlock: !!adFree,
-      trialEndsAt: adFree ? null : require('./entitlement').trialEndsFrom(new Date())
+      lifetimeUnlock: !!adFree
+      // no trialEndsAt — watch trial starts on first play
     });
     res.json({
       success: true,

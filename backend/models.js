@@ -20,7 +20,7 @@ const UserSchema = new mongoose.Schema({
   adFreeAt: { type: Date, default: null },
   /** Promo / grandfathered one-time unlock — never expires */
   lifetimeUnlock: { type: Boolean, default: false },
-  /** 24h free premium access from signup (or first check for legacy free accounts) */
+  /** 48h free premium watch trial — starts on first Play, not signup */
   trialEndsAt: { type: Date, default: null },
   stripeSessionId: { type: String, default: '' },
   stripeCustomerId: { type: String, default: '', index: true },
