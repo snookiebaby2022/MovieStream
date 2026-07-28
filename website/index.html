@@ -2166,12 +2166,23 @@ function handleSrc(data){
     return !/copyright infringement|infringing|unavailable for legal/i.test(t);
   });
   if(!S.src.length){showPE('No playable Real-Debrid links (blocked for copyright). Try Embed backups.');return;}
-  // Sort preferred first — but KEEP EVERY link so we can walk the full list
+  // Sort preferred first — 1080p, then 720p — but KEEP EVERY link so we can walk the full list
   if(S.debridMode){
+    var qRank=function(q){
+      q=String(q||'').toUpperCase();
+      if(q==='1080P')return 100;
+      if(q==='720P')return 80;
+      if(q==='HD')return 50;
+      if(q==='480P')return 30;
+      if(q==='4K')return 20;
+      if(q==='CAM')return 0;
+      return 40;
+    };
     S.src=S.src.slice().sort(function(a,b){
       var amp4=/\.mp4(\?|$)/i.test(String(a.url||''))?1:0;
       var bmp4=/\.mp4(\?|$)/i.test(String(b.url||''))?1:0;
-      return (b.browserOk?1:0)-(a.browserOk?1:0)
+      return qRank(b.quality)-qRank(a.quality)
+        || (b.browserOk?1:0)-(a.browserOk?1:0)
         || (b.cached?1:0)-(a.cached?1:0)
         || bmp4-amp4
         || (a.hardCodec?1:0)-(b.hardCodec?1:0)

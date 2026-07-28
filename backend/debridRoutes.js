@@ -45,6 +45,19 @@ function parseQuality(title) {
   return 'HD';
 }
 
+/** Higher = try first. Prefer 1080p, then 720p. */
+function qualityRank(q) {
+  switch (String(q || '').toUpperCase()) {
+    case '1080P': return 100;
+    case '720P': return 80;
+    case 'HD': return 50;
+    case '480P': return 30;
+    case '4K': return 20;
+    case 'CAM': return 0;
+    default: return 40;
+  }
+}
+
 function parseSize(title) {
   const m = String(title || '').match(/💾\s*([\d.]+\s*[GMK]B)/i);
   return m ? m[1] : '';
@@ -76,8 +89,8 @@ function browserScore(title, url, name) {
   if (/web-?dl|webrip|hdtv/.test(t)) score -= 15; // RD May-2026 keyword filter often hits these
   if (/amzn|netflix|\bnf\b|\bhulu\b|\bd\+|\batvp\b|disney|\bhbo\b|\bcr\b/.test(t)) score -= 25;
   if (/\byts\b|rarbg|sparkles|ion10/.test(t)) score -= 20;
-  if (/1080p/.test(t)) score += 18;
-  if (/720p/.test(t)) score += 28;
+  if (/1080p/.test(t)) score += 35;
+  if (/720p/.test(t)) score += 22;
   if (/480p|dvdrip|hdrip/.test(t)) score += 10;
   if (/2160p|4k|uhd/.test(t)) score -= 70;
   // Hard codecs: browsers / Fire Stick WebView usually cannot decode
@@ -635,6 +648,7 @@ function dedupeStreams(list) {
 async function validateTopStreams(streams, { want = 8, probeLimit = 14, keepUnprobed = false } = {}) {
   if (!streams.length) return [];
   const ranked = streams.slice().sort((a, b) =>
+    (qualityRank(b.quality) - qualityRank(a.quality)) ||
     ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
     ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
     ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
@@ -923,7 +937,9 @@ router.post('/streams', async (req, res) => {
     }
 
     // Sort best-first but KEEP a large pool — the client must try every link until one plays
+    // Priority: 1080p → 720p → other, then browser-friendly / cached
     streams = streams.slice().sort((a, b) =>
+      (qualityRank(b.quality) - qualityRank(a.quality)) ||
       ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
       ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
@@ -932,15 +948,20 @@ router.post('/streams', async (req, res) => {
       ((b.seeders || 0) - (a.seeders || 0))
     );
 
-    // Prefer cached when available, but always keep a fat fallback list
-    const cached = streams.filter(s => s.cached);
-    const rest = streams.filter(s => !s.cached);
-    streams = (cached.length ? cached.concat(rest) : streams).slice(0, 40);
+    // Prefer cached when available, but never above a higher resolution
+    streams = streams.slice(0, 40);
 
     // Drop only confirmed copyright stubs from the top candidates (do not discard the rest)
     streams = await validateTopStreams(streams, { want: 12, probeLimit: 16, keepUnprobed: true });
 
-    streams = streams.slice(0, 40);
+    // Re-apply 1080p → 720p order after probe merge
+    streams = streams.slice().sort((a, b) =>
+      (qualityRank(b.quality) - qualityRank(a.quality)) ||
+      ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
+      ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
+      ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
+      ((b.browserScore || 0) - (a.browserScore || 0))
+    ).slice(0, 40);
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
     console.log('Debrid result:', {
       imdb,
