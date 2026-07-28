@@ -108,7 +108,11 @@ const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?co
 
 async function requireAdFree(req, res) {
   const userTok = verifyToken(
-    req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+    req.headers['x-user-token'] ||
+    (req.headers.authorization || '').replace(/^Bearer\s+/i, '') ||
+    req.query?.token ||
+    req.query?.t ||
+    ''
   );
   if (!userTok) {
     res.status(401).json({ success: false, error: 'Login required', code: 'LOGIN_REQUIRED' });
@@ -128,6 +132,22 @@ async function requireAdFree(req, res) {
     return null;
   }
   return userTok;
+}
+
+function isAllowedProxyUrl(url) {
+  try {
+    const u = new URL(String(url || ''));
+    if (u.protocol !== 'https:') return false;
+    const h = u.hostname.toLowerCase();
+    // Only origin hosts we emit from Torrentio/Comet/RD unrestrict — proxy follows redirects server-side
+    return (
+      /(^|\.)real-debrid\.com$/i.test(h) ||
+      /(^|\.)strem\.fun$/i.test(h) ||
+      /(^|\.)elfhosted\.com$/i.test(h)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Probe an RD / resolved stream URL for copyright / infringing blocks */
@@ -715,6 +735,78 @@ router.post('/validate', async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message || 'Validate failed' });
+  }
+});
+
+/**
+ * Same-origin media proxy for Android / Fire Stick WebView.
+ * <video> cannot send auth headers, so token is accepted as ?token=
+ * Follows redirects server-side (RD CDN hosts vary).
+ */
+router.get('/proxy', async (req, res) => {
+  try {
+    if (!(await requireAdFree(req, res))) return;
+    const target = String(req.query.u || req.query.url || '').trim();
+    if (!target || !isAllowedProxyUrl(target)) {
+      return res.status(400).json({ success: false, error: 'Invalid stream URL' });
+    }
+
+    const range = req.headers.range;
+    const headers = {
+      'User-Agent': ua(),
+      Accept: '*/*',
+      ...(range ? { Range: range } : {})
+    };
+
+    const upstream = await axios.get(target, {
+      headers,
+      responseType: 'stream',
+      timeout: 45000,
+      maxRedirects: 8,
+      validateStatus: () => true,
+      // Large files — do not buffer
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
+    });
+
+    const status = upstream.status;
+    if (status === 401 || status === 403 || status === 451) {
+      return res.status(status).json({ success: false, error: 'Upstream blocked', code: status });
+    }
+    if (status >= 400) {
+      return res.status(502).json({ success: false, error: `Upstream HTTP ${status}` });
+    }
+
+    const pass = [
+      'content-type',
+      'content-length',
+      'content-range',
+      'accept-ranges',
+      'content-disposition'
+    ];
+    for (const k of pass) {
+      const v = upstream.headers[k];
+      if (v) res.setHeader(k, v);
+    }
+    if (!res.getHeader('content-type')) {
+      res.setHeader('Content-Type', 'video/mp4');
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.status(status);
+    upstream.data.on('error', () => {
+      try { res.end(); } catch {}
+    });
+    req.on('close', () => {
+      try { upstream.data.destroy(); } catch {}
+    });
+    upstream.data.pipe(res);
+  } catch (e) {
+    if (!res.headersSent) {
+      res.status(502).json({ success: false, error: e.message || 'Proxy failed' });
+    } else {
+      try { res.end(); } catch {}
+    }
   }
 });
 
