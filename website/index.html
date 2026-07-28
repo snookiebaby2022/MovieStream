@@ -343,11 +343,16 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
 </head>
 <body>
 <div id="appUpdateBar" role="status">
-  <div style="flex:1;min-width:200px;font-size:14px;line-height:1.4">
+  <div style="flex:1;min-width:200px;font-size:14px;line-height:1.45">
     <b>App update available</b><br>
     <span id="appUpdateNote">A newer FlixNova APK improves Fire Stick playback.</span>
+    <div id="appUpdateTvHint" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.3)">
+      Fire Stick / TV: open the <b style="color:var(--gold)">Downloader</b> app and enter code<br>
+      <span style="display:inline-block;margin-top:6px;font-size:28px;font-weight:800;letter-spacing:.14em;color:var(--gold)" id="appUpdateDlCode">3777174</span>
+    </div>
   </div>
-  <button type="button" class="pbtn" id="appUpdateBtn">Update APK</button>
+  <button type="button" class="pbtn" id="appUpdateBtn">Update</button>
+  <button type="button" class="pbtn" id="appUpdateCopyBtn" style="display:none;background:var(--s4)">Copy code</button>
   <button type="button" class="pbtn" style="background:var(--s4)" onclick="dismissAppUpdate()">Later</button>
 </div>
 <header id="hdr">
@@ -2006,30 +2011,57 @@ function isNativeApp(){
 function isTvApp(){
   return !!(window.FlixNovaIsTv||document.body.classList.contains('tv-mode')||(window.FlixNovaNative&&window.FlixNovaNative.tv));
 }
+var _apkUpdateRemote=0;
+var _apkUpdateCheckTries=0;
 function dismissAppUpdate(){
-  try{localStorage.setItem('fn_apk_skip',String((window.FlixNovaNative&&window.FlixNovaNative.versionCode)||1));}catch(e){}
+  try{localStorage.setItem('fn_apk_skip',String(_apkUpdateRemote||(window.FlixNovaNative&&window.FlixNovaNative.versionCode)||2));}catch(e){}
   var b=$('appUpdateBar');if(b)b.classList.remove('on');
 }
+function getLocalAppVersionCode(){
+  try{
+    if(window.FlixNovaNative&&window.FlixNovaNative.versionCode)return Number(window.FlixNovaNative.versionCode)||0;
+  }catch(e){}
+  // Fallback: map UA build marker (MainActivity appends FlixNovaApp/1.1.0)
+  try{
+    var m=(navigator.userAgent||'').match(/FlixNovaApp\/([\d.]+)/);
+    if(m){
+      if(m[1]==='1.1.0'||m[1]==='1.1')return 2;
+      if(m[1]==='1.0.0'||m[1]==='1.0')return 1;
+    }
+  }catch(e2){}
+  return 0;
+}
 function openApkUpdate(url){
-  var u=url||'https://snookiebaby.xyz/downloads/FlixNova-android.apk';
+  // Fire Stick / Android TV cannot sideload from an in-app browser — send users to instructions
+  if(isTvApp()){
+    location.href='/get-app.html#firetv';
+    return;
+  }
+  var u=url||(location.origin+'/downloads/FlixNova-android.apk');
   try{
     if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Browser&&Capacitor.Plugins.Browser.open){
       Capacitor.Plugins.Browser.open({url:u});return;
     }
   }catch(e){}
-  try{window.open(u,'_blank');}catch(e2){location.href=u;}
+  // Same-tab navigation — site popup blocker neuters window.open
+  location.href=u;
 }
 function checkAppUpdate(){
   if(!isNativeApp())return;
   fetch(API+'/app/version',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
     if(!d||!d.success)return;
-    var local=0;
+    var local=getLocalAppVersionCode();
+    // Native bridge injects a bit late — don't flash a false "update" with local=0
+    if(!local&&_apkUpdateCheckTries<4){
+      _apkUpdateCheckTries++;
+      setTimeout(checkAppUpdate,900);
+      return;
+    }
     try{
-      if(window.FlixNovaNative&&window.FlixNovaNative.versionCode)local=Number(window.FlixNovaNative.versionCode)||0;
-      else if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App&&Capacitor.Plugins.App.getInfo){
+      if(!local&&window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App&&Capacitor.Plugins.App.getInfo){
         return Capacitor.Plugins.App.getInfo().then(function(info){
-          local=parseInt(String(info.build||info.version||'0').replace(/\D/g,''),10)||0;
-          maybeShowAppUpdate(d,local);
+          var build=parseInt(String(info.build||'0').replace(/\D/g,''),10)||0;
+          maybeShowAppUpdate(d,build||local);
         });
       }
     }catch(e){}
@@ -2038,14 +2070,41 @@ function checkAppUpdate(){
 }
 function maybeShowAppUpdate(d,local){
   var remote=Number(d.versionCode)||0;
-  if(!remote||local>=remote)return;
+  _apkUpdateRemote=remote;
+  if(!remote||local>=remote){
+    var hide=$('appUpdateBar');if(hide)hide.classList.remove('on');
+    return;
+  }
   var skipped=0;
   try{skipped=Number(localStorage.getItem('fn_apk_skip')||0);}catch(e){}
   if(!d.forceUpdate&&skipped>=remote)return;
+  var tv=isTvApp();
   var note=$('appUpdateNote');
-  if(note)note.textContent=(d.notes||('Version '+d.versionName+' is ready.'))+' Install over the current app.';
+  if(note){
+    note.textContent=tv
+      ?('Version '+(d.versionName||'')+' — Fire Stick cannot install APKs inside the app. Use Downloader with the code below.')
+      :(d.notes||('Version '+d.versionName+' is ready.'))+' Tap Download, then Install.';
+  }
+  var hint=$('appUpdateTvHint');
+  if(hint)hint.style.display=tv?'block':'none';
+  var codeEl=$('appUpdateDlCode');
+  if(codeEl)codeEl.textContent=String(d.downloaderCode||'3777174');
   var btn=$('appUpdateBtn');
-  if(btn)btn.onclick=function(){openApkUpdate(isTvApp()?(d.firetvApkUrl||d.apkUrl):d.apkUrl);};
+  if(btn){
+    btn.textContent=tv?'Open instructions':'Download APK';
+    btn.onclick=function(){openApkUpdate(tv?(d.firetvApkUrl||d.apkUrl):d.apkUrl);};
+  }
+  var copyBtn=$('appUpdateCopyBtn');
+  if(copyBtn){
+    copyBtn.style.display=tv?'inline-flex':'none';
+    copyBtn.textContent='Copy code';
+    copyBtn.onclick=function(){
+      var code=String(d.downloaderCode||'3777174');
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(code).then(function(){copyBtn.textContent='Copied';}).catch(function(){prompt('Downloader code:',code);});
+      }else prompt('Downloader code:',code);
+    };
+  }
   var bar=$('appUpdateBar');if(bar)bar.classList.add('on');
 }
 function destroyPlayer(){

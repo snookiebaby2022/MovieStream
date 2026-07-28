@@ -403,10 +403,13 @@ app.get('/api/app/version', (req, res) => {
     platform: 'android',
     versionCode: 2,
     versionName: '1.1.0',
-    minVersionCode: 2,
+    minVersionCode: 1,
     apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-android.apk',
     firetvApkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-firetv.apk',
-    notes: 'Fire Stick / Android TV optimized: embed hosts allowed, D-pad focus, single-iframe player.',
+    // Fire Stick / TV cannot install from in-app browser — use Downloader
+    downloaderCode: '3777174',
+    getAppUrl: 'https://snookiebaby.xyz/get-app.html#firetv',
+    notes: 'Install via Downloader code 3777174 on Fire Stick, or Download APK on phones.',
     forceUpdate: false
   });
 });
