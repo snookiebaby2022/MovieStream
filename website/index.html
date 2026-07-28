@@ -11,7 +11,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="FlixNova">
 <meta property="og:title" content="FlixNova — Watch Movies &amp; TV Shows">
-<meta property="og:description" content="Stream trending movies and TV shows in HD. Free embeds, optional Ad-Free with Real-Debrid.">
+<meta property="og:description" content="Stream trending movies and TV shows in HD. 24 hours free, then £1/month for premium debrid streams.">
 <meta property="og:url" content="https://snookiebaby.xyz/">
 <meta property="og:image" content="https://snookiebaby.xyz/icons/icon-512.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -364,8 +364,8 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
       </select>
       <a class="auth-btn" id="getAppBtn" href="/get-app.html" title="Android, Fire Stick, iPhone">Get App</a>
       <button class="auth-btn xxx" id="xxxBtn" onclick="toggleAdultMode()" title="Adult / XXX content (off by default)">XXX Off</button>
-      <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Ad-Free + Real-Debrid">Ad-Free £1</button>
-      <span class="adfree-badge" id="adfreeBadge">Ad-Free ✓</span>
+      <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Premium £1/month">Premium £1/mo</button>
+      <span class="adfree-badge" id="adfreeBadge">Premium ✓</span>
       <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
       <button class="auth-btn" id="rdBtn" onclick="openRd()" title="Real-Debrid" style="display:none">RD</button>
       <button class="auth-btn primary" id="regBtn" onclick="openAuth('register')">Sign Up</button>
@@ -375,8 +375,8 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
   </div>
 </header>
 <div class="adtip" id="adtip">
-  <b>Free plan:</b> Embed servers (may include ads). Unlock <b>Ad-Free £1</b> for Real-Debrid streams with no player ads.
-  <button type="button" onclick="dismissAdTip()">Dismiss</button>
+  <b>New accounts:</b> 24 hours free premium streams. Then <b>Premium £1/month</b> to keep watching (debrid links only — no embeds).
+  <button type="button" onclick="dismissAdTip()" aria-label="Dismiss">✕</button>
 </div>
 <div id="hero">
   <div class="hbg" id="hbg"></div>
@@ -433,7 +433,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
       <span class="srclbl">Servers:</span>
       <div id="schips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
       <button class="sc" id="nextSrcBtn" onclick="nextSrc()" title="Try next server">Next &#8250;</button>
-      <button class="sc" id="moreSrvBtn" onclick="loadAllServers()" title="Include backup servers (may have more ads)">More servers</button>
+      <button class="sc" id="moreSrvBtn" onclick="retryPremiumStreams()" title="Search premium streams again">Retry streams</button>
       <span class="srclbl" style="margin-left:6px">Player:</span>
       <div class="pchips" id="pchips"></div>
       <button class="list-btn" id="mListBtn" onclick="toggleListModal()">+ Wishlist</button>
@@ -451,7 +451,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
   <div class="gate-box" role="dialog" aria-labelledby="welcomeTitle">
     <div class="gate-kicker">Welcome to FlixNova</div>
     <h2 id="welcomeTitle">Sign up or log in to continue</h2>
-    <p>Create a free account to watch movies &amp; TV. <b style="color:var(--gold)">First 10 customers</b> can claim Ad-Free free after sign-up.</p>
+    <p>Create a free account to watch. You get <b style="color:var(--gold)">24 hours free</b>, then £1/month. First 10 customers can claim lifetime Premium free after sign-up.</p>
     <div class="gate-actions">
       <button type="button" class="pbtn" onclick="closeWelcome(false);openAuth('register')">Sign Up — it’s free</button>
       <button type="button" class="pbtn ghost" onclick="closeWelcome(false);openAuth('login')">Log In</button>
@@ -463,7 +463,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
   <div class="gate-box" role="dialog" aria-labelledby="gateTitle">
     <div class="gate-kicker">Account required</div>
     <h2 id="gateTitle">Sign up or log in to watch</h2>
-    <p>You need a free account to play. Free = embeds; Ad-Free unlocks Real-Debrid. First 10 customers can claim Ad-Free free.</p>
+    <p>You need an account to play. New users get 24 hours free premium streams, then £1/month. First 10 customers can claim lifetime Premium free.</p>
     <div class="gate-actions">
       <button type="button" class="pbtn" onclick="closeWatchGate();openAuth('register')">Sign Up</button>
       <button type="button" class="pbtn ghost" onclick="closeWatchGate();openAuth('login')">Log In</button>
@@ -474,25 +474,25 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
 <div id="payPromoOv" onclick="if(event.target===this)FlixExtra.closePayPromo()">
   <div class="promo-box" role="dialog" aria-labelledby="promoTitle">
     <button type="button" class="promo-x" onclick="FlixExtra.closePayPromo()" aria-label="Close">✕</button>
-    <div class="promo-kicker" id="promoKicker">One-time unlock</div>
-    <h2 id="promoTitle">Ad-Free + Real-Debrid + XXX</h2>
+    <div class="promo-kicker" id="promoKicker">£1 / month</div>
+    <h2 id="promoTitle">FlixNova Premium</h2>
     <div class="promo-offer" id="promoOffer" style="display:none">
-      <b>Launch offer</b> — first <span id="promoLimit">10</span> customers get Ad-Free <b>free</b>.
+      <b>Launch offer</b> — first <span id="promoLimit">10</span> customers get Premium <b>lifetime free</b>.
       <span id="promoRemainWrap"><span id="promoRemain">10</span> spots left.</span>
     </div>
-    <p class="promo-price" id="promoPrice">£1 <span>forever · no subscription</span></p>
-    <p id="promoBlurb">One payment unlocks premium streams, no FlixNova ads, and the Adult/XXX catalog.</p>
+    <p class="promo-price" id="promoPrice">£1 <span>per month · cancel anytime</span></p>
+    <p id="promoBlurb">24 hours free when you sign up. Then £1/month for premium debrid streams, no FlixNova ads, and the Adult/XXX catalog.</p>
     <ul class="promo-perks">
-      <li><span>▶</span><span><b>Real-Debrid links</b> — direct HD streams, not iframe embeds</span></li>
+      <li><span>▶</span><span><b>Premium debrid links</b> — Real-Debrid and more (no iframe embeds)</span></li>
       <li><span>✕</span><span><b>Ad-Free player</b> — no FlixNova ads while you watch</span></li>
       <li><span>✕</span><span><b>Adult / XXX catalog</b> — toggle in the header (off by default)</span></li>
     </ul>
     <div class="promo-actions">
-      <button type="button" class="pbtn gold" id="promoClaimBtn" style="display:none" onclick="FlixExtra.claimFirst10Promo()">Claim free Ad-Free</button>
-      <button type="button" class="pbtn" id="promoPayBtn" onclick="FlixExtra.startCheckout()">Unlock Ad-Free for £1</button>
-      <button type="button" class="pbtn ghost" onclick="FlixExtra.closePayPromo()">Continue with free embeds</button>
+      <button type="button" class="pbtn gold" id="promoClaimBtn" style="display:none" onclick="FlixExtra.claimFirst10Promo()">Claim free lifetime Premium</button>
+      <button type="button" class="pbtn" id="promoPayBtn" onclick="FlixExtra.startCheckout()">Subscribe £1/month</button>
+      <button type="button" class="pbtn ghost" onclick="FlixExtra.closePayPromo()">Not now</button>
     </div>
-    <div class="promo-note" id="promoNote">Sign in required. Free accounts keep embed servers with ads.</div>
+    <div class="promo-note" id="promoNote">Sign in required. Trial users keep full access until the 24 hours end.</div>
   </div>
 </div>
 <div id="authOv">
@@ -538,7 +538,7 @@ body.tv-mode .sbar input{font-size:16px;min-height:44px}
 <div id="rdOv">
   <div class="auth-box">
     <h2>Real-Debrid</h2>
-    <p>Real-Debrid streams are for <b>Ad-Free</b> members (£1). Free accounts use embed servers (with ads). Site key is set on the server; optional personal token below.</p>
+    <p>Premium streams use site debrid keys (Real-Debrid and any extras configured on the server). Optional personal Real-Debrid token below.</p>
     <div id="rdErr" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
     <div id="rdOk" style="display:none;color:var(--green);font-size:12px;margin-bottom:8px"></div>
     <input id="rdToken" type="password" placeholder="RD API token" autocomplete="off">
@@ -597,18 +597,27 @@ function clearStore(){STORE={};STOREKEY=0;}
 var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false,hls:null,playGen:0,playerMode:localStorage.getItem('fn_player')||'auto'};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
 function isAdFreeUser(){
-  // Live account flag wins (important on Android cold start before localStorage cache syncs)
+  // Entitled = trial OR subscription OR lifetime (server maps this to adFree)
   if(S.user&&typeof S.user.adFree==='boolean')return !!S.user.adFree;
+  if(S.user&&typeof S.user.entitled==='boolean')return !!S.user.entitled;
   if(window.FlixExtra&&typeof FlixExtra.isAdFree==='function')return !!FlixExtra.isAdFree();
   try{return localStorage.getItem('fn_adfree')==='1';}catch(e){return false;}
 }
-/** Ensure /me (or pay status) has synced Ad-Free before choosing RD vs embeds */
+/** Sync entitlement (/me) before allowing premium play */
 function ensureAdFreeReady(){
   if(!S.token)return Promise.resolve(false);
   if(S.user&&typeof S.user.adFree==='boolean'&&S._userSynced)return Promise.resolve(!!S.user.adFree);
   return uapi('/me').then(function(d){
     if(!d||!d.success||!d.data)return isAdFreeUser();
-    S.user={username:d.data.username,adFree:!!d.data.adFree};
+    S.user={
+      username:d.data.username,
+      adFree:!!d.data.adFree,
+      entitled:!!d.data.entitled,
+      trialActive:!!d.data.trialActive,
+      trialEndsAt:d.data.trialEndsAt||null,
+      needsPay:!!d.data.needsPay,
+      lifetimeUnlock:!!d.data.lifetimeUnlock
+    };
     S._userSynced=true;
     sockIdentify();
     if(window.FlixExtra)FlixExtra.setAdFree(!!d.data.adFree);
@@ -655,13 +664,12 @@ function getRdToken(){return (localStorage.getItem('fn_rd')||'').trim();}
 function hasRd(){return isAdFreeUser()&&!!(getRdToken()||S.siteRd);}
 function refreshRdBtn(){
   var b=$('rdBtn');if(!b)return;
-  // RD button only for paying Ad-Free members — free users never see debrid UI
   var premium=isAdFreeUser();
   b.style.display=premium?'inline-flex':'none';
   var on=premium&&(S.siteRd||!!getRdToken());
   b.classList.toggle('on',on);
   b.textContent=on?'RD ✓':'RD';
-  b.title='Real-Debrid streams (Ad-Free)';
+  b.title='Premium debrid streams';
   updateAdTip();
 }
 function checkSiteRd(){
@@ -674,14 +682,14 @@ function checkSiteRd(){
 function openRd(){
   if(!isAdFreeUser()){
     if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
-    else alert('Unlock Ad-Free £1 for Real-Debrid streams.');
+    else alert('Subscribe £1/month (or use your free trial) for premium streams.');
     return;
   }
   $('rdErr').style.display='none';$('rdOk').style.display='none';
   $('rdToken').value=getRdToken();
   $('rdOv').classList.add('on');
   if(getRdToken())verifyRd();
-  else if(S.siteRd)$('rdOk').textContent='Ad-Free active — Real-Debrid streams enabled for your account.',$('rdOk').style.display='block';
+  else if(S.siteRd)$('rdOk').textContent='Premium active — debrid streams enabled for your account.',$('rdOk').style.display='block';
 }
 function closeRd(){$('rdOv').classList.remove('on');}
 function clearRd(){localStorage.removeItem('fn_rd');refreshRdBtn();$('rdToken').value='';$('rdOk').style.display='none';$('rdErr').style.display='none';checkSiteRd();}
@@ -707,7 +715,6 @@ function verifyRd(){
   }).catch(function(e){$('rdOk').style.display='none';$('rdErr').textContent=e.message;$('rdErr').style.display='block';});
 }
 function fetchDebridStreams(imdbId,type,sn,ep,tmdbId,extra){
-  // Paying / Ad-Free only — free users stay on embeds
   if(!isAdFreeUser()||!S.token)return Promise.resolve(null);
   var headers={
     'Content-Type':'application/json',
@@ -1057,11 +1064,11 @@ function syncAdultUi(){
     btn.style.display=kids?'none':'';
     btn.classList.toggle('on',on);
     if(!paid){
-      btn.textContent='XXX £1';
-      btn.title='Adult / XXX is included with Ad-Free £1';
+      btn.textContent='XXX £1/mo';
+      btn.title='Adult / XXX is included with Premium (£1/month or trial)';
     }else{
       btn.textContent=on?'XXX On':'XXX Off';
-      btn.title=on?'Adult content visible — click to hide':'Adult / XXX (Ad-Free perk · off by default)';
+      btn.title=on?'Adult content visible — click to hide':'Adult / XXX (Premium perk · off by default)';
     }
   }
   var nav=$('nb-adult');
@@ -1074,7 +1081,7 @@ function toggleAdultMode(){
   }
   if(!isAdFreeUser()){
     if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
-    else alert('Adult / XXX is included with Ad-Free £1.');
+    else alert('Adult / XXX is included with Premium (£1/month).');
     return;
   }
   if(!adultModeOn()){
@@ -1730,9 +1737,14 @@ function openModal(item){
   document.title=(item.title||'')+' - FlixNova';
   S.cleanMode=localStorage.getItem('fn_clean')!=='0';
   S._triedEmbeds=0;
-  // Wait for Ad-Free sync (Android cold start often races /me) before choosing RD vs embeds
   ensureAdFreeReady().then(function(premium){
-    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>'+(premium?'Checking Ad-Free / Real-Debrid...':'Loading embed servers...')+'</span></div>';
+    if(!premium){
+      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Trial ended — subscribe to watch...</span></div>';
+      showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+      if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+      return null;
+    }
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding premium streams...</span></div>';
     return api('/details/'+id+'/'+type).then(function(det){
       var imdb=null;
       if(det&&det.success){
@@ -1751,38 +1763,33 @@ function openModal(item){
           saveContinue(S.item,S.sn,S.ep);
         }
       }
-      // Re-read after details in case /me finished mid-flight
       premium=isAdFreeUser();
       if(!premium){
-        $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading embed servers...</span></div>';
-        return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
-          if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
-            handleSrc(emb.data);
-            setSt('sok','▶ Free · embed servers');
-          }else showPE('No embed servers right now. Try again, or unlock Ad-Free £1 for Real-Debrid.');
-        });
+        showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+        if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+        return;
       }
       var isAdult=!!(S.item&&S.item.adult);
-      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding Real-Debrid streams'+(isAdult?' (XXX)':'')+'...</span></div>';
+      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding premium streams'+(isAdult?' (XXX)':'')+'...</span></div>';
       return fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item&&S.item.title,year:S.item&&S.item.year,adult:isAdult}).then(function(rd){
         if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
           S.siteRd=true;refreshRdBtn();
           handleSrc({sources:rd.data.streams,debrid:true});
-          var prov=(rd.data.providers&&rd.data.providers.length)?rd.data.providers.join('+'):'RD';
-          setSt('sok','▶ Real-Debrid · '+prov+(isAdult?' · XXX':''));
+          var prov=(rd.data.providers&&rd.data.providers.length)?rd.data.providers.join('+'):'premium';
+          setSt('sok','▶ Premium · '+prov+(isAdult?' · XXX':''));
           return;
         }
-        var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no RD links';
+        var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no premium links';
+        if(rd&&rd.code==='ADFREE_REQUIRED'){
+          showPE(rd.error||'Subscribe £1/month to keep watching.');
+          if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+          return;
+        }
         if(isAdult){
-          showPE('No XXX streams found yet ('+why+'). Try another title — adult relies on torrent/RD indexes.');
+          showPE('No XXX streams found yet ('+why+'). Try another title.');
           return;
         }
-        return api(sourcesPath(id,type,S.sn,S.ep)).then(function(emb){
-          if(emb&&emb.success&&emb.data&&emb.data.sources&&emb.data.sources.length){
-            handleSrc(emb.data);
-            setSt('sok','▶ Embed backup · Ad-Free ('+why+')');
-          }else showPE('No streams yet ('+why+'). Try another title or Player → External.');
-        });
+        showPE('No premium streams yet ('+why+'). Try Retry streams or another title.');
       });
     });
   }).catch(function(e){
@@ -1871,7 +1878,7 @@ function bLinks(d,id,type){
   h+='<p><b>Share:</b> <a href="'+watchUrl+'" style="color:var(--gold)">'+watchUrl+'</a></p>';
   if(d.imdbId)h+='<p><a href="https://www.imdb.com/title/'+d.imdbId+'" target="_blank" rel="noopener" style="color:var(--gold)">Open on IMDb ↗</a></p>';
   h+='<p><a href="https://www.themoviedb.org/'+type+'/'+id+'" target="_blank" rel="noopener" style="color:#60a5fa">Open on TMDB ↗</a></p>';
-  h+='<p style="color:var(--t3);margin-top:10px">FlixNova does not host media files or offer pirate downloads. Playback uses third-party embed servers.</p></div>';
+  h+='<p style="color:var(--t3);margin-top:10px">FlixNova does not host media files. Playback uses premium debrid links only.</p></div>';
   $('tpLinks').innerHTML=h;
 }
 
@@ -1916,23 +1923,26 @@ function pEp(tid,sn,ep,el){
   sockWatchingUpdate();
   if(S.item)saveContinue(S.item,sn,ep);
   var imdb=S.item&&S.item.imdbId;
-  var loadEmb=function(){
-    return api(sourcesPath(tid,'tv',sn,ep)).then(function(d){
-      if(d.success){handleSrc(d.data);setSt('sok','▶ Free · embeds may show ads');}
-      else showPE('No sources for this episode.');
-    });
-  };
   ensureAdFreeReady().then(function(premium){
-    if(!premium)return loadEmb();
+    if(!premium){
+      showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+      if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+      return;
+    }
     var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
     return imdbP.then(function(idb){
       return fetchDebridStreams(idb,'tv',sn,ep,tid,{title:S.item&&S.item.title,year:S.item&&S.item.year,adult:!!(S.item&&S.item.adult)}).then(function(rd){
         if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
           handleSrc({sources:rd.data.streams,debrid:true});
-          setSt('sok','▶ Real-Debrid · Ad-Free');
+          setSt('sok','▶ Premium streams');
           return;
         }
-        return loadEmb();
+        if(rd&&rd.code==='ADFREE_REQUIRED'){
+          showPE(rd.error||'Subscribe £1/month to keep watching.');
+          if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+          return;
+        }
+        showPE('No premium streams for this episode.');
       });
     });
   }).catch(function(e){showPE(e.message);});
@@ -1940,19 +1950,27 @@ function pEp(tid,sn,ep,el){
 function sourcesPath(id,type,sn,ep){
   var qs=[];
   if(type==='tv'){qs.push('season='+(sn||1));qs.push('episode='+(ep||1));}
-  if(!S.cleanMode)qs.push('all=1');
   return '/sources/'+id+'/'+type+(qs.length?'?'+qs.join('&'):'');
 }
-function loadAllServers(){
+function loadAllServers(){retryPremiumStreams();}
+function retryPremiumStreams(){
   if(!S.item)return;
-  S.cleanMode=false; // this title only — may include ad-heavy embeds
-  S._triedEmbeds=1;
+  if(!isAdFreeUser()){
+    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+    else showPE('Subscribe £1/month to watch.');
+    return;
+  }
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
-  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Loading embed servers (may show ads)...</span></div>';
-  var p=sourcesPath(id,type,S.sn,S.ep);
-  p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1&all=1';
-  api(p).then(function(d){
-    if(d.success)handleSrc(d.data);else showPE('Still no sources.');
+  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Searching premium streams again...</span></div>';
+  var imdb=S.item.imdbId;
+  var imdbP=imdb?Promise.resolve(imdb):api('/details/'+id+'/'+type).then(function(d){return d.success&&d.data?d.data.imdbId:null;});
+  imdbP.then(function(idb){
+    return fetchDebridStreams(idb,type,S.sn,S.ep,id,{title:S.item.title,year:S.item.year,adult:!!S.item.adult}).then(function(rd){
+      if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+        handleSrc({sources:rd.data.streams,debrid:true});
+        setSt('sok','▶ Premium · retry');
+      }else showPE('Still no premium streams.');
+    });
   }).catch(function(e){showPE(e.message);});
 }
 function nextEp(){
@@ -2148,8 +2166,7 @@ function dropSrcUrls(badUrls, reason){
   S.failed={};
   if(!S.src.length){
     renderSrcChips(0);
-    if(S.debridMode&&!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return removed;}
-    showPE('All Real-Debrid links were removed (copyright / unavailable). Try Embed or another title.');
+    showPE('All premium links were removed (copyright / unavailable). Try Retry streams or another title.');
     return removed;
   }
   var next=0;
@@ -2213,7 +2230,7 @@ function handleSrc(data){
     var t=(s.title||'')+' '+(s.source||'');
     return !/copyright infringement|infringing|unavailable for legal/i.test(t);
   });
-  if(!S.src.length){showPE('No playable Real-Debrid links (blocked for copyright). Try Embed backups.');return;}
+  if(!S.src.length){showPE('No playable premium links (blocked for copyright). Try Retry streams.');return;}
   // Sort: web 1080→4K→720; Fire Stick/app 1080→720→4K (4K/HEVC often black-screens on TV)
   if(S.debridMode){
     var tv=isTvApp()||isNativeApp();
@@ -2251,8 +2268,8 @@ function handleSrc(data){
   var moreBtn=$('moreSrvBtn');
   if(moreBtn){
     moreBtn.style.display='inline-flex';
-    moreBtn.textContent=S.debridMode?'Embed backups':'More servers';
-    moreBtn.title=S.debridMode?'Load embed backups':'More embed servers';
+    moreBtn.textContent='Retry streams';
+    moreBtn.title='Search premium streams again';
   }
   renderSrcChips(0);
   renderPlayerChips();
@@ -2271,8 +2288,7 @@ function nextSrc(){tryS(S.si+1);}
 function tryS(idx){
   destroyPlayer();
   if(idx>=S.src.length){
-    if(S.debridMode&&!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
-    showPE('All streams failed. Switch Player to Embed/External, or try another title.');
+    showPE('All premium streams failed. Try Retry streams or another title.');
     return;
   }
   // Skip already-failed chips when jumping ahead
@@ -2283,33 +2299,25 @@ function tryS(idx){
   var gen=++S.playGen;
   var total=S.src.length;
   setSt('sld',s.debrid
-    ?('Trying RD '+(idx+1)+'/'+total+' · '+(s.quality||'HD')+(s.size?' · '+s.size:''))
+    ?('Trying stream '+(idx+1)+'/'+total+' · '+(s.quality||'HD')+(s.size?' · '+s.size:''))
     :('Loading '+s.source+'...'));
   if(!url){failToNext(idx,'empty');return;}
 
   var mode=getPlayerMode();
   var engine=resolvePlayer(s,url);
   if(engine==='external'){pExt(url,idx,gen);return;}
-  if(engine==='embed_servers'){
-    if(!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
-    pEmb(url,idx,gen);return;
+  // Embed mode disabled — treat as HTML5/HLS for debrid URLs
+  if(engine==='embed_servers'||engine==='embed'){
+    if(isHlsUrl(url,s))pHls(url,idx,gen);
+    else pDir(url,idx,gen);
+    return;
   }
-  if(engine==='embed'){pEmb(url,idx,gen);return;}
 
   if(engine==='hls'||isHlsUrl(url,s))pHls(url,idx,gen);
   else pDir(url,idx,gen);
 }
 function loadEmbedFallback(){
-  if(!S.item)return;
-  destroyPlayer();
-  var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
-  setSt('sld','Switching to embed servers…');
-  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Switching to embed servers...</span></div>';
-  S.cleanMode=true;
-  api(sourcesPath(id,type,S.sn,S.ep)).then(function(d){
-    if(d.success&&d.data&&d.data.sources&&d.data.sources.length)handleSrc(d.data);
-    else showPE('No working streams. Try Player → External, or another title.');
-  }).catch(function(e){showPE(e.message);});
+  showPE('Embed servers are disabled. Use premium streams only.');
 }
 function withAutoplay(url){
   if(!url)return url;
@@ -2534,7 +2542,7 @@ function showPE(msg){
   $('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p></p>'+
     '<button class="pbtn" onclick="retryAll()">Try Again</button>'+
     '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button>'+
-    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="setPlayerMode(\'embed\')">Use Embed</button>'+
+    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="retryPremiumStreams()">Retry streams</button>'+
     '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="setPlayerMode(\'external\')">External</button></div>';
   var p=$('pw').querySelector('p');if(p)p.textContent=String(msg||'Playback failed');
 }
@@ -2546,18 +2554,21 @@ function retryAll(){
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
   $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Retrying...</span></div>';
   $('srcbar').style.display='none';
-  var emb=function(){
-    var p=sourcesPath(id,type,S.sn,S.ep);
-    p+=(p.indexOf('?')>=0?'&':'?')+'nocache=1';
-    return api(p).then(function(d){if(d.success)handleSrc(d.data);else showPE('Still no sources.');});
-  };
-  if(!isAdFreeUser()){emb().catch(function(e){showPE(e.message);});return;}
+  if(!isAdFreeUser()){
+    showPE('Your free 24 hours have ended. Subscribe for £1/month to keep watching.');
+    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+    return;
+  }
   var imdb=S.item.imdbId;
   var isAdult=!!S.item.adult;
   fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item.title,year:S.item.year,adult:isAdult}).then(function(rd){
     if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){handleSrc({sources:rd.data.streams,debrid:true});return;}
-    if(isAdult){showPE('No XXX streams found on retry.');return;}
-    return emb();
+    if(rd&&rd.code==='ADFREE_REQUIRED'){
+      showPE(rd.error||'Subscribe £1/month to keep watching.');
+      if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+      return;
+    }
+    showPE(isAdult?'No XXX streams found on retry.':'No premium streams found on retry.');
   }).catch(function(e){showPE(e.message);});
 }
 function closeModal(){

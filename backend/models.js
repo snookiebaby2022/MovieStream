@@ -18,7 +18,15 @@ const UserSchema = new mongoose.Schema({
   resetExpires: { type: Date, default: null },
   adFree: { type: Boolean, default: false },
   adFreeAt: { type: Date, default: null },
+  /** Promo / grandfathered one-time unlock — never expires */
+  lifetimeUnlock: { type: Boolean, default: false },
+  /** 24h free premium access from signup (or first check for legacy free accounts) */
+  trialEndsAt: { type: Date, default: null },
   stripeSessionId: { type: String, default: '' },
+  stripeCustomerId: { type: String, default: '', index: true },
+  stripeSubscriptionId: { type: String, default: '', index: true },
+  /** active | trialing | past_due | canceled | unpaid | incomplete | … */
+  subscriptionStatus: { type: String, default: '' },
   /** Set when user claims a launch promo (e.g. 'first10') */
   promoClaim: { type: String, default: '', index: true },
   watchlist: [{

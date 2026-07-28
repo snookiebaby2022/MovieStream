@@ -335,7 +335,7 @@ function wantAdultQuery(req) {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-/** Adult/XXX is Ad-Free only — query flag alone is not enough */
+/** Adult/XXX requires premium entitlement (trial / subscription / lifetime) */
 async function allowAdult(req) {
   if (!wantAdultQuery(req)) return false;
   const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -343,8 +343,11 @@ async function allowAdult(req) {
   if (!payload?.id) return false;
   try {
     if (require('mongoose').connection.readyState !== 1) return false;
-    const u = await User.findById(payload.id).select('adFree');
-    return !!u?.adFree;
+    const { isEntitled, ensureTrialClock } = require('./entitlement');
+    let u = await User.findById(payload.id);
+    if (!u) return false;
+    u = await ensureTrialClock(u);
+    return isEntitled(u);
   } catch {
     return false;
   }
@@ -867,28 +870,19 @@ app.get('/api/season/:tmdbId/:season', async (req, res) => {
 });
 
 app.get('/api/sources/:tmdbId/:type', async (req, res) => {
-  try {
-    if (!requireUser(req, res)) return;
-    const { tmdbId, type } = req.params;
-    const { season, episode, nocache, all } = req.query;
-    // Default clean-only (fewer popup-prone hosts). ?all=1 unlocks fallback servers.
-    const clean = all !== '1' && all !== 'true';
-    const ck = `src8:${tmdbId}:${type}:${season||0}:${episode||0}:${clean?'c':'a'}`;
-    if (!nocache) {
-      const c = await getC(ck);
-      if (c) { console.log(`Cache hit: ${ck}`); return res.json({ success: true, data: c, cached: true }); }
+  // Embeds removed — premium debrid only
+  if (!requireUser(req, res)) return;
+  return res.json({
+    success: true,
+    data: {
+      sources: [],
+      errors: [],
+      totalSources: 0,
+      cleanOnly: true,
+      disabled: true,
+      message: 'Embed servers removed. Use premium debrid streams.'
     }
-    console.log(`Scraping: ${ck}`);
-    const { sources, errors, cleanOnly } = await scraper.getSources(
-      tmdbId, type,
-      season  ? parseInt(season)  : null,
-      episode ? parseInt(episode) : null,
-      { clean }
-    );
-    const result = { sources, errors, totalSources: sources.length, cleanOnly, scrapedAt: Date.now() };
-    if (sources.length > 0) await setC(ck, result, 1800);
-    res.json({ success: true, data: result });
-  } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+  });
 });
 
 app.get('/api/genres/:type', async (req, res) => {
@@ -1538,6 +1532,13 @@ app.patch('/api/admin/users/:id', adminAuth, async (req, res) => {
     if (typeof adFree === 'boolean') {
       user.adFree = adFree;
       user.adFreeAt = adFree ? (user.adFreeAt || new Date()) : null;
+      if (adFree) {
+        user.lifetimeUnlock = true;
+      } else {
+        user.lifetimeUnlock = false;
+        user.subscriptionStatus = '';
+        user.stripeSubscriptionId = user.stripeSubscriptionId || '';
+      }
     }
     if (email !== undefined) user.email = String(email || '').trim().toLowerCase().slice(0, 120);
     if (username !== undefined) {
@@ -1603,7 +1604,9 @@ app.post('/api/admin/users', adminAuth, async (req, res) => {
       email,
       passHash,
       adFree,
-      adFreeAt: adFree ? new Date() : null
+      adFreeAt: adFree ? new Date() : null,
+      lifetimeUnlock: !!adFree,
+      trialEndsAt: adFree ? null : require('./entitlement').trialEndsFrom(new Date())
     });
     res.json({
       success: true,

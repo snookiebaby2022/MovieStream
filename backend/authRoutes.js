@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { User, Comment, Rating } = require('./models');
+const { trialEndsFrom, entitlementPayload, ensureTrialClock } = require('./entitlement');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'flixnova-dev-secret-change-me';
@@ -75,10 +76,21 @@ router.post('/register', async (req, res) => {
     const user = await User.create({
       username: String(username).trim().toLowerCase(),
       email: email ? String(email).trim() : '',
-      passHash
+      passHash,
+      trialEndsAt: trialEndsFrom(new Date())
     });
     const token = signToken({ id: String(user._id), username: user.username });
-    res.json({ success: true, token, username: user.username, adFree: !!user.adFree });
+    const ent = entitlementPayload(user);
+    res.json({
+      success: true,
+      token,
+      username: user.username,
+      adFree: ent.adFree,
+      entitled: ent.entitled,
+      trialEndsAt: ent.trialEndsAt,
+      trialActive: ent.trialActive,
+      needsPay: ent.needsPay
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -88,12 +100,23 @@ router.post('/login', async (req, res) => {
   try {
     if (!dbReady(res)) return;
     const { username, password } = req.body || {};
-    const user = await User.findOne({ username: String(username || '').trim().toLowerCase() });
+    let user = await User.findOne({ username: String(username || '').trim().toLowerCase() });
     if (!user || !(await bcrypt.compare(String(password || ''), user.passHash))) {
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
+    user = await ensureTrialClock(user);
     const token = signToken({ id: String(user._id), username: user.username });
-    res.json({ success: true, token, username: user.username, adFree: !!user.adFree });
+    const ent = entitlementPayload(user);
+    res.json({
+      success: true,
+      token,
+      username: user.username,
+      adFree: ent.adFree,
+      entitled: ent.entitled,
+      trialEndsAt: ent.trialEndsAt,
+      trialActive: ent.trialActive,
+      needsPay: ent.needsPay
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -102,15 +125,23 @@ router.post('/login', async (req, res) => {
 router.get('/me', authRequired, async (req, res) => {
   try {
     if (!dbReady(res)) return;
-    const user = await User.findById(req.user.id).select('-passHash -resetToken');
+    let user = await User.findById(req.user.id).select('-passHash -resetToken');
     if (!user) return res.status(404).json({ success: false, error: 'Not found' });
+    user = await ensureTrialClock(user);
+    const ent = entitlementPayload(user);
     res.json({
       success: true,
       data: {
         id: user._id,
         username: user.username,
         email: user.email,
-        adFree: !!user.adFree,
+        adFree: ent.adFree,
+        entitled: ent.entitled,
+        lifetimeUnlock: ent.lifetimeUnlock,
+        trialActive: ent.trialActive,
+        trialEndsAt: ent.trialEndsAt,
+        subscriptionStatus: ent.subscriptionStatus,
+        needsPay: ent.needsPay,
         adFreeAt: user.adFreeAt,
         promoClaim: user.promoClaim || '',
         watchlist: user.watchlist,

@@ -491,8 +491,8 @@
   }
 
   function isAdFree() {
-    // Prefer live account flag from /me or login — localStorage is only a fallback cache
     if (global.S && S.user && typeof S.user.adFree === 'boolean') return !!S.user.adFree;
+    if (global.S && S.user && typeof S.user.entitled === 'boolean') return !!S.user.entitled;
     return !!F.adFree;
   }
 
@@ -500,7 +500,10 @@
     F.adFree = !!on;
     if (on) localStorage.setItem('fn_adfree', '1');
     else localStorage.removeItem('fn_adfree');
-    if (global.S && S.user) S.user.adFree = !!on;
+    if (global.S && S.user) {
+      S.user.adFree = !!on;
+      S.user.entitled = !!on;
+    }
     renderAdUi();
   }
 
@@ -510,18 +513,23 @@
     return fetch('/api/pay/status', { headers: headers }).then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.success) return;
       F.payConfigured = !!d.configured;
-      F.payLabel = d.label || '£1.00';
+      F.payLabel = d.label || '£1.00/mo';
       F.promo = d.promo || null;
-      // Always sync from server (clears forged localStorage)
-      setAdFree(!!d.adFree);
+      F.trialActive = !!d.trialActive;
+      F.trialEndsAt = d.trialEndsAt || null;
+      setAdFree(!!d.adFree || !!d.entitled);
       var btn = $('adfreeBtn');
       if (btn) {
         btn.style.display = isAdFree() ? 'none' : 'inline-flex';
         if (!isAdFree() && d.promo && d.promo.active) {
-          btn.textContent = 'Free Ad-Free (' + d.promo.remaining + ' left)';
+          btn.textContent = 'Free Premium (' + d.promo.remaining + ' left)';
         } else {
-          btn.textContent = 'Ad-Free ' + F.payLabel;
+          btn.textContent = 'Premium ' + (F.payLabel || '£1/mo');
         }
+      }
+      var badge = $('adfreeBadge');
+      if (badge && isAdFree()) {
+        badge.textContent = F.trialActive ? 'Trial ✓' : 'Premium ✓';
       }
       renderPromoUi();
       renderAdUi();
@@ -549,50 +557,52 @@
       claimBtn.style.display = active ? 'block' : 'none';
       claimBtn.disabled = false;
       claimBtn.textContent = active
-        ? ('Claim free Ad-Free — ' + promo.remaining + ' of ' + promo.limit + ' left')
-        : 'Claim free Ad-Free';
+        ? ('Claim free lifetime — ' + promo.remaining + ' of ' + promo.limit + ' left')
+        : 'Claim free lifetime Premium';
     }
-    if (kicker) kicker.textContent = active ? 'Limited launch offer' : 'One-time unlock';
-    if (price) price.style.display = active ? 'none' : 'block';
+    if (kicker) kicker.textContent = active ? 'Limited launch offer' : '£1 / month';
+    if (price) {
+      price.style.display = active ? 'none' : 'block';
+      price.innerHTML = (F.payLabel || '£1').replace(/\/mo$/, '') + ' <span>per month · cancel anytime</span>';
+    }
     if (blurb) {
       blurb.textContent = active
-        ? 'Sign up (or log in), then claim one of the free Ad-Free spots — Real-Debrid, no FlixNova ads, and XXX catalog.'
-        : 'One payment unlocks premium streams, no FlixNova ads, and the Adult/XXX catalog.';
+        ? 'Sign up (or log in), then claim a free lifetime Premium spot — debrid streams, no FlixNova ads, and XXX catalog.'
+        : '24 hours free when you sign up. Then £1/month for premium debrid streams, no FlixNova ads, and Adult/XXX.';
     }
     if (note) {
       note.textContent = active
-        ? 'Must be signed in. When free spots are gone, Ad-Free is £1 forever.'
-        : 'Sign in required. Free accounts keep embed servers with ads.';
+        ? 'Must be signed in. When free spots are gone, Premium is £1/month.'
+        : 'Sign in required. After your free 24 hours, subscribe to keep watching.';
     }
     if (payBtn) {
-      payBtn.textContent = 'Unlock Ad-Free for ' + (F.payLabel || '£1');
+      payBtn.textContent = 'Subscribe ' + (F.payLabel || '£1/mo');
       payBtn.style.display = active ? 'none' : 'block';
     }
   }
 
   function openPayPromo(force) {
-    if (isAdFree()) return;
+    // Hide for lifetime / active subscribers unless forced during trial to upgrade early
+    if (isAdFree() && !F.trialActive) return;
     var ov = $('payPromoOv');
     if (!ov) return;
     renderPromoUi();
-    var label = F.payLabel || '£1';
     var btn = $('promoPayBtn');
-    if (btn && !(F.promo && F.promo.active)) btn.textContent = 'Unlock Ad-Free for ' + label;
+    if (btn && !(F.promo && F.promo.active)) btn.textContent = 'Subscribe ' + (F.payLabel || '£1/mo');
     ov.classList.add('on');
     if (force) localStorage.removeItem('fn_paypromo_dismiss');
-    // Refresh remaining slots when opening
     loadPayStatus();
   }
 
   function claimFirst10Promo() {
-    if (isAdFree()) { alert('You already have Ad-Free.'); return; }
+    if (isAdFree() && !F.trialActive) { alert('You already have Premium.'); return; }
     if (!(global.S && S.token)) {
       if (global.S) S._pendingPromoClaim = true;
       closePayPromo(false);
       if (typeof openAuth === 'function') openAuth('register');
       var err = $('authErr');
       if (err) {
-        err.textContent = 'Create a free account (or log in), then claim your free Ad-Free spot.';
+        err.textContent = 'Create a free account (or log in), then claim your free lifetime Premium spot.';
         err.style.display = 'block';
       }
       return;
@@ -605,22 +615,23 @@
       body: '{}'
     }).then(function (r) { return r.json().then(function (d) { d._http = r.status; return d; }); })
       .then(function (d) {
-        if (d.success && d.adFree) {
+        if (d.success && (d.adFree || d.entitled)) {
           setAdFree(true);
           F.promo = F.promo || {};
           F.promo.active = false;
           F.promo.remaining = d.remaining || 0;
           F.promo.alreadyClaimed = true;
+          F.trialActive = false;
           closePayPromo(false);
           renderAdUi();
           if (typeof refreshRdBtn === 'function') refreshRdBtn();
-          alert(d.message || 'Free Ad-Free unlocked — enjoy Real-Debrid streams!');
+          alert(d.message || 'Free lifetime Premium unlocked!');
           return;
         }
         if (d.code === 'PROMO_SOLD_OUT') {
           F.promo = d.promo || { active: false, remaining: 0 };
           renderPromoUi();
-          alert(d.error || 'Offer sold out. You can still unlock for £1.');
+          alert(d.error || 'Offer sold out. You can still subscribe for £1/month.');
           if (claimBtn) claimBtn.style.display = 'none';
           var payBtn = $('promoPayBtn');
           if (payBtn) payBtn.style.display = 'block';
@@ -641,9 +652,10 @@
   }
 
   function maybeShowPayPromo() {
-    if (isAdFree()) return;
-    // Guests see Sign Up / Log In first — £1 promo is for logged-in free users
+    if (isAdFree() && !F.trialActive) return;
+    // Guests see Sign Up / Log In first — paywall is for logged-in users after trial
     if (!(global.S && S.token)) return;
+    if (isAdFree() && F.trialActive) return; // don't nag during trial
     if (localStorage.getItem('fn_paypromo_dismiss')) {
       var ts = parseInt(localStorage.getItem('fn_paypromo_dismiss'), 10) || 0;
       if (Date.now() - ts < 2 * 24 * 60 * 60 * 1000) return;
@@ -657,15 +669,14 @@
   }
 
   function startCheckout() {
-    if (isAdFree()) { alert('You already have Ad-Free.'); return; }
+    if (isAdFree() && !F.trialActive) { alert('You already have Premium.'); return; }
     if (!(global.S && S.token)) {
-      // Must be logged in so Ad-Free sticks to the account
       if (global.S) S._pendingPay = true;
       closePayPromo(false);
       if (typeof openAuth === 'function') openAuth('register');
       var err = $('authErr');
       if (err) {
-        err.textContent = 'Create an account or log in, then we’ll take you to the £1 Ad-Free checkout.';
+        err.textContent = 'Create an account or log in, then we’ll take you to the £1/month checkout.';
         err.style.display = 'block';
       }
       return;
@@ -697,7 +708,8 @@
         .then(function (d) {
           if (d.success) {
             setAdFree(true);
-            alert(d.message || 'Ad-Free unlocked. Thanks!');
+            F.trialActive = false;
+            alert(d.message || 'Premium subscribed. Thanks!');
           } else {
             alert(d.error || 'Could not confirm payment');
           }
@@ -733,10 +745,18 @@
 
   function renderAdUi() {
     var btn = $('adfreeBtn');
-    if (btn) btn.style.display = isAdFree() ? 'none' : 'inline-flex';
+    if (btn) btn.style.display = isAdFree() && !F.trialActive ? 'none' : (isAdFree() && F.trialActive ? 'inline-flex' : (isAdFree() ? 'none' : 'inline-flex'));
+    if (btn && isAdFree() && F.trialActive) btn.textContent = 'Subscribe £1/mo';
+    if (btn && !isAdFree()) {
+      /* label set in loadPayStatus */
+    }
+    if (btn && isAdFree() && !F.trialActive) btn.style.display = 'none';
     var badge = $('adfreeBadge');
-    if (badge) badge.style.display = isAdFree() ? 'inline-flex' : 'none';
-    if (isAdFree()) closePayPromo(false);
+    if (badge) {
+      badge.style.display = isAdFree() ? 'inline-flex' : 'none';
+      if (isAdFree()) badge.textContent = F.trialActive ? 'Trial ✓' : 'Premium ✓';
+    }
+    if (isAdFree() && !F.trialActive) closePayPromo(false);
     injectRowAds();
     if (typeof refreshRdBtn === 'function') refreshRdBtn();
     if (typeof syncAdultUi === 'function') syncAdultUi();

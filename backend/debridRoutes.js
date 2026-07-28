@@ -1,12 +1,13 @@
 /**
- * Real-Debrid streams via multiple Stremio providers + adult/title torrent search.
- * Providers: Torrentio, Comet, optional MediaFusion (MEDIAFUSION_CONFIG env).
- * XXX / sparse titles: ApiBay (TPB) search → RD magnet resolve (cached preferred).
+ * Premium debrid streams via Stremio addons (Torrentio, Comet, MediaFusion, AIOStreams).
+ * Debrid backends: Real-Debrid, AllDebrid, Premiumize, TorBox (env tokens).
+ * XXX / sparse titles: ApiBay → Real-Debrid magnet resolve when RD token is set.
  */
 const express = require('express');
 const axios = require('axios');
 const { verifyToken } = require('./authRoutes');
 const { User } = require('./models');
+const { isEntitled, ensureTrialClock, entitlementPayload } = require('./entitlement');
 
 const router = express.Router();
 const TORRENTIO = (process.env.TORRENTIO_URL || 'https://torrentio.strem.fun').replace(/\/$/, '');
@@ -14,6 +15,12 @@ const COMET = (process.env.COMET_URL || 'https://comet.elfhosted.com').replace(/
 const MEDIAFUSION = (process.env.MEDIAFUSION_URL || 'https://mediafusion.elfhosted.com').replace(/\/$/, '');
 /** Optional path segment from MediaFusion “Share Manifest URL” (encrypted user data) */
 const MEDIAFUSION_CONFIG = (process.env.MEDIAFUSION_CONFIG || '').toString().trim().replace(/^\/+|\/+$/g, '');
+/** AIOStreams streams base (manifest URL without /manifest.json) */
+const AIOSTREAMS_BASE = (process.env.AIOSTREAMS_BASE_URL || '')
+  .toString()
+  .trim()
+  .replace(/\/$/, '')
+  .replace(/\/manifest\.json$/i, '');
 const RD_API = 'https://api.real-debrid.com/rest/1.0';
 const APIBAY = 'https://apibay.org';
 
@@ -23,6 +30,28 @@ function ua() {
 
 function siteToken() {
   return (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').toString().trim();
+}
+
+function envToken(key) {
+  return (process.env[key] || '').toString().trim();
+}
+
+/** Configured debrid providers for Torrentio/Comet */
+function configuredDebrids() {
+  const list = [];
+  const rd = siteToken();
+  if (rd) list.push({ id: 'realdebrid', label: 'rd', token: rd });
+  const ad = envToken('ALLDEBRID_API_TOKEN');
+  if (ad) list.push({ id: 'alldebrid', label: 'ad', token: ad });
+  const pm = envToken('PREMIUMIZE_API_TOKEN');
+  if (pm) list.push({ id: 'premiumize', label: 'pm', token: pm });
+  const tb = envToken('TORBOX_API_TOKEN');
+  if (tb) list.push({ id: 'torbox', label: 'tb', token: tb });
+  return list;
+}
+
+function anyPremiumConfigured() {
+  return configuredDebrids().length > 0 || !!MEDIAFUSION_CONFIG || !!AIOSTREAMS_BASE;
 }
 
 function tokenFrom(req) {
@@ -81,8 +110,9 @@ function browserScore(title, url, name) {
   const t = `${name || ''} ${title || ''} ${url || ''}`.toLowerCase();
   let score = 40;
   if (/\[rd\+\]/.test(t)) score += 90;
-  if (/⚡/.test(t) && !/\[rd\+\]/.test(t)) score += 70; // Comet cached
-  if (/\[rd download\]/.test(t)) score -= 80; // uncached — often useless for instant play
+  if (/\[ad\+\]|\[pm\+\]|\[tb\+\]/.test(t)) score += 90;
+  if (/⚡/.test(t) && !/\[rd\+\]|\[ad\+\]|\[pm\+\]|\[tb\+\]/.test(t)) score += 70; // Comet cached
+  if (/\[rd download\]|\[ad download\]|\[pm download\]|\[tb download\]/.test(t)) score -= 80;
   if (/\.mp4(\?|$)|[\s.\-_]mp4[\s.\-_]/i.test(t)) score += 55;
   if (/x264|h\.?264|avc/.test(t)) score += 45;
   if (/blu-?ray|bluray|bdrip|brrip|remux/.test(t)) score += 12;
@@ -119,7 +149,7 @@ function isRdKeywordRisky(title, name) {
 
 const INFRINGE_RE = /copyright infringement|infringing[_\s-]?file|error[_\s-]?code[_\s-]?35|"error_code"\s*:\s*35|unavailable for legal reasons|file was removed from debrid/i;
 
-async function requireAdFree(req, res) {
+async function requireEntitled(req, res) {
   const userTok = verifyToken(
     req.headers['x-user-token'] ||
     (req.headers.authorization || '').replace(/^Bearer\s+/i, '') ||
@@ -135,16 +165,29 @@ async function requireAdFree(req, res) {
     res.status(503).json({ success: false, error: 'Database unavailable' });
     return null;
   }
-  const user = await User.findById(userTok.id).select('adFree');
-  if (!user?.adFree) {
+  let user = await User.findById(userTok.id);
+  if (!user) {
+    res.status(401).json({ success: false, error: 'Login required', code: 'LOGIN_REQUIRED' });
+    return null;
+  }
+  user = await ensureTrialClock(user);
+  if (!isEntitled(user)) {
+    const ent = entitlementPayload(user);
     res.status(403).json({
       success: false,
-      error: 'Ad-Free (£1) required for Real-Debrid streams. Free accounts use embed servers.',
-      code: 'ADFREE_REQUIRED'
+      error: 'Your 24-hour free trial has ended. Subscribe for £1/month to keep watching.',
+      code: 'ADFREE_REQUIRED',
+      needsPay: true,
+      trialEndsAt: ent.trialEndsAt
     });
     return null;
   }
   return userTok;
+}
+
+/** @deprecated alias */
+async function requireAdFree(req, res) {
+  return requireEntitled(req, res);
 }
 
 function isAllowedProxyUrl(url) {
@@ -155,8 +198,12 @@ function isAllowedProxyUrl(url) {
     // RD resolve hosts + common CDN endings after unrestrict
     return (
       /(^|\.)real-debrid\.com$/i.test(h) ||
+      /(^|\.)alldebrid\.com$/i.test(h) ||
+      /(^|\.)premiumize\.me$/i.test(h) ||
+      /(^|\.)torbox\.app$/i.test(h) ||
       /(^|\.)strem\.fun$/i.test(h) ||
       /(^|\.)elfhosted\.com$/i.test(h) ||
+      /(^|\.)viren070\.me$/i.test(h) ||
       /(^|\.)googleusercontent\.com$/i.test(h) ||
       /(^|\.)googleapis\.com$/i.test(h) ||
       /(^|\.)cloudfront\.net$/i.test(h) ||
@@ -249,7 +296,7 @@ function mapAddonStreams(raw, provider) {
       const quality = parseQuality(title + ' ' + name);
       const isHls = /\.m3u8(\?|$)/i.test(playUrl) || /hls/i.test(playUrl);
       const bScore = browserScore(title, playUrl, name);
-      const cached = /\[rd\+\]|⚡|cached/i.test(name + ' ' + title);
+      const cached = /\[rd\+\]|\[ad\+\]|\[pm\+\]|\[tb\+\]|⚡|cached/i.test(name + ' ' + title);
       return {
         source: String(name).replace(/\n/g, ' ').slice(0, 40) || provider,
         title: String(title).split('\n')[0].slice(0, 80),
@@ -272,7 +319,7 @@ function mapAddonStreams(raw, provider) {
     .filter(Boolean);
 }
 
-function cometConfigB64(token) {
+function cometConfigB64(token, debridService = 'realdebrid') {
   const cfg = {
     cachedOnly: false,
     sortCachedUncachedTogether: false,
@@ -280,7 +327,7 @@ function cometConfigB64(token) {
     resultFormat: ['all'],
     maxResultsPerResolution: 0,
     maxSize: 0,
-    debridService: 'realdebrid',
+    debridService: debridService || 'realdebrid',
     debridApiKey: token,
     debridServices: [],
     enableTorrent: false,
@@ -318,25 +365,25 @@ async function fetchJsonStreams(url, label) {
   }
 }
 
-async function fetchTorrentio(token, path) {
-  // Prefer SDR / non-cam first; still allow 4K via soft/all fallbacks (sorted after 1080p)
-  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=hdr,dolbyvision,threed,scr,cam,unknown`;
-  const cfgSoft = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
-  const cfgAll = `realdebrid=${encodeURIComponent(token)}`;
-  let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgClean}${path}`, 'torrentio');
+async function fetchTorrentio(service, token, path) {
+  const cfgClean = `${service}=${encodeURIComponent(token)}|qualityfilter=hdr,dolbyvision,threed,scr,cam,unknown`;
+  const cfgSoft = `${service}=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
+  const cfgAll = `${service}=${encodeURIComponent(token)}`;
+  const label = `torrentio-${service}`;
+  let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgClean}${path}`, label);
   if (streams.filter(s => s.browserOk || s.quality === '1080p' || s.quality === '4K').length < 3) {
-    const more = await fetchJsonStreams(`${TORRENTIO}/${cfgSoft}${path}`, 'torrentio');
+    const more = await fetchJsonStreams(`${TORRENTIO}/${cfgSoft}${path}`, label);
     streams = dedupeStreams(streams.concat(more));
   }
   if (!streams.length) {
-    streams = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, 'torrentio');
+    streams = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, label);
   }
   return streams;
 }
 
-async function fetchComet(token, path) {
-  const b64 = cometConfigB64(token);
-  return fetchJsonStreams(`${COMET}/${b64}${path}`, 'comet');
+async function fetchComet(service, token, path) {
+  const b64 = cometConfigB64(token, service);
+  return fetchJsonStreams(`${COMET}/${b64}${path}`, `comet-${service}`);
 }
 
 async function fetchMediaFusion(path) {
@@ -344,20 +391,36 @@ async function fetchMediaFusion(path) {
   return fetchJsonStreams(`${MEDIAFUSION}/${MEDIAFUSION_CONFIG}${path}`, 'mediafusion');
 }
 
-/** Prefer fast Torrentio; always merge Comet (Elfhosted patches RD infringing filters). */
-async function fetchAddonStreams(token, path) {
-  const tioP = fetchTorrentio(token, path);
-  const cometP = fetchComet(token, path);
-  const mfP = fetchMediaFusion(path);
+async function fetchAioStreams(path) {
+  if (!AIOSTREAMS_BASE) return [];
+  return fetchJsonStreams(`${AIOSTREAMS_BASE}${path}`, 'aiostreams');
+}
 
-  const tio = await tioP.catch(() => []);
-  const waitMs = (tio || []).filter(s => s.browserOk).length >= 5 ? 1800 : 8000;
-  const timed = await Promise.race([
-    Promise.all([cometP.catch(() => []), mfP.catch(() => [])]),
-    new Promise(resolve => setTimeout(() => resolve([[], []]), waitMs))
-  ]);
-  const [comet, mf] = timed;
-  return dedupeStreams([...(tio || []), ...(comet || []), ...(mf || [])]);
+/** Parallel Torrentio/Comet per configured debrid + MediaFusion + AIOStreams */
+async function fetchAddonStreams(path) {
+  const debrids = configuredDebrids();
+  const jobs = [];
+  for (const d of debrids) {
+    jobs.push(fetchTorrentio(d.id, d.token, path).catch(() => []));
+    jobs.push(fetchComet(d.id, d.token, path).catch(() => []));
+  }
+  jobs.push(fetchMediaFusion(path).catch(() => []));
+  jobs.push(fetchAioStreams(path).catch(() => []));
+  if (!jobs.length) return [];
+
+  // Prefer early results from the first Torrentio (usually RD) for snappy UI
+  const first = jobs[0];
+  const tio = await first;
+  const waitMs = (tio || []).filter(s => s.browserOk).length >= 5 ? 2500 : 10000;
+  const rest = jobs.slice(1).map(p =>
+    Promise.race([p, new Promise(resolve => setTimeout(() => resolve([]), waitMs))])
+  );
+  const extras = await Promise.all(rest);
+  const flat = [...(tio || [])];
+  for (const arr of extras) {
+    if (Array.isArray(arr)) flat.push(...arr);
+  }
+  return dedupeStreams(flat);
 }
 
 function titleMatchScore(torrentName, title) {
@@ -697,7 +760,10 @@ async function validateTopStreams(streams, { want = 8, probeLimit = 14, keepUnpr
 }
 
 router.get('/status', async (req, res) => {
-  const siteConfigured = !!siteToken();
+  const siteConfigured = anyPremiumConfigured();
+  const providers = configuredDebrids().map(d => d.id);
+  if (MEDIAFUSION_CONFIG) providers.push('mediafusion');
+  if (AIOSTREAMS_BASE) providers.push('aiostreams');
   const userTok = (
     req.headers['x-rd-token'] ||
     req.body?.token ||
@@ -705,7 +771,13 @@ router.get('/status', async (req, res) => {
     ''
   ).toString().trim();
   if (!userTok) {
-    return res.json({ success: true, configured: false, siteConfigured });
+    return res.json({
+      success: true,
+      configured: false,
+      siteConfigured,
+      providers,
+      debridCount: configuredDebrids().length
+    });
   }
   try {
     const r = await axios.get(`${RD_API}/user`, {
@@ -843,17 +915,17 @@ router.get('/proxy', async (req, res) => {
 
 router.post('/streams', async (req, res) => {
   try {
-    if (!(await requireAdFree(req, res))) return;
+    if (!(await requireEntitled(req, res))) return;
 
-    const token = siteToken() || tokenFrom(req);
+    const rdToken = siteToken() || tokenFrom(req);
     const {
       imdbId, type, season, episode, tmdbId,
       title, year, adult
     } = req.body || {};
-    if (!token) {
+    if (!anyPremiumConfigured() && !rdToken) {
       return res.status(400).json({
         success: false,
-        error: 'Real-Debrid not configured on server (set REALDEBRID_API_TOKEN)'
+        error: 'No debrid providers configured (set REALDEBRID_API_TOKEN or other premium keys)'
       });
     }
 
@@ -908,19 +980,27 @@ router.post('/streams', async (req, res) => {
       }
     }
 
-    console.log('Debrid multi:', { path, imdb, adult: isAdult, title: metaTitle?.slice(0, 40), mediafusion: !!MEDIAFUSION_CONFIG });
+    console.log('Debrid multi:', {
+      path,
+      imdb,
+      adult: isAdult,
+      title: metaTitle?.slice(0, 40),
+      providers: configuredDebrids().map(d => d.id),
+      mediafusion: !!MEDIAFUSION_CONFIG,
+      aiostreams: !!AIOSTREAMS_BASE
+    });
 
     let streams = [];
     if (path) {
-      streams = await fetchAddonStreams(token, path);
+      streams = await fetchAddonStreams(path);
     }
 
-    // ApiBay magnet resolve is slow — only for adult titles or when addons found nothing playable
+    // ApiBay magnet resolve is RD-only — only when we have an RD token
     const playableSoFar = streams.filter(s => s.browserOk && s.cached).length;
-    const needApibay = isAdult || !streams.length || playableSoFar < 2;
+    const needApibay = rdToken && (isAdult || !streams.length || playableSoFar < 2);
     if (needApibay) {
       try {
-        const extra = await fetchApibayRdStreams(token, {
+        const extra = await fetchApibayRdStreams(rdToken, {
           imdb: imdb && imdb.startsWith('tt') ? imdb : '',
           title: metaTitle,
           year: metaYear,
@@ -947,13 +1027,9 @@ router.post('/streams', async (req, res) => {
       ((b.seeders || 0) - (a.seeders || 0))
     );
 
-    // Prefer cached when available, but never above a higher resolution
     streams = streams.slice(0, 40);
-
-    // Drop only confirmed copyright stubs from the top candidates (do not discard the rest)
     streams = await validateTopStreams(streams, { want: 12, probeLimit: 16, keepUnprobed: true });
 
-    // Re-apply 1080p → 4K → 720p order after probe merge
     streams = streams.slice().sort((a, b) =>
       (qualityRank(b.quality) - qualityRank(a.quality)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
