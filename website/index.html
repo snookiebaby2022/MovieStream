@@ -2166,15 +2166,15 @@ function handleSrc(data){
     return !/copyright infringement|infringing|unavailable for legal/i.test(t);
   });
   if(!S.src.length){showPE('No playable Real-Debrid links (blocked for copyright). Try Embed backups.');return;}
-  // Sort preferred first — 1080p, then 720p — but KEEP EVERY link so we can walk the full list
+  // Sort preferred first — 1080p, then 4K, then 720p — but KEEP EVERY link
   if(S.debridMode){
     var qRank=function(q){
       q=String(q||'').toUpperCase();
       if(q==='1080P')return 100;
-      if(q==='720P')return 80;
+      if(q==='4K')return 85;
+      if(q==='720P')return 70;
       if(q==='HD')return 50;
       if(q==='480P')return 30;
-      if(q==='4K')return 20;
       if(q==='CAM')return 0;
       return 40;
     };

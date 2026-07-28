@@ -45,14 +45,14 @@ function parseQuality(title) {
   return 'HD';
 }
 
-/** Higher = try first. Prefer 1080p, then 720p. */
+/** Higher = try first. Prefer 1080p, then 4K, then 720p. */
 function qualityRank(q) {
   switch (String(q || '').toUpperCase()) {
     case '1080P': return 100;
-    case '720P': return 80;
+    case '4K': return 85;
+    case '720P': return 70;
     case 'HD': return 50;
     case '480P': return 30;
-    case '4K': return 20;
     case 'CAM': return 0;
     default: return 40;
   }
@@ -90,9 +90,9 @@ function browserScore(title, url, name) {
   if (/amzn|netflix|\bnf\b|\bhulu\b|\bd\+|\batvp\b|disney|\bhbo\b|\bcr\b/.test(t)) score -= 25;
   if (/\byts\b|rarbg|sparkles|ion10/.test(t)) score -= 20;
   if (/1080p/.test(t)) score += 35;
-  if (/720p/.test(t)) score += 22;
+  if (/2160p|4k|uhd/.test(t)) score += 18; // after 1080p in sort, but keep in pool
+  if (/720p/.test(t)) score += 12;
   if (/480p|dvdrip|hdrip/.test(t)) score += 10;
-  if (/2160p|4k|uhd/.test(t)) score -= 70;
   // Hard codecs: browsers / Fire Stick WebView usually cannot decode
   if (/x265|h\.?265|hevc|10-?bit|hdr10|\bhdr\b|dolby\s*vision|\bdv\b/.test(t)) score -= 120;
   if (/\bav1\b/.test(t)) score -= 120;
@@ -319,12 +319,12 @@ async function fetchJsonStreams(url, label) {
 }
 
 async function fetchTorrentio(token, path) {
-  // Prefer SDR / non-4K / non-cam. HDR+DV+HEVC rarely plays in browser WebViews.
-  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k,hdr,dolbyvision,threed,scr,cam,unknown`;
-  const cfgSoft = `realdebrid=${encodeURIComponent(token)}|qualityfilter=4k,scr,cam,unknown`;
+  // Prefer SDR / non-cam first; still allow 4K via soft/all fallbacks (sorted after 1080p)
+  const cfgClean = `realdebrid=${encodeURIComponent(token)}|qualityfilter=hdr,dolbyvision,threed,scr,cam,unknown`;
+  const cfgSoft = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
   const cfgAll = `realdebrid=${encodeURIComponent(token)}`;
   let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgClean}${path}`, 'torrentio');
-  if (streams.filter(s => s.browserOk).length < 3) {
+  if (streams.filter(s => s.browserOk || s.quality === '1080p' || s.quality === '4K').length < 3) {
     const more = await fetchJsonStreams(`${TORRENTIO}/${cfgSoft}${path}`, 'torrentio');
     streams = dedupeStreams(streams.concat(more));
   }
@@ -936,8 +936,7 @@ router.post('/streams', async (req, res) => {
       return res.status(400).json({ success: false, error: 'IMDB id or title required for debrid streams' });
     }
 
-    // Sort best-first but KEEP a large pool — the client must try every link until one plays
-    // Priority: 1080p → 720p → other, then browser-friendly / cached
+    // Priority: 1080p → 4K → 720p → other, then browser-friendly / cached
     streams = streams.slice().sort((a, b) =>
       (qualityRank(b.quality) - qualityRank(a.quality)) ||
       ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
@@ -954,7 +953,7 @@ router.post('/streams', async (req, res) => {
     // Drop only confirmed copyright stubs from the top candidates (do not discard the rest)
     streams = await validateTopStreams(streams, { want: 12, probeLimit: 16, keepUnprobed: true });
 
-    // Re-apply 1080p → 720p order after probe merge
+    // Re-apply 1080p → 4K → 720p order after probe merge
     streams = streams.slice().sort((a, b) =>
       (qualityRank(b.quality) - qualityRank(a.quality)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
