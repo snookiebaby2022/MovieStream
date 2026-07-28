@@ -61,6 +61,8 @@ fun PlayerScreen(
     var showRail by remember { mutableStateOf(false) }
     var hideTick by remember { mutableLongStateOf(0L) }
     val closeFocus = remember { FocusRequester() }
+    val nextFocus = remember { FocusRequester() }
+    val railFocus = remember { FocusRequester() }
 
     val player = remember {
         val loadControl = DefaultLoadControl.Builder()
@@ -155,11 +157,20 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(showChrome) {
-        if (showChrome) {
+    LaunchedEffect(showChrome, showRail) {
+        if (showRail) {
             try {
-                closeFocus.requestFocus()
+                railFocus.requestFocus()
             } catch (_: Exception) {
+            }
+        } else if (showChrome) {
+            try {
+                nextFocus.requestFocus()
+            } catch (_: Exception) {
+                try {
+                    closeFocus.requestFocus()
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -171,7 +182,8 @@ fun PlayerScreen(
             .onPreviewKeyEvent { ev ->
                 if (ev.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
                 val code = ev.nativeKeyEvent.keyCode
-                // Any remote press while chrome hidden → show it (except when seeking)
+                // Menu open: D-pad ←→ moves focus (Next source / Sources).
+                // Seek with ←→ only when chrome is hidden.
                 if (!showChrome && !showRail) {
                     when (code) {
                         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
@@ -205,17 +217,13 @@ fun PlayerScreen(
                     }
                 } else {
                     when (code) {
-                        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                            if (!showRail) {
-                                seekBy(-10_000)
-                                true
-                            } else false
+                        KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                            seekBy(-10_000)
+                            true
                         }
-                        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                            if (!showRail) {
-                                seekBy(10_000)
-                                true
-                            } else false
+                        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                            seekBy(10_000)
+                            true
                         }
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                             if (player.isPlaying) player.pause() else player.play()
@@ -267,21 +275,23 @@ fun PlayerScreen(
                 )
                 Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text(status, color = Gold, fontSize = 14.sp)
-                Text("OK shows menu · ←→ seek · Back closes menu", color = TextMuted, fontSize = 12.sp)
+                Text("OK menu · ↓ then ←→ for Next source · seek when menu hidden", color = TextMuted, fontSize = 12.sp)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 10.dp)
                 ) {
+                    FocusButton(
+                        "Next source",
+                        primary = true,
+                        onClick = { playAt(index + 1) },
+                        modifier = Modifier.focusRequester(nextFocus)
+                    )
+                    FocusButton("Sources", onClick = {
+                        showRail = true
+                        bumpChrome(showSources = true)
+                    })
                     FocusButton("−10s", onClick = { seekBy(-10_000) })
                     FocusButton("+10s", onClick = { seekBy(10_000) })
-                    FocusButton("Next source", onClick = { playAt(index + 1) })
-                    FocusButton(
-                        label = if (showRail) "Hide sources" else "Sources",
-                        onClick = {
-                            showRail = !showRail
-                            bumpChrome(showSources = showRail)
-                        }
-                    )
                 }
             }
         }
@@ -305,7 +315,9 @@ fun PlayerScreen(
                             label = "${if (i == index) "▶ " else ""}${s.label()}",
                             primary = i == index,
                             onClick = { playAt(i) },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(if (i == 0) Modifier.focusRequester(railFocus) else Modifier)
                         )
                     }
                 }
