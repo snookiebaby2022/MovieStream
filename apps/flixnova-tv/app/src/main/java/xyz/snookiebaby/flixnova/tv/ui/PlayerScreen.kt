@@ -40,6 +40,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
@@ -62,9 +63,18 @@ fun PlayerScreen(
     val closeFocus = remember { FocusRequester() }
 
     val player = remember {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-        }
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs */ 2_500,
+                /* maxBufferMs */ 15_000,
+                /* bufferForPlaybackMs */ 1_000,
+                /* bufferForPlaybackAfterRebufferMs */ 2_000
+            )
+            .build()
+        ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
+            .build()
+            .apply { playWhenReady = true }
     }
 
     fun bumpChrome(showSources: Boolean = false) {

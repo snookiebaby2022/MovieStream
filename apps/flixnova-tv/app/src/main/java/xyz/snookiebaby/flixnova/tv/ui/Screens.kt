@@ -36,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -48,6 +47,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -57,7 +57,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import xyz.snookiebaby.flixnova.tv.SessionStore
 import xyz.snookiebaby.flixnova.tv.data.CatalogRow
 import xyz.snookiebaby.flixnova.tv.data.EpisodeItem
@@ -113,7 +118,6 @@ fun FocusButton(
                 color = if (focused) Gold else Color.White.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(10.dp)
             )
-            .scale(if (focused) 1.05f else 1f)
             .padding(horizontal = 20.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -124,40 +128,42 @@ fun FocusButton(
 @Composable
 fun PosterCard(item: MediaItem, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val poster = remember(item.poster) { FlixApi.thumb(item.poster) }
     Column(
         modifier = Modifier
-            .width(148.dp)
+            .width(132.dp)
             .tvClickable(focused, { focused = it }, onClick)
             .border(
                 width = if (focused) 3.dp else 0.dp,
                 color = Gold,
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(8.dp)
             )
-            .scale(if (focused) 1.08f else 1f)
-            .padding(4.dp)
+            .padding(3.dp)
     ) {
         AsyncImage(
-            model = item.poster,
+            model = ImageRequest.Builder(ctx)
+                .data(poster)
+                .size(185, 278)
+                .crossfade(false)
+                .build(),
             contentDescription = item.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(210.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .height(190.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(CardBg)
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             item.title,
             color = Color.White,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        if (item.year.isNotBlank()) {
-            Text(item.year, color = TextMuted, fontSize = 12.sp)
-        }
     }
 }
 
@@ -295,32 +301,70 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         loading = true
+        error = null
         try {
-            val tok = FlixApi.token()
-            val auth = FlixApi.bearer()
-            if (tok != null && auth != null) {
-                try {
-                    val me = FlixApi.service.me(auth, tok)
-                    val d = me.data
-                    status = when {
+            withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val tok = FlixApi.token()
+                    val auth = FlixApi.bearer()
+                    // Fast first paint: trending day, then full home (cached)
+                    val trendJob = async {
+                        try {
+                            FlixApi.service.trendingDay(auth, tok)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    val meJob = async {
+                        if (tok != null && auth != null) {
+                            try {
+                                FlixApi.service.me(auth, tok)
+                            } catch (_: Exception) {
+                                null
+                            }
+                        } else null
+                    }
+                    val me = meJob.await()
+                    val d = me?.data
+                    val statusText = when {
                         d?.lifetimeUnlock == true -> "Lifetime"
                         d?.trialActive == true -> "Trial"
                         d?.entitled == true -> "Premium"
                         d?.needsPay == true -> "Subscribe on phone · snookiebaby.xyz"
                         else -> "Signed in · manage plan on phone"
                     }
-                } catch (_: Exception) {
+                    withContext(Dispatchers.Main) { status = statusText }
+
+                    val trend = trendJob.await()
+                    if (trend?.success == true && !trend.data.isNullOrEmpty()) {
+                        val quick = listOf(
+                            CatalogRow(
+                                title = "Trending Today",
+                                items = trend.data!!.take(14).map {
+                                    it.copy(poster = FlixApi.thumb(it.poster), backdrop = null)
+                                }
+                            )
+                        )
+                        withContext(Dispatchers.Main) {
+                            rows = quick
+                            loading = false
+                        }
+                    }
+
+                    val home = FlixApi.homeCached()
+                    withContext(Dispatchers.Main) {
+                        if (home.isNotEmpty()) {
+                            rows = home
+                            error = null
+                        } else if (rows.isEmpty()) {
+                            error = "Could not load catalog"
+                        }
+                        loading = false
+                    }
                 }
             }
-            val home = FlixApi.service.homeCatalog(auth, tok)
-            if (home.success && home.data != null) {
-                rows = home.data!!.take(16)
-            } else {
-                error = home.error ?: "Could not load catalog"
-            }
         } catch (e: Exception) {
-            error = e.message
-        } finally {
+            if (rows.isEmpty()) error = e.message
             loading = false
         }
     }
@@ -362,19 +406,19 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(18.dp))
         when {
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            loading && rows.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Red)
             }
-            error != null -> Text(error!!, color = Red)
+            error != null && rows.isEmpty() -> Text(error!!, color = Red)
             else -> LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 contentPadding = PaddingValues(bottom = 40.dp)
             ) {
-                itemsIndexed(rows) { rowIndex, row ->
-                    Text(row.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        itemsIndexed(row.items) { itemIndex, item ->
+                itemsIndexed(rows, key = { _, row -> row.title }) { rowIndex, row ->
+                    Text(row.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        itemsIndexed(row.items, key = { _, item -> item.tmdbId.takeIf { it > 0 } ?: item.id }) { itemIndex, item ->
                             val mod = if (rowIndex == 0 && itemIndex == 0) {
                                 Modifier.focusRequester(firstPoster)
                             } else Modifier
@@ -407,8 +451,9 @@ fun BrowseScreen(
         try {
             val res = FlixApi.service.discover(path, FlixApi.bearer(), FlixApi.token())
             if (res.success) {
-                items = (res.data ?: emptyList()).map {
-                    if (it.type.isBlank()) it.copy(type = if (kind == "tv") "tv" else "movie") else it
+                items = (res.data ?: emptyList()).take(24).map {
+                    val typed = if (it.type.isBlank()) it.copy(type = if (kind == "tv") "tv" else "movie") else it
+                    typed.copy(poster = FlixApi.thumb(typed.poster), backdrop = null)
                 }
             } else error = res.error ?: "Browse failed"
         } catch (e: Exception) {
@@ -473,8 +518,11 @@ fun SearchScreen(onOpen: (MediaItem) -> Unit, onBack: () -> Unit) {
             error = null
             try {
                 val res = FlixApi.service.search(query, FlixApi.bearer(), FlixApi.token())
-                if (res.success) results = res.data ?: emptyList()
-                else error = res.error ?: "Search failed"
+                if (res.success) {
+                    results = (res.data ?: emptyList()).take(20).map {
+                        it.copy(poster = FlixApi.thumb(it.poster), backdrop = null)
+                    }
+                } else error = res.error ?: "Search failed"
             } catch (e: Exception) {
                 error = e.message
             } finally {
@@ -597,7 +645,7 @@ fun DetailScreen(
                         else -> res.error ?: "No streams"
                     }
                 } else {
-                    val list = res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList()
+                    val list = (res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList()).take(20)
                     if (list.isEmpty()) error = "No playable streams found"
                     else onPlay(d, season, ep, list)
                 }
@@ -614,7 +662,7 @@ fun DetailScreen(
             .fillMaxSize()
             .background(Bg)
     ) {
-        val bg = details?.backdrop ?: details?.poster
+        val bg = FlixApi.thumb(details?.backdrop ?: details?.poster)
         if (bg != null) {
             AsyncImage(
                 model = bg,

@@ -12,8 +12,8 @@ android {
         applicationId = "xyz.snookiebaby.flixnova.tv"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
         buildConfigField("String", "API_BASE", "\"https://snookiebaby.xyz\"")
     }
 
@@ -64,7 +64,6 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.4")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.google.code.gson:gson:2.11.0")

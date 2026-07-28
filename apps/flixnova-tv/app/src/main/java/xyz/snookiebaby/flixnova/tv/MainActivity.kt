@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import xyz.snookiebaby.flixnova.tv.data.FlixApi
 import xyz.snookiebaby.flixnova.tv.data.StreamItem
 import xyz.snookiebaby.flixnova.tv.ui.BrowseScreen
 import xyz.snookiebaby.flixnova.tv.ui.DetailScreen
@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        enableEdgeToEdge()
+        window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
         setContent {
             val nav = rememberNavController()
             var playTitle by remember { mutableStateOf("") }
@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                         onBrowseTv = { nav.navigate("browse/tv") },
                         onLogout = {
                             SessionStore.clear()
+                            FlixApi.clearHomeCache()
                             nav.navigate("login") {
                                 popUpTo(0) { inclusive = true }
                             }
@@ -107,7 +108,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { nav.popBackStack() },
                         onPlay = { details, _, _, streams ->
                             playTitle = details.title
-                            playStreams = streams
+                            playStreams = streams.take(20)
                             nav.navigate("player")
                         }
                     )
