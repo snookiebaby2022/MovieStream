@@ -1203,14 +1203,14 @@ function refreshOnlineCount(){
   }).catch(function(){});
 }
 function sockHello(){
+  if(document.hidden)return;
   var watching=currentWatchPayload();
-  var adminTok=null;
-  try{adminTok=localStorage.getItem('adminToken');}catch(e){}
-  var uname=S.user&&S.user.username?S.user.username:(adminTok?'admin':null);
+  // Only count signed-in site users — don't treat leftover adminToken as "you online"
+  var uname=S.user&&S.user.username?S.user.username:null;
   sockEmit('hello',{
     vid:visitorId(),
     username:uname,
-    role:adminTok?'admin':null,
+    role:null,
     page:watching?'watching':(S.section||'home'),
     watching:watching
   });
@@ -1223,9 +1223,22 @@ function sockWatchingUpdate(){
   if(w)sockEmit('watching',w);
   else sockEmit('stop-watching');
 }
+function sockGoAway(){
+  try{
+    if(sock&&sock.connected){
+      sock.emit('away');
+      sockEmit('stop-watching');
+    }
+  }catch(e){}
+}
 try{
   sock=io({transports:['websocket','polling'],reconnection:true,reconnectionDelay:1500});
   sock.on('connect',function(){
+    if(document.hidden){
+      sockGoAway();
+      try{sock.disconnect();}catch(e){}
+      return;
+    }
     sockHello();
     sockEmit('page-view',{page:S.section||'home'});
     refreshOnlineCount();
@@ -1234,11 +1247,25 @@ try{
   sock.on('online-stats',function(s){if(s&&typeof s.count==='number')setOnlineCount(s.count);});
 }catch(ex){console.log('Socket N/A');}
 function sockEmit(ev,d){try{if(sock&&sock.connected)sock.emit(ev,d);}catch(ex){}}
+function sockEnsureConnected(){
+  try{
+    if(!sock)return;
+    if(document.hidden)return;
+    if(!sock.connected)sock.connect();
+    else sockHello();
+  }catch(e){}
+}
 setInterval(function(){
+  if(document.hidden)return;
   refreshOnlineCount();
-  if(sock&&sock.connected)sockHello();
-},15000);
+  if(sock&&sock.connected){
+    sockEmit('ping-presence');
+    sockHello();
+  }else sockEnsureConnected();
+},12000);
 refreshOnlineCount();
+window.addEventListener('pagehide',function(){sockGoAway();try{if(sock)sock.disconnect();}catch(e){}});
+window.addEventListener('beforeunload',function(){sockGoAway();});
 
 // ── UTILS ──────────────────────────────────────────────────
 function $(id){return document.getElementById(id);}
@@ -3134,8 +3161,13 @@ document.addEventListener('visibilitychange',function(){
   if(document.hidden){
     try{heroYtCmd('mute');heroYtCmd('pauseVideo');}catch(e){}
     var v=$('hvid');if(v){v.classList.remove('on');v.innerHTML='';}
-  }else if(!$('ov').classList.contains('on')){
-    resumeHeroMedia();
+    sockGoAway();
+    try{if(sock)sock.disconnect();}catch(e){}
+  }else{
+    sockEnsureConnected();
+    if(!$('ov').classList.contains('on')){
+      resumeHeroMedia();
+    }
   }
 });
 var hs=document.createElement('script');hs.src='https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';document.head.appendChild(hs);

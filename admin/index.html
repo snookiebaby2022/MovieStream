@@ -2123,10 +2123,10 @@ async function loadOnline(){
     return `<tr>
       <td><span class="badge badge-purple">${esc(label)}</span>${roleBadge}${tabs}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${esc(u.ip||'')}</td>
-      <td><span class="badge ${u.device==='Mobile'?'badge-yellow':'badge-blue'}">${esc(u.device||'Unknown')}</span></td>
+      <td><span class="badge ${u.device==='Mobile'?'badge-yellow':(u.device==='TV'?'badge-purple':'badge-blue')}">${esc(u.device||'Unknown')}</span></td>
       <td style="font-size:13px">${esc(u.page||'home')}</td>
       <td>${watchCell}</td>
-      <td style="color:var(--muted);font-size:12px">${esc(ds)}</td>
+      <td style="color:var(--muted);font-size:12px">${esc(ds)}${typeof u.secondsAgo==='number'?' · '+u.secondsAgo+'s ago':''}</td>
     </tr>`;
   }).join('');
 }

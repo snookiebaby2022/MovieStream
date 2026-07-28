@@ -46,6 +46,7 @@ app.post('/api/pay/webhook', express.raw({ type: 'application/json' }), handleWe
 const online = new Map(); // socket.id -> session
 const visitors = new Map(); // stable visitor id -> { firstSeen, user, role }
 let totalViews = 0, totalWatches = 0;
+const ONLINE_HEARTBEAT_MS = 45000; // drop if no hello/ping within this window
 
 function clientIp(sock) {
   const xf = sock.handshake.headers['x-forwarded-for'];
@@ -53,18 +54,54 @@ function clientIp(sock) {
   return String(sock.handshake.address || '').replace('::ffff:', '');
 }
 
+function isFreshSession(u, now = Date.now()) {
+  if (!u) return false;
+  if ((u.vid || '').startsWith('tmp-')) return false;
+  return (now - (u.lastSeen || u.firstSeen || 0)) <= ONLINE_HEARTBEAT_MS;
+}
+
+function pruneStaleOnline() {
+  const now = Date.now();
+  let removed = 0;
+  for (const [id, u] of online.entries()) {
+    const age = now - (u.lastSeen || u.firstSeen || 0);
+    // tmp rows that never hello'd, or stale heartbeats
+    if ((u.vid || '').startsWith('tmp-') && age > 15000) {
+      online.delete(id);
+      removed++;
+      try {
+        const s = io.sockets.sockets.get(id);
+        if (s) s.disconnect(true);
+      } catch {}
+      continue;
+    }
+    if (!(u.vid || '').startsWith('tmp-') && age > ONLINE_HEARTBEAT_MS) {
+      online.delete(id);
+      removed++;
+      try {
+        const s = io.sockets.sockets.get(id);
+        if (s) s.disconnect(true);
+      } catch {}
+    }
+  }
+  return removed;
+}
+
 function getOnlineStats() {
+  const now = Date.now();
   const ips = new Set();
   const watchingIps = new Set();
+  let connections = 0;
   for (const u of online.values()) {
-    if ((u.vid || '').startsWith('tmp-')) continue;
+    if (!isFreshSession(u, now)) continue;
+    connections++;
     const key = u.ip || u.vid || u.id;
     ips.add(key);
     if (u.watching && (u.watching.title || u.watching.tmdbId)) watchingIps.add(key);
   }
   return {
     count: ips.size,
-    connections: [...online.values()].filter(u => !(u.vid || '').startsWith('tmp-')).length,
+    connections,
     currentlyWatching: watchingIps.size,
     totalViews,
     totalWatches
@@ -82,9 +119,10 @@ function scoreSession(u) {
 }
 
 function mergedOnlineUsers() {
+  const now = Date.now();
   const byKey = new Map();
   for (const u of online.values()) {
-    if ((u.vid || '').startsWith('tmp-')) continue;
+    if (!isFreshSession(u, now)) continue;
     const key = u.ip || u.vid || u.id;
     const cur = byKey.get(key);
     if (!cur) {
@@ -176,14 +214,17 @@ function upsertPresence(sock, payload) {
 }
 
 io.on('connection', sock => {
-  // Temporary row until client sends hello/identify
-  upsertPresence(sock, { vid: 'tmp-' + sock.id, page: 'home' });
-  broadcastOnline();
+  // Temporary row until client sends hello/identify (not counted until hello)
+  upsertPresence(sock, { vid: 'tmp-' + sock.id, page: 'connecting' });
   sock.emit('online-count', getOnlineStats().count);
 
   sock.on('hello', d => {
     upsertPresence(sock, d || {});
     broadcastOnline();
+  });
+  sock.on('ping-presence', () => {
+    const u = online.get(sock.id);
+    if (u) u.lastSeen = Date.now();
   });
   sock.on('page-view', d => {
     totalViews++;
@@ -232,11 +273,20 @@ io.on('connection', sock => {
     upsertPresence(sock, d || {});
     broadcastOnline();
   });
+  sock.on('away', () => {
+    // Tab hidden / app backgrounded — drop from online immediately
+    online.delete(sock.id);
+    broadcastOnline();
+  });
   sock.on('disconnect', () => {
     online.delete(sock.id);
     broadcastOnline();
   });
 });
+
+setInterval(() => {
+  if (pruneStaleOnline()) broadcastOnline();
+}, 10000);
 
 // ─── Middleware ───────────────────────────────────────────
 // Behind nginx/Cloudflare — required so express-rate-limit doesn't throw on X-Forwarded-For
@@ -1135,6 +1185,7 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
 });
 
 app.get('/api/admin/online', adminAuth, (req, res) => {
+  pruneStaleOnline();
   const stats = getOnlineStats();
   const users = mergedOnlineUsers()
     .map(u => ({
@@ -1148,9 +1199,13 @@ app.get('/api/admin/online', adminAuth, (req, res) => {
       page: u.watching ? 'watching' : (u.page || 'home'),
       watching: u.watching,
       tabs: u.tabs || 1,
-      device: /Mobile|Android|iPhone/i.test(u.ua) ? 'Mobile' : 'Desktop'
+      device: /FlixNovaTV|AFT|Android TV|BRAVIA/i.test(u.ua)
+        ? 'TV'
+        : (/FlixNovaApp|Mobile|Android|iPhone/i.test(u.ua) ? 'Mobile' : 'Desktop'),
+      lastSeen: u.lastSeen || null,
+      secondsAgo: Math.max(0, Math.floor((Date.now() - (u.lastSeen || Date.now())) / 1000))
     }))
-    .sort((a, b) => (b.duration || 0) - (a.duration || 0));
+    .sort((a, b) => (a.secondsAgo || 0) - (b.secondsAgo || 0));
   res.json({
     success: true,
     data: users,
