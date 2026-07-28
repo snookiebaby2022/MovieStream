@@ -257,6 +257,8 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
 fun HomeScreen(
     onOpen: (MediaItem) -> Unit,
     onSearch: () -> Unit,
+    onBrowseMovies: () -> Unit,
+    onBrowseTv: () -> Unit,
     onLogout: () -> Unit
 ) {
     var rows by remember { mutableStateOf<List<CatalogRow>>(emptyList()) }
@@ -277,8 +279,8 @@ fun HomeScreen(
                         d?.lifetimeUnlock == true -> "Lifetime"
                         d?.trialActive == true -> "Trial"
                         d?.entitled == true -> "Premium"
-                        d?.needsPay == true -> "Subscribe on phone"
-                        else -> "Signed in"
+                        d?.needsPay == true -> "Subscribe on phone · snookiebaby.xyz"
+                        else -> "Signed in · manage plan on phone"
                     }
                 } catch (_: Exception) {
                 }
@@ -316,6 +318,8 @@ fun HomeScreen(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FocusButton("Movies", onClick = onBrowseMovies)
+                FocusButton("TV Shows", onClick = onBrowseTv)
                 FocusButton("Search", onClick = onSearch)
                 FocusButton("Log out", onClick = onLogout)
             }
@@ -339,6 +343,58 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun BrowseScreen(
+    kind: String,
+    onOpen: (MediaItem) -> Unit,
+    onBack: () -> Unit
+) {
+    var items by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val title = if (kind == "tv") "TV Shows" else "Movies"
+    val path = if (kind == "tv") "tv" else "movie"
+
+    LaunchedEffect(kind) {
+        loading = true
+        try {
+            val res = FlixApi.service.discover(path, FlixApi.bearer(), FlixApi.token())
+            if (res.success) {
+                items = (res.data ?: emptyList()).map {
+                    if (it.type.isBlank()) it.copy(type = if (kind == "tv") "tv" else "movie") else it
+                }
+            } else error = res.error ?: "Browse failed"
+        } catch (e: Exception) {
+            error = e.message
+        } finally {
+            loading = false
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Bg)
+            .padding(36.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FocusButton("Back", onClick = onBack)
+            Text(title, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black)
+        }
+        Spacer(Modifier.height(18.dp))
+        when {
+            loading -> CircularProgressIndicator(color = Red)
+            error != null -> Text(error!!, color = Red)
+            else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(items) { item -> PosterCard(item) { onOpen(item) } }
             }
         }
     }

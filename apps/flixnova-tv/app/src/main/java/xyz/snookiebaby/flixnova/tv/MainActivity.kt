@@ -17,6 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import xyz.snookiebaby.flixnova.tv.data.StreamItem
+import xyz.snookiebaby.flixnova.tv.ui.BrowseScreen
 import xyz.snookiebaby.flixnova.tv.ui.DetailScreen
 import xyz.snookiebaby.flixnova.tv.ui.HomeScreen
 import xyz.snookiebaby.flixnova.tv.ui.LoginScreen
@@ -35,6 +36,10 @@ class MainActivity : ComponentActivity() {
 
             val start = if (SessionStore.isLoggedIn()) "home" else "login"
 
+            fun openItem(id: Long, type: String) {
+                nav.navigate("detail/$id/$type")
+            }
+
             NavHost(
                 navController = nav,
                 startDestination = start,
@@ -51,9 +56,11 @@ class MainActivity : ComponentActivity() {
                     HomeScreen(
                         onOpen = { item ->
                             val id = item.tmdbId.takeIf { it > 0 } ?: item.id
-                            nav.navigate("detail/$id/${item.type}")
+                            openItem(id, item.type.ifBlank { "movie" })
                         },
                         onSearch = { nav.navigate("search") },
+                        onBrowseMovies = { nav.navigate("browse/movie") },
+                        onBrowseTv = { nav.navigate("browse/tv") },
                         onLogout = {
                             SessionStore.clear()
                             nav.navigate("login") {
@@ -62,11 +69,25 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+                composable(
+                    route = "browse/{kind}",
+                    arguments = listOf(navArgument("kind") { type = NavType.StringType })
+                ) { entry ->
+                    val kind = entry.arguments?.getString("kind") ?: "movie"
+                    BrowseScreen(
+                        kind = kind,
+                        onOpen = { item ->
+                            val id = item.tmdbId.takeIf { it > 0 } ?: item.id
+                            openItem(id, item.type.ifBlank { if (kind == "tv") "tv" else "movie" })
+                        },
+                        onBack = { nav.popBackStack() }
+                    )
+                }
                 composable("search") {
                     SearchScreen(
                         onOpen = { item ->
                             val id = item.tmdbId.takeIf { it > 0 } ?: item.id
-                            nav.navigate("detail/$id/${item.type}")
+                            openItem(id, item.type.ifBlank { "movie" })
                         },
                         onBack = { nav.popBackStack() }
                     )
