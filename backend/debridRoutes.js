@@ -137,13 +137,21 @@ async function requireAdFree(req, res) {
 function isAllowedProxyUrl(url) {
   try {
     const u = new URL(String(url || ''));
-    if (u.protocol !== 'https:') return false;
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
     const h = u.hostname.toLowerCase();
-    // Only origin hosts we emit from Torrentio/Comet/RD unrestrict — proxy follows redirects server-side
+    // RD resolve hosts + common CDN endings after unrestrict
     return (
       /(^|\.)real-debrid\.com$/i.test(h) ||
       /(^|\.)strem\.fun$/i.test(h) ||
-      /(^|\.)elfhosted\.com$/i.test(h)
+      /(^|\.)elfhosted\.com$/i.test(h) ||
+      /(^|\.)googleusercontent\.com$/i.test(h) ||
+      /(^|\.)googleapis\.com$/i.test(h) ||
+      /(^|\.)cloudfront\.net$/i.test(h) ||
+      /(^|\.)akamaihd\.net$/i.test(h) ||
+      /(^|\.)akamaized\.net$/i.test(h) ||
+      /(^|\.)fastly\.net$/i.test(h) ||
+      /\.cdn\./i.test(h) ||
+      /download/i.test(h)
     );
   } catch {
     return false;
@@ -622,9 +630,9 @@ function dedupeStreams(list) {
 
 /**
  * Probe top candidates and drop copyright stubs / dead links before the client sees them.
- * This is the durable fix for RD returning unplayable "premium" chips.
+ * keepUnprobed=true returns the full list (copyright removed) so the player can try every link.
  */
-async function validateTopStreams(streams, { want = 8, probeLimit = 14 } = {}) {
+async function validateTopStreams(streams, { want = 8, probeLimit = 14, keepUnprobed = false } = {}) {
   if (!streams.length) return [];
   const ranked = streams.slice().sort((a, b) =>
     ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
@@ -642,9 +650,10 @@ async function validateTopStreams(streams, { want = 8, probeLimit = 14 } = {}) {
 
   const queue = candidates.slice();
   const workers = Array.from({ length: Math.min(5, queue.length) }, async () => {
-    while (queue.length && validated.length < want) {
+    while (queue.length) {
       const s = queue.shift();
       if (!s) break;
+      // Once we have enough good probes, still finish rejecting copyright on remaining queue items lightly
       const result = await probeStreamUrl(s.url);
       if (!result.ok && (result.reason === 'copyright' || result.reason === 'copyright_stub')) {
         rejected.add(String(s.url || '').split('?')[0].toLowerCase());
@@ -660,6 +669,14 @@ async function validateTopStreams(streams, { want = 8, probeLimit = 14 } = {}) {
   await Promise.all(workers);
 
   const notRejected = (s) => !rejected.has(String(s.url || '').split('?')[0].toLowerCase());
+  const good = dedupeStreams(validated.concat(backlog.filter(notRejected)));
+  const leftover = ranked.filter(s => notRejected(s) && !good.some(g => g.url === s.url));
+
+  if (keepUnprobed) {
+    // Best probed first, then everything else — client walks the full list
+    return dedupeStreams(good.concat(leftover)).slice(0, 40);
+  }
+
   const picked = dedupeStreams(validated.concat(backlog.filter(s => s.browserOk && notRejected(s))));
   if (picked.length >= 2) return picked.slice(0, Math.max(want, 12));
   return dedupeStreams(picked.concat(ranked.filter(notRejected))).slice(0, 40);
@@ -905,41 +922,25 @@ router.post('/streams', async (req, res) => {
       return res.status(400).json({ success: false, error: 'IMDB id or title required for debrid streams' });
     }
 
-    // Progressive narrowing: only keep links that can actually play in-browser.
-    // Order matters — each step keeps a fallback if it would empty the list.
-    const narrow = (pred, min = 2) => {
-      const next = streams.filter(pred);
-      if (next.length >= min) streams = next;
-    };
-    narrow(s => s.browserOk && !s.hardCodec, 2);
-    narrow(s => s.cached, 2);
-    narrow(s => !s.rdRisky, 2);
-    narrow(s => s.quality !== '4K', 2);
-    // Drop uncached "[RD download]" leftovers when any cached remain
-    narrow(s => s.cached || !/\[rd download\]/i.test(`${s.source || ''} ${s.title || ''}`), 1);
-
-    // Sort before probe so we validate the best candidates first
+    // Sort best-first but KEEP a large pool — the client must try every link until one plays
     streams = streams.slice().sort((a, b) =>
       ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
-      ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
       ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
+      ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
       ((b.browserScore || 0) - (a.browserScore || 0)) ||
       ((b.seeders || 0) - (a.seeders || 0))
     );
 
-    // Pre-validate so the UI does not show dead/copyright chips first
-    streams = await validateTopStreams(streams, { want: 10, probeLimit: 18 });
+    // Prefer cached when available, but always keep a fat fallback list
+    const cached = streams.filter(s => s.cached);
+    const rest = streams.filter(s => !s.cached);
+    streams = (cached.length ? cached.concat(rest) : streams).slice(0, 40);
 
-    // Final: if probes found playable browser links, hide the rest from Auto
-    const playable = streams.filter(s => s.validated && s.browserOk && !s.hardCodec);
-    if (playable.length >= 1) streams = playable;
-    else {
-      const soft = streams.filter(s => s.browserOk && !s.hardCodec);
-      if (soft.length) streams = soft;
-    }
+    // Drop only confirmed copyright stubs from the top candidates (do not discard the rest)
+    streams = await validateTopStreams(streams, { want: 12, probeLimit: 16, keepUnprobed: true });
 
-    streams = streams.slice(0, 24);
+    streams = streams.slice(0, 40);
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
     console.log('Debrid result:', {
       imdb,

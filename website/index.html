@@ -1988,17 +1988,22 @@ function isNativeApp(){
 function isTvApp(){
   return !!(window.FlixNovaIsTv||document.body.classList.contains('tv-mode')||(window.FlixNovaNative&&window.FlixNovaNative.tv));
 }
-/** App WebView plays RD best via same-origin proxy (auth + redirects handled server-side) */
+/** App WebView: proxy RD hosts so Range/auth/redirects work reliably */
 function nativePlayUrl(url){
   if(!url||!S.debridMode||!isNativeApp()||!S.token)return url;
   if(/\/api\/debrid\/proxy\?/i.test(url))return url;
-  try{
-    var host=(new URL(url,location.href)).hostname.toLowerCase();
-    if(!(/(^|\.)real-debrid\.com$/i.test(host)||/(^|\.)strem\.fun$/i.test(host)||/(^|\.)elfhosted\.com$/i.test(host))){
-      return url;
-    }
-  }catch(e){return url;}
+  if(!/^https?:\/\//i.test(url))return url;
+  // Proxy every RD https link on native — host allowlist is enforced server-side
   return '/api/debrid/proxy?token='+encodeURIComponent(S.token)+'&u='+encodeURIComponent(url);
+}
+/** Advance to next RD/source immediately — never stall waiting on validate */
+function failToNext(idx,reason){
+  mFail(idx);
+  var n=(idx||0)+1,total=(S.src&&S.src.length)||0;
+  if(S.debridMode&&n<total){
+    setSt('sld','RD link '+(idx+1)+'/'+total+(reason?' ('+reason+')':'')+' failed — trying next…');
+  }
+  tryS(n);
 }
 function destroyPlayer(){
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
@@ -2050,20 +2055,13 @@ function isDirectUrl(url,s){
   return /\.(m3u8|mp4|webm|mkv)(\?|$)/i.test(url);
 }
 function isHardFailUrl(url,s){
+  // Used only for sorting hints — never skip debrid links without trying them
   var u=String(url||'');
   var t=String((s&&(s.title||s.source))||'');
   if(s&&s.hardCodec)return true;
-  // On native app, skip formats WebView usually cannot decode
-  if(isNativeApp()){
-    if(/\.mkv(\?|$)/i.test(u))return true;
-    if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b|\bhdr10\b|10-?bit/i.test(u+' '+t)&&!/x264|h\.?264|avc|\.mp4/i.test(u+' '+t))return true;
-    // Trust server browserOk=true — don't hard-fail just because browserOk was omitted
-    if(s&&s.browserOk===false&&!/\.mp4(\?|$)/i.test(u))return true;
-    return false;
-  }
+  if(/\.mkv(\?|$)/i.test(u))return true;
+  if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b|hdr10|10-?bit/i.test(u+' '+t)&&!/x264|h\.?264|avc|\.mp4/i.test(u+' '+t))return true;
   if(s&&s.browserOk===false)return true;
-  // Desktop: hard codecs fail in Chrome more often than not
-  if(/x265|h\.?265|hevc|av1|dolby\s*vision|\bdv\b|hdr10|\bhdr\b|10-?bit/i.test(u+' '+t)&&!/x264|h\.?264|avc/i.test(t))return true;
   return false;
 }
 function resolvePlayer(s,url){
@@ -2074,12 +2072,9 @@ function resolvePlayer(s,url){
   if(mode==='embed')return (direct&&s&&s.debrid)?'embed_servers':'embed';
   if(mode==='hls')return direct?(hls?'hls':'html5'):'embed';
   if(mode==='html5')return direct?'html5':'embed';
-  // auto
-  if(!direct)return 'embed';
-  if(isNativeApp()&&isHardFailUrl(url,s))return 'skip';
-  if(hls)return 'hls';
-  if(isNativeApp()&&/\.mkv(\?|$)/i.test(url))return 'skip';
-  return 'html5';
+  // auto — always TRY debrid/direct links (never skip); cycle on failure
+  if(direct)return hls?'hls':'html5';
+  return 'embed';
 }
 function renderSrcChips(activeIdx){
   var on=typeof activeIdx==='number'?activeIdx:(S.si||0);
@@ -2140,24 +2135,22 @@ function checkAndDropRd(url,idx){
     return false;
   }).catch(function(){return false;});
 }
-/** RD copyright blocks often play as a ~30s orange stub video — not an HTML error */
+/** RD copyright blocks — only trust explicit infringement markers (duration heuristic was false-positive) */
 function isRdCopyrightStub(video, source){
   if(!S.debridMode||!video)return false;
   var src='';
   try{src=String(video.currentSrc||video.src||(source&&(source.embedUrl||source.url))||'');}catch(e){}
   if(/failed_infringement|failed_opening|failed_unexpected|\/videos\/failed_/i.test(src))return true;
-  var d=video.duration;
-  if(!isFinite(d)||d<=0)return false;
-  // RD/Torrentio placeholder stubs are typically ~20–40 seconds
-  if(d>=20&&d<=40)return true;
   return false;
 }
 function dropCopyrightStub(url,idx,gen){
   if(gen&&gen!==S.playGen)return;
   destroyPlayer();
-  setSt('sld','Blocked RD link (copyright) — removing…');
-  if(url)dropSrcUrls([url],'copyright');
-  else{mFail(idx);tryS(idx+1);}
+  setSt('sld','Blocked RD link (copyright) — trying next…');
+  if(url){
+    var removed=dropSrcUrls([url],'copyright');
+    if(!removed)failToNext(idx,'copyright');
+  }else failToNext(idx,'copyright');
 }
 function handleSrc(data){
   destroyPlayer();
@@ -2173,29 +2166,16 @@ function handleSrc(data){
     return !/copyright infringement|infringing|unavailable for legal/i.test(t);
   });
   if(!S.src.length){showPE('No playable Real-Debrid links (blocked for copyright). Try Embed backups.');return;}
-  // Prefer browser-friendly RD streams first (mp4/x264 over 4K HEVC)
+  // Sort preferred first — but KEEP EVERY link so we can walk the full list
   if(S.debridMode){
-    var soft=S.src.filter(function(s){return s.browserOk!==false&&!s.hardCodec;});
-    if(soft.length)S.src=soft;
-    var cached=S.src.filter(function(s){return s.cached;});
-    if(cached.length)S.src=cached;
-    // Fire Stick / Android WebView: prefer real MP4 containers
-    if(isNativeApp()){
-      var mp4=S.src.filter(function(s){
-        var u=String(s.url||s.embedUrl||'');
-        var t=String(s.title||'')+' '+String(s.source||'');
-        return /\.mp4(\?|$)/i.test(u)||/\bmp4\b/i.test(t);
-      });
-      if(mp4.length)S.src=mp4;
-    }
     S.src=S.src.slice().sort(function(a,b){
       var amp4=/\.mp4(\?|$)/i.test(String(a.url||''))?1:0;
       var bmp4=/\.mp4(\?|$)/i.test(String(b.url||''))?1:0;
-      return bmp4-amp4
-        || (b.browserOk?1:0)-(a.browserOk?1:0)
+      return (b.browserOk?1:0)-(a.browserOk?1:0)
+        || (b.cached?1:0)-(a.cached?1:0)
+        || bmp4-amp4
         || (a.hardCodec?1:0)-(b.hardCodec?1:0)
         || (a.rdRisky?1:0)-(b.rdRisky?1:0)
-        || (b.cached?1:0)-(a.cached?1:0)
         || (b.browserScore||0)-(a.browserScore||0);
     });
   }
@@ -2226,24 +2206,20 @@ function tryS(idx){
     showPE('All streams failed. Switch Player to Embed/External, or try another title.');
     return;
   }
+  // Skip already-failed chips when jumping ahead
+  if(S.failed[idx]){tryS(idx+1);return;}
   S.si=idx;
   renderSrcChips(idx);
   var s=S.src[idx],url=s.embedUrl||s.url||'';
   var gen=++S.playGen;
-  setSt('sld','Loading '+(s.debrid?(s.quality+(s.browserOk===false?' · may not play in browser':'')):s.source)+'...');
-  if(!url){mFail(idx);tryS(idx+1);return;}
+  var total=S.src.length;
+  setSt('sld',s.debrid
+    ?('Trying RD '+(idx+1)+'/'+total+' · '+(s.quality||'HD')+(s.size?' · '+s.size:''))
+    :('Loading '+s.source+'...'));
+  if(!url){failToNext(idx,'empty');return;}
 
-  // Skip awkward RD files (HEVC/MKV/risky tags) when a friendlier RD link exists
   var mode=getPlayerMode();
-  if(mode!=='external'&&mode!=='embed'&&s.debrid&&(isHardFailUrl(url,s)||s.rdRisky)){
-    var anyOk=S.src.some(function(x,i){
-      return i!==idx&&!S.failed[i]&&x.browserOk!==false&&!x.hardCodec&&!isHardFailUrl(x.embedUrl||x.url||'',x);
-    });
-    if(anyOk){mFail(idx);tryS(idx+1);return;}
-  }
-
   var engine=resolvePlayer(s,url);
-  if(engine==='skip'){mFail(idx);tryS(idx+1);return;}
   if(engine==='external'){pExt(url,idx,gen);return;}
   if(engine==='embed_servers'){
     if(!S._triedEmbeds){S._triedEmbeds=1;loadEmbedFallback();return;}
@@ -2251,7 +2227,6 @@ function tryS(idx){
   }
   if(engine==='embed'){pEmb(url,idx,gen);return;}
 
-  // Play immediately — copyright stubs (~30s) are removed on loadedmetadata, not by bulk pre-checks
   if(engine==='hls'||isHlsUrl(url,s))pHls(url,idx,gen);
   else pDir(url,idx,gen);
 }
@@ -2353,15 +2328,15 @@ function pHls(url,idx,gen){
     $('pw').innerHTML=pwTools('<button type="button" onclick="setPlayerMode(\'embed\')">Embed</button><button type="button" onclick="setPlayerMode(\'external\')">External</button>')+
       '<video id="hv" controls autoplay playsinline webkit-playsinline preload="auto" style="width:100%;height:100%;background:#000"></video>';
     var v=document.getElementById('hv');
-    if(!v){mFail(idx);tryS(idx+1);return;}
+    if(!v){failToNext(idx,'no-video');return;}
     var failed=false;
-    var fail=function(){
+    var fail=function(why){
       if(failed||(gen&&gen!==S.playGen))return;
       failed=true;
-      var goNext=function(){if(gen&&gen!==S.playGen)return;mFail(idx);tryS(idx+1);};
-      if(S.debridMode){
-        checkAndDropRd(rawUrl,idx).then(function(dropped){if(!dropped)goNext();});
-      }else goNext();
+      if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+      // Advance immediately — validate in background (do not block cycle)
+      if(S.debridMode)checkAndDropRd(rawUrl,idx).catch(function(){});
+      failToNext(idx,why||'hls');
     };
     var watchStub=function(){
       if(failed||(gen&&gen!==S.playGen))return;
@@ -2369,7 +2344,8 @@ function pHls(url,idx,gen){
     };
     v.addEventListener('loadedmetadata',watchStub);
     v.addEventListener('durationchange',watchStub);
-    S.failTimer=setTimeout(function(){if(v.readyState<2)fail();},isNativeApp()?20000:12000);
+    // Faster cycle on app so we walk many RD links
+    S.failTimer=setTimeout(function(){if(v.readyState<2)fail('timeout');},isNativeApp()?8000:12000);
     var useWorker=!isNativeApp();
     if(window.Hls&&Hls.isSupported()){
       var h=new Hls({
@@ -2387,60 +2363,68 @@ function pHls(url,idx,gen){
         watchStub();
         if(failed)return;
         v.play().catch(function(){});
-        setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':'')+' · HLS');
+        setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':'')+' · HLS · '+(idx+1)+'/'+S.src.length);
         if(window.FlixExtra)FlixExtra.bindVideoExtras(v,rawUrl,!!S.debridMode);
       });
-      h.on(Hls.Events.ERROR,function(_,d){if(d&&d.fatal)fail();});
+      h.on(Hls.Events.ERROR,function(_,d){if(d&&d.fatal)fail('hls-error');});
     }else if(v.canPlayType('application/vnd.apple.mpegurl')){
       v.src=playUrl;v.play().catch(function(){});
       setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid':'')+' · HLS');
       if(window.FlixExtra)FlixExtra.bindVideoExtras(v,rawUrl,!!S.debridMode);
-    }else{fail();}
+    }else{fail('no-hls');}
   };
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 function pDir(url,idx,gen){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
   var rawUrl=url;
-  var playUrl=nativePlayUrl(url);
-  // App WebView often crashes on MKV/HEVC — skip to next/embed
-  if(isNativeApp()&&isHardFailUrl(rawUrl,S.src[idx])){
-    mFail(idx);tryS(idx+1);return;
-  }
+  var useProxy=!!(isNativeApp()&&S.debridMode);
+  var playUrl=useProxy?nativePlayUrl(url):url;
+  var triedAlt=false;
   var start=function(){
     if(gen&&gen!==S.playGen)return;
     destroyPlayer();
     $('pw').innerHTML=pwTools('<button type="button" onclick="setPlayerMode(\'hls\')">HLS</button><button type="button" onclick="setPlayerMode(\'embed\')">Embed</button><button type="button" onclick="setPlayerMode(\'external\')">External</button>')+
       '<video id="dv" controls autoplay playsinline webkit-playsinline preload="auto" style="width:100%;height:100%;background:#000"></video>';
     var v=$('dv');
-    if(!v){mFail(idx);tryS(idx+1);return;}
+    if(!v){failToNext(idx,'no-video');return;}
     var settled=false;
+    var armTimer=function(){
+      if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+      S.failTimer=setTimeout(function(){
+        if(!settled&&v.readyState<2)fail('timeout');
+      },S.debridMode?(isNativeApp()?7000:9000):(isNativeApp()?12000:10000));
+    };
     var ok=function(){
       if(settled||(gen&&gen!==S.playGen))return;
-      // Catch RD's ~30s copyright stub before treating as success
       if(isRdCopyrightStub(v,S.src[idx])){settled=true;dropCopyrightStub(rawUrl,idx,gen);return;}
+      if(v.readyState<2)return;
       settled=true;
       if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':'')+' · HTML5');
+      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':'')+' · HTML5 · '+(idx+1)+'/'+S.src.length);
     };
-    var fail=function(){
-      if(settled||(gen&&gen!==S.playGen))return;settled=true;
+    var fail=function(why){
+      if(settled||(gen&&gen!==S.playGen))return;
+      // One retry: swap proxy ↔ direct on native RD before moving on
+      if(isNativeApp()&&S.debridMode&&!triedAlt){
+        triedAlt=true;
+        playUrl=useProxy?rawUrl:nativePlayUrl(rawUrl);
+        setSt('sld','RD '+(idx+1)+'/'+S.src.length+' — retrying '+(useProxy?'direct':'proxy')+'…');
+        try{v.removeAttribute('src');v.load();v.src=playUrl;v.play().catch(function(){});}catch(e){settled=true;failToNext(idx,'retry');return;}
+        armTimer();
+        return;
+      }
+      settled=true;
       if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
-      var goNext=function(){if(gen&&gen!==S.playGen)return;mFail(idx);tryS(idx+1);};
-      if(S.debridMode){
-        setSt('sld','Checking if RD link was blocked…');
-        checkAndDropRd(rawUrl,idx).then(function(dropped){if(!dropped)goNext();});
-      }else goNext();
+      if(S.debridMode)checkAndDropRd(rawUrl,idx).catch(function(){});
+      failToNext(idx,why||'html5');
     };
     v.addEventListener('loadedmetadata',ok);
-    v.oncanplay=ok;
-    v.onloadeddata=ok;
-    v.onerror=fail;
-    try{v.src=playUrl;}catch(e){fail();return;}
-    // App + proxy needs more time for first byte
-    S.failTimer=setTimeout(function(){
-      if(!settled&&v.readyState<2)fail();
-    },S.debridMode?(isNativeApp()?18000:8000):(isNativeApp()?14000:10000));
+    v.addEventListener('canplay',ok);
+    v.addEventListener('loadeddata',ok);
+    v.onerror=function(){fail('error');};
+    try{v.src=playUrl;}catch(e){fail('src');return;}
+    armTimer();
     v.play().catch(function(){});
     if(window.FlixExtra)FlixExtra.bindVideoExtras(v,rawUrl,!!S.debridMode);
   };
