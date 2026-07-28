@@ -408,13 +408,17 @@ app.get('/api/app/version', (req, res) => {
       packageId: 'xyz.snookiebaby.flixnova',
       versionCode: 3,
       versionName: '1.2.0',
-      apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-android.apk'
+      apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-android.apk',
+      downloaderUrl: 'http://aftv.news/3777174',
+      downloaderCode: '3777174'
     },
     tv: {
       packageId: 'xyz.snookiebaby.flixnova.tv',
       versionCode: 2,
       versionName: '1.0.1',
-      apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk'
+      apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk',
+      downloaderUrl: 'http://aftv.news/5381210',
+      downloaderCode: '5381210'
     },
     // legacy fields (mobile)
     versionCode: 3,
@@ -424,8 +428,9 @@ app.get('/api/app/version', (req, res) => {
     firetvApkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk',
     downloaderUrl: 'http://aftv.news/5381210',
     downloaderCode: '5381210',
+    mobileDownloaderCode: '3777174',
     getAppUrl: 'https://snookiebaby.xyz/get-app.html#firetv',
-    notes: 'Fire Stick: Downloader code 5381210 or https://snookiebaby.xyz/downloads/FlixNova-tv.apk. Phones use the mobile APK.',
+    notes: 'Phone Downloader: 3777174. Fire Stick Downloader: 5381210.',
     forceUpdate: false
   });
 });
