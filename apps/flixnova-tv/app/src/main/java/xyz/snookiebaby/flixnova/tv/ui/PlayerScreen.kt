@@ -136,7 +136,8 @@ fun PlayerScreen(
 
     LaunchedEffect(streams) {
         failed = emptySet()
-        playAt(0)
+        val start = streams.indexOfFirst { it.validated == true }.let { if (it >= 0) it else 0 }
+        playAt(start)
     }
 
     // Stall watchdog — advance if buffering with no progress

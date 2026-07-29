@@ -78,12 +78,16 @@ data class StreamItem(
     val provider: String? = null,
     val quality: String? = null,
     val size: String? = null,
-    val browserOk: Boolean? = null
+    val browserOk: Boolean? = null,
+    val validated: Boolean? = null,
+    val cached: Boolean? = null,
+    val hardCodec: Boolean? = null
 ) {
     fun label(): String {
         val q = quality?.takeIf { it.isNotBlank() }
         val base = provider ?: source ?: name ?: title ?: "Stream"
-        return if (q != null) "$base · $q" else base
+        val mark = if (validated == true) "✓ " else ""
+        return if (q != null) "$mark$base · $q" else "$mark$base"
     }
 }
 

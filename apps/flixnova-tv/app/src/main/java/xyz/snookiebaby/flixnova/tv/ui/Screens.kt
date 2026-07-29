@@ -644,10 +644,16 @@ fun DetailScreen(
                 if (!res.success) {
                     error = when (res.code) {
                         "ADFREE_REQUIRED" -> "Subscribe £1/month on snookiebaby.xyz, then come back."
+                        "NO_PLAYABLE_STREAMS" -> res.error
+                            ?: "No playable streams yet. Check debrid account/email."
                         else -> res.error ?: "No streams"
                     }
                 } else {
-                    val list = (res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList()).take(40)
+                    val raw = (res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList())
+                    val validated = raw.filter { it.validated == true }
+                    val rest = raw.filter { it.validated != true }
+                    // Prefer server-validated streams first; keep a few backups after
+                    val list = (if (validated.isNotEmpty()) validated + rest else raw).take(40)
                     if (list.isEmpty()) error = "No playable streams found"
                     else onPlay(d, season, ep, list)
                 }
@@ -705,7 +711,7 @@ fun DetailScreen(
                     if (error != null) Text(error!!, color = Red, fontSize = 14.sp)
                     if (d.type != "tv") {
                         FocusButton(
-                            label = if (busy) "Loading streams…" else "Play",
+                            label = if (busy) "Finding best stream…" else "Play",
                             primary = true,
                             onClick = { play(1) },
                             modifier = Modifier.focusRequester(playFocus)

@@ -843,70 +843,100 @@ function dedupeStreams(list) {
 }
 
 /**
- * Probe top candidates and drop copyright stubs / dead / account-blocked links.
- * keepUnprobed=true returns remaining unprobed rows after validated ones.
+ * Probe top candidates until minValidated healthy streams exist (or pool exhausted).
+ * Prefer cached + browser-friendly + soft codecs. Quarantine account-blocked providers.
+ * keepUnprobed / backupUnprobed control whether unverified leftovers are appended.
  */
-async function validateTopStreams(streams, { want = 8, probeLimit = 14, keepUnprobed = false } = {}) {
+async function validateTopStreams(streams, {
+  want = 8,
+  probeLimit = 28,
+  minValidated = 3,
+  keepUnprobed = false,
+  backupUnprobed = 0
+} = {}) {
   if (!streams.length) return [];
   const ranked = streams.slice().sort((a, b) =>
-    (qualityRank(b.quality) - qualityRank(a.quality)) ||
-    ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
     ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
-    ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
+    ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
     ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
-    (b.browserScore - a.browserScore) ||
+    (qualityRank(b.quality) - qualityRank(a.quality)) ||
+    ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
+    ((b.browserScore || 0) - (a.browserScore || 0)) ||
     ((b.seeders || 0) - (a.seeders || 0))
   );
 
-  const candidates = ranked.slice(0, Math.min(probeLimit, ranked.length));
   const validated = [];
   const backlog = [];
   const rejected = new Set();
   const blockedFamilies = new Set();
+  const probedKeys = new Set();
+  const limit = Math.min(probeLimit, ranked.length);
+  let cursor = 0;
 
-  const queue = candidates.slice();
-  const workers = Array.from({ length: Math.min(5, queue.length) }, async () => {
-    while (queue.length) {
-      const s = queue.shift();
-      if (!s) break;
-      const result = await probeStreamUrl(s.url);
-      const key = String(s.url || '').split('?')[0].toLowerCase();
-      if (!result.ok && (result.reason === 'account_blocked')) {
-        rejected.add(key);
-        blockedFamilies.add(providerFamily(s.provider || s.source));
-        continue;
-      }
-      if (!result.ok && (result.reason === 'copyright' || result.reason === 'copyright_stub' || result.reason === 'unavailable' || result.reason === 'invalid')) {
-        rejected.add(key);
-        continue;
-      }
-      if (result.ok) {
-        const row = { ...s, validated: true, probeReason: result.reason };
-        if (s.browserOk && !s.hardCodec) validated.push(row);
-        else backlog.push(row);
-      }
-      // probe_error: keep as unvalidated leftover rather than promoting to "validated"
+  async function probeOne(s) {
+    const key = String(s.url || '').split('?')[0].toLowerCase();
+    if (!key || probedKeys.has(key) || rejected.has(key)) return;
+    probedKeys.add(key);
+    const fam = providerFamily(s.provider || s.source);
+    if (blockedFamilies.has(fam)) {
+      rejected.add(key);
+      return;
     }
-  });
-  await Promise.all(workers);
+    const result = await probeStreamUrl(s.url);
+    if (!result.ok && result.reason === 'account_blocked') {
+      rejected.add(key);
+      blockedFamilies.add(fam);
+      return;
+    }
+    if (
+      !result.ok &&
+      (result.reason === 'copyright' ||
+        result.reason === 'copyright_stub' ||
+        result.reason === 'unavailable' ||
+        result.reason === 'invalid')
+    ) {
+      rejected.add(key);
+      return;
+    }
+    if (result.ok) {
+      const row = { ...s, validated: true, probeReason: result.reason };
+      if (s.browserOk !== false && !s.hardCodec) validated.push(row);
+      else backlog.push(row);
+    }
+  }
 
-  let pool = quarantineProviders(ranked, blockedFamilies);
+  while (validated.length < minValidated && cursor < limit) {
+    const batch = [];
+    while (batch.length < 5 && cursor < limit) {
+      const s = ranked[cursor++];
+      const key = String(s.url || '').split('?')[0].toLowerCase();
+      const fam = providerFamily(s.provider || s.source);
+      if (!key || probedKeys.has(key) || rejected.has(key) || blockedFamilies.has(fam)) continue;
+      batch.push(s);
+    }
+    if (!batch.length) break;
+    await Promise.all(batch.map(probeOne));
+  }
+
+  const pool = quarantineProviders(ranked, blockedFamilies);
   const notRejected = (s) => !rejected.has(String(s.url || '').split('?')[0].toLowerCase());
   const good = dedupeStreams(
     quarantineProviders(validated.concat(backlog.filter(notRejected)), blockedFamilies)
   );
-  const leftover = pool.filter(s => notRejected(s) && !good.some(g => g.url === s.url));
 
-  // Validated streams always ahead of unprobed leftovers
-  if (keepUnprobed) {
-    return balanceByProvider(dedupeStreams(good.concat(leftover)), { perProvider: 12, max: 40 });
+  const backupN = keepUnprobed ? 40 : Math.max(0, backupUnprobed | 0);
+  if (backupN > 0) {
+    const leftover = pool
+      .filter(s => notRejected(s) && !good.some(g => g.url === s.url))
+      .slice(0, backupN);
+    return balanceByProvider(dedupeStreams(good.concat(leftover)), {
+      perProvider: 12,
+      max: Math.max(want, 12)
+    });
   }
 
-  const picked = dedupeStreams(validated.concat(backlog.filter(s => s.browserOk && notRejected(s))));
-  if (picked.length >= 2) {
-    return balanceByProvider(picked, { perProvider: 10, max: Math.max(want, 12) });
-  }
-  return balanceByProvider(dedupeStreams(picked.concat(pool.filter(notRejected))), { perProvider: 12, max: 40 });
+  if (!good.length) return [];
+  return balanceByProvider(good, { perProvider: 10, max: Math.max(want, 12) });
 }
 
 router.get('/status', async (req, res) => {
@@ -976,13 +1006,22 @@ router.post('/validate', async (req, res) => {
     await Promise.all(workers);
 
     const bad = results
-      .filter(r => !r.ok && (r.reason === 'copyright' || r.reason === 'copyright_stub'))
+      .filter(r =>
+        !r.ok &&
+        (r.reason === 'copyright' ||
+          r.reason === 'copyright_stub' ||
+          r.reason === 'account_blocked' ||
+          r.reason === 'unavailable' ||
+          r.reason === 'invalid')
+      )
       .map(r => r.url);
+    const blocked = results.filter(r => !r.ok && r.reason === 'account_blocked').map(r => r.url);
     res.json({
       success: true,
       data: {
         results,
         bad,
+        blocked,
         removed: bad.length
       }
     });
@@ -1225,29 +1264,49 @@ router.post('/streams', async (req, res) => {
     streams = balanceByProvider(streams, { perProvider: deepLookup ? 16 : 12, max: deepLookup ? 60 : 48 });
     streams = await validateTopStreams(streams, {
       want: deepLookup ? 16 : 12,
-      probeLimit: deepLookup ? 24 : 16,
-      keepUnprobed: true
+      probeLimit: deepLookup ? 30 : 28,
+      minValidated: deepLookup ? 5 : 3,
+      // First play: validated only. Deep "Find more" may append a few backups.
+      keepUnprobed: false,
+      backupUnprobed: deepLookup ? 8 : 0
     });
 
-    // Keep validated ahead after final sort
+    // Validated always first
     streams = streams.slice().sort((a, b) =>
       ((b.validated ? 1 : 0) - (a.validated ? 1 : 0)) ||
-      (qualityRank(b.quality) - qualityRank(a.quality)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
+      (qualityRank(b.quality) - qualityRank(a.quality)) ||
       ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
       ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
       ((b.browserScore || 0) - (a.browserScore || 0))
     );
     streams = balanceByProvider(streams, { perProvider: 12, max: 40 });
+    const validatedCount = streams.filter(s => s.validated).length;
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
     console.log('Debrid result:', {
       imdb,
       total: streams.length,
       browserFriendly: streams.filter(s => s.browserOk).length,
       cached: streams.filter(s => s.cached).length,
-      validated: streams.filter(s => s.validated).length,
+      validated: validatedCount,
       providers
     });
+
+    if (!streams.length || validatedCount === 0) {
+      return res.json({
+        success: false,
+        error: 'No playable premium streams found. Debrid may be blocked — check account/email, or try Find more sources.',
+        code: 'NO_PLAYABLE_STREAMS',
+        data: {
+          imdbId: imdb || null,
+          streams: [],
+          validated: 0,
+          providers,
+          adult: isAdult,
+          deep: deepLookup
+        }
+      });
+    }
 
     res.json({
       success: true,
@@ -1257,6 +1316,7 @@ router.post('/streams', async (req, res) => {
         totalSources: streams.length,
         browserFriendly: streams.filter(s => s.browserOk).length,
         cached: streams.filter(s => s.cached).length,
+        validated: validatedCount,
         providers,
         provider: providers.join('+') || 'none',
         adult: isAdult,
@@ -1276,3 +1336,4 @@ module.exports.isAccountErrorText = isAccountErrorText;
 module.exports.balanceByProvider = balanceByProvider;
 module.exports.providerFamily = providerFamily;
 module.exports.quarantineProviders = quarantineProviders;
+module.exports.validateTopStreams = validateTopStreams;

@@ -1992,7 +1992,7 @@ function openModal(item){
       if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
       return null;
     }
-    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding premium streams...</span></div>';
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding best stream...</span></div>';
     return api('/details/'+id+'/'+type).then(function(det){
       var imdb=null;
       if(det&&det.success){
@@ -2018,19 +2018,24 @@ function openModal(item){
         return;
       }
       var isAdult=!!(S.item&&S.item.adult);
-      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding premium streams'+(isAdult?' (XXX)':'')+'...</span></div>';
+      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding best stream'+(isAdult?' (XXX)':'')+'...</span></div>';
       return fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item&&S.item.title,year:S.item&&S.item.year,adult:isAdult}).then(function(rd){
         if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
           S.siteRd=true;refreshRdBtn();
           handleSrc({sources:rd.data.streams,debrid:true});
           var prov=(rd.data.providers&&rd.data.providers.length)?rd.data.providers.join('+'):'premium';
-          setSt('sok','▶ Premium · '+prov+(isAdult?' · XXX':''));
+          var vcount=rd.data.validated||rd.data.streams.filter(function(s){return s.validated;}).length;
+          setSt('sok','▶ Premium · '+prov+(vcount?' · '+vcount+' checked':'')+(isAdult?' · XXX':''));
           return;
         }
         var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no premium links';
         if(rd&&rd.code==='ADFREE_REQUIRED'){
           showPE(rd.error||'Subscribe £1/month to keep watching.');
           if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+          return;
+        }
+        if(rd&&rd.code==='NO_PLAYABLE_STREAMS'){
+          showPE(rd.error||'No playable streams yet. Try Find more sources, or check debrid account/email.');
           return;
         }
         if(isAdult){
@@ -2188,6 +2193,10 @@ function pEp(tid,sn,ep,el){
         if(rd&&rd.code==='ADFREE_REQUIRED'){
           showPE(rd.error||'Subscribe £1/month to keep watching.');
           if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+          return;
+        }
+        if(rd&&rd.code==='NO_PLAYABLE_STREAMS'){
+          showPE(rd.error||'No playable streams for this episode. Try Find more sources.');
           return;
         }
         showPE('No premium streams for this episode.');
@@ -2808,11 +2817,67 @@ function checkAndDropRd(url,idx){
   }).then(function(r){return r.json();}).then(function(d){
     var bad=d&&d.data&&d.data.bad;
     if(bad&&bad.length){
-      dropSrcUrls(bad,'copyright');
+      dropSrcUrls(bad,'account_blocked');
       return true;
     }
     return false;
   }).catch(function(){return false;});
+}
+/** Preflight the chosen URL; skip blocked families until a healthy starter is found. */
+function preflightAndPlay(startIdx){
+  if(!S.debridMode||!S.token){
+    tryS(typeof startIdx==='number'?startIdx:0,{force:true});
+    return;
+  }
+  var n=(S.src&&S.src.length)||0;
+  var idx=typeof startIdx==='number'?startIdx:0;
+  var attempts=0;
+  function next(){
+    if(attempts>=n||idx<0||idx>=n){
+      showPE('No playable premium streams after preflight. Try Find more sources.');
+      return;
+    }
+    if(isSrcFailed(idx)){
+      attempts++;
+      idx=pickNextSrc(idx,1);
+      next();
+      return;
+    }
+    var s=S.src[idx];
+    var url=s&&(s.embedUrl||s.url);
+    if(!url){
+      markSrcFailed(idx,'empty');
+      attempts++;
+      idx=pickNextSrc(idx,1);
+      next();
+      return;
+    }
+    // Server already marked validated — still confirm once, then play
+    setSt('sld','Checking stream '+(idx+1)+'/'+n+'…');
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Starting best stream...</span></div>';
+    fetch('/api/debrid/validate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-user-token':S.token,'Authorization':'Bearer '+S.token},
+      body:JSON.stringify({url:url})
+    }).then(function(r){return r.json();}).then(function(d){
+      var results=(d&&d.data&&d.data.results)||[];
+      var r0=results[0];
+      if(r0&&r0.ok===false){
+        var reason=r0.reason||'unavailable';
+        markSrcFailed(idx,reason==='account_blocked'?'account_blocked':'copyright');
+        if(reason==='account_blocked')markProviderFamilyFailed(idx,'account_blocked');
+        attempts++;
+        idx=pickNextSrc(idx,1);
+        next();
+        return;
+      }
+      tryS(idx,{force:true});
+    }).catch(function(){
+      // Network glitch on validate — still try playback
+      tryS(idx,{force:true});
+    });
+  }
+  next();
 }
 function parseClaimedBytes(sz){
   var m=String(sz||'').match(/([\d.]+)\s*(GB|MB|KB)/i);
@@ -2891,7 +2956,7 @@ function handleSrc(data){
     return true;
   });
   if(!S.src.length){showPE('No playable premium links (blocked for copyright). Try Retry streams.');return;}
-  // Sort: web 1080→4K→720; Fire Stick/app 1080→720→4K (4K/HEVC often black-screens on TV)
+  // Sort: validated first, then quality preferences
   if(S.debridMode){
     var tv=isTvApp()||isNativeApp();
     var qRank=function(q){
@@ -2911,12 +2976,13 @@ function handleSrc(data){
       return 40;
     };
     S.src=S.src.slice().sort(function(a,b){
+      var av=a.validated?1:0,bv=b.validated?1:0;
       var amp4=/\.mp4(\?|$)/i.test(String(a.url||''))?1:0;
       var bmp4=/\.mp4(\?|$)/i.test(String(b.url||''))?1:0;
-      // On TV, never prefer hard codecs (HEVC/HDR) even if 4K
       var aHard=(tv&&(a.hardCodec||a.browserOk===false))?1:0;
       var bHard=(tv&&(b.hardCodec||b.browserOk===false))?1:0;
-      return aHard-bHard
+      return bv-av
+        || aHard-bHard
         || qRank(b.quality)-qRank(a.quality)
         || (b.browserOk?1:0)-(a.browserOk?1:0)
         || (b.cached?1:0)-(a.cached?1:0)
@@ -2925,16 +2991,23 @@ function handleSrc(data){
         || (b.browserScore||0)-(a.browserScore||0);
     });
   }
+  var startIdx=0;
+  if(S.debridMode){
+    var vi=S.src.findIndex(function(s){return !!s.validated;});
+    if(vi>=0)startIdx=vi;
+  }
   var moreBtn=$('moreSrvBtn');
   if(moreBtn){
     moreBtn.style.display='inline-flex';
     moreBtn.textContent='Find more';
     moreBtn.title='Search for more premium streams';
   }
-  renderSrcChips(0);
+  renderSrcChips(startIdx);
   renderPlayerChips();
   $('srcbar').style.display='flex';
-  tryS(0);
+  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Starting best stream...</span></div>';
+  if(S.debridMode)preflightAndPlay(startIdx);
+  else tryS(startIdx,{force:true});
   if(S.debridMode)pruneInfringingRd();
   if(S.autoNextTimer)clearTimeout(S.autoNextTimer);
   if(S.autoNext&&S.item&&(S.item.type||'')==='tv'){
