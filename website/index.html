@@ -195,11 +195,11 @@ body.app-shell .hdots{left:4%;right:auto;max-width:70%}
 [class*="pop-up"],[id*="overlay-ad"],[class*="ad-block"],
 iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:none!important;pointer-events:none!important;height:0!important;width:0!important;opacity:0!important}
 .pw-tools{position:absolute;top:10px;left:10px;z-index:5;display:flex;gap:6px;flex-wrap:wrap;transition:opacity .28s ease,transform .28s ease;opacity:1;pointer-events:auto}
-.pw-tools.is-hidden{opacity:0;pointer-events:none;transform:translateY(-8px)}
+.pw-tools.is-hidden{opacity:0!important;pointer-events:none!important;transform:translateY(-8px)!important}
 .pw-tools button{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:600;cursor:pointer;backdrop-filter:blur(6px)}
 .pw-tools button:hover{background:rgba(229,9,20,.85);border-color:var(--red)}
-/* Keep chrome visible while hovering / focusing the bar itself */
-.pw-tools:hover,.pw-tools:focus-within{opacity:1!important;pointer-events:auto!important;transform:none!important}
+/* Hover only while visible — focus must not pin the bar forever */
+.pw-tools:not(.is-hidden):hover{opacity:1;pointer-events:auto;transform:none}
 .list-btn{margin-left:auto;padding:4px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:var(--t2);font-size:11px;font-weight:600;cursor:pointer}
 .list-btn.on{background:rgba(229,9,20,.18);border-color:rgba(229,9,20,.45);color:#fff}
 .ybar{display:flex;gap:6px;padding:8px 4%;overflow-x:auto;scrollbar-width:none}
@@ -2447,8 +2447,11 @@ function tvHandleDpad(e){
   if(inModal){
     if(typeof showPlayerChrome==='function')showPlayerChrome();
     if(key==='ArrowUp'){
-      var closeBtn=document.querySelector('#pw .pw-close')||document.querySelector('.mc');
-      if(closeBtn){e.preventDefault();return tvFocusEl(closeBtn);}
+      showPlayerChrome();
+      var pauseBtn=document.querySelector('#pw .pw-tools button[onclick*="togglePlayerPause"]')
+        || document.querySelector('#pw .pw-tools button:not(.pw-close)')
+        || document.querySelector('.mc');
+      if(pauseBtn){e.preventDefault();return tvFocusEl(pauseBtn);}
     }
     if(key==='ArrowLeft'||key==='ArrowRight'){
       var chips=[].slice.call(document.querySelectorAll('#schips .sc'));
@@ -2638,10 +2641,10 @@ function destroyPlayer(){
   if(emb){try{emb.src='about:blank';}catch(e){}}
 }
 function pwTools(extra){
-  // Auto-hide the toolbar a moment after playback starts (mouse/touch/key brings it back)
+  // Auto-hide the toolbar 3s after playback starts (mouse/touch/key brings it back)
   setTimeout(armPlayerChromeHide, 0);
   return '<div class="pw-tools">'+
-    '<button type="button" class="pw-close" tabindex="0" onclick="closeModal()">✕ Close</button>'+
+    '<button type="button" class="pw-close" tabindex="0" onclick="hidePlayerChrome()" title="Hide controls">✕ Hide</button>'+
     '<button type="button" tabindex="0" onclick="togglePlayerPause()" title="Play / Pause">⏯ Pause</button>'+
     '<button type="button" tabindex="0" onclick="seekPlayer(-10)" title="Back 10s">−10s</button>'+
     '<button type="button" tabindex="0" onclick="seekPlayer(10)" title="Forward 10s">+10s</button>'+
@@ -2677,19 +2680,22 @@ function seekPlayer(deltaSec){
 }
 window.togglePlayerPause=togglePlayerPause;
 window.seekPlayer=seekPlayer;
+function hidePlayerChrome(){
+  var tools=document.querySelector('#pw .pw-tools');
+  if(!tools)return;
+  if(S._pwChromeTimer){clearTimeout(S._pwChromeTimer);S._pwChromeTimer=null;}
+  try{
+    if(tools.contains(document.activeElement))document.activeElement.blur();
+  }catch(e){}
+  tools.classList.add('is-hidden');
+}
 function showPlayerChrome(sticky){
   var tools=document.querySelector('#pw .pw-tools');
   if(!tools)return;
   tools.classList.remove('is-hidden');
   if(S._pwChromeTimer){clearTimeout(S._pwChromeTimer);S._pwChromeTimer=null;}
   if(sticky)return;
-  S._pwChromeTimer=setTimeout(function(){
-    var t=document.querySelector('#pw .pw-tools');
-    if(!t)return;
-    // Don't hide while a control inside the bar is focused (TV / keyboard)
-    if(t.contains(document.activeElement))return;
-    t.classList.add('is-hidden');
-  }, 2800);
+  S._pwChromeTimer=setTimeout(hidePlayerChrome, 3000);
 }
 function armPlayerChromeHide(){
   var pw=$('pw');
@@ -2704,27 +2710,32 @@ function armPlayerChromeHide(){
   pw.addEventListener('mousemove',bump);
   pw.addEventListener('mousedown',bump);
   pw.addEventListener('touchstart',bump,{passive:true});
-  pw.addEventListener('click',bump);
-  // Show briefly when native video plays / pauses / seeks
+  pw.addEventListener('click',function(e){
+    // Clicks on the hide button are handled by hidePlayerChrome
+    if(e.target&&e.target.closest&&e.target.closest('.pw-close'))return;
+    bump();
+  });
   var bindVid=function(v){
     if(!v||v.dataset.chromeVid==='1')return;
     v.dataset.chromeVid='1';
     ['play','pause','seeking','volumechange'].forEach(function(ev){
       v.addEventListener(ev,bump);
     });
-    // Hide once playback is actually rolling
+    // Start the 3s hide clock once playback is rolling
     v.addEventListener('playing',function(){showPlayerChrome();});
   };
   bindVid(pw.querySelector('video'));
-  // Observe late-injected <video> (HLS path)
   if(!pw._chromeMo){
     pw._chromeMo=new MutationObserver(function(){
       bindVid(pw.querySelector('video'));
-      if(pw.querySelector('.pw-tools'))showPlayerChrome();
+      // Don't force-show on every DOM tweak — only arm a newly injected toolbar
+      var t=pw.querySelector('.pw-tools');
+      if(t&&t.dataset.chromeArm!=='1')armPlayerChromeHide();
     });
     pw._chromeMo.observe(pw,{childList:true,subtree:true});
   }
 }
+window.hidePlayerChrome=hidePlayerChrome;
 window.showPlayerChrome=showPlayerChrome;
 window.armPlayerChromeHide=armPlayerChromeHide;
 /** Ensure audio is on and detect black/stuck decode (common on Fire Stick with 4K/HEVC) */
@@ -3282,7 +3293,11 @@ function pHls(url,idx,gen){
 function focusTvPlayerChrome(){
   if(!(isTvApp()||isNativeApp()))return;
   setTimeout(function(){
-    var btn=document.querySelector('#pw .pw-close')||document.querySelector('#pw .pw-tools button')||document.querySelector('.mc');
+    showPlayerChrome();
+    // Focus Pause (not Hide) so remote OK toggles playback; chrome still auto-hides in 3s
+    var btn=document.querySelector('#pw .pw-tools button[onclick*="togglePlayerPause"]')
+      || document.querySelector('#pw .pw-tools button:not(.pw-close)')
+      || document.querySelector('.mc');
     if(btn)try{btn.focus();}catch(e){}
   },200);
 }
