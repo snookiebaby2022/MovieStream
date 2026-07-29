@@ -12,14 +12,14 @@
   },
   "tv": {
     "packageId": "xyz.snookiebaby.flixnova.tv",
-    "versionCode": 8,
-    "versionName": "1.0.7",
+    "versionCode": 9,
+    "versionName": "1.0.8",
     "apkUrl": "https://snookiebaby.xyz/downloads/FlixNova-tv.apk",
     "downloaderUrl": "http://aftv.news/5381210",
     "downloaderCode": "5381210",
     "minVersionCode": 1,
     "forceUpdate": false,
-    "notes": "Seamless first-play: only start validated streams"
+    "notes": "Faster, more reliable first play and steadier playback"
   },
   "updatedAt": null
 }

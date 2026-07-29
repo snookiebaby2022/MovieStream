@@ -1196,9 +1196,16 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
                     <input id="appsMobileFile" type="file" accept=".apk,application/vnd.android.package-archive">
                   </label>
                   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-                    <button type="button" class="btn btn-green" onclick="publishAppTarget('mobile')">⬆ Upload &amp; publish</button>
+                    <button type="button" class="btn btn-green" id="appsMobileUploadBtn" onclick="publishAppTarget('mobile')">⬆ Upload &amp; publish</button>
                     <button type="button" class="btn btn-secondary" onclick="saveAppMetaOnly('mobile')">Save version only</button>
                     <a class="btn btn-secondary" id="appsMobileLink" href="/downloads/FlixNova-android.apk">⬇ Current APK</a>
+                  </div>
+                  <div id="appsMobileProgress" hidden style="margin-top:12px">
+                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-bottom:5px">
+                      <span id="appsMobileProgressText">Preparing upload…</span>
+                      <span id="appsMobileProgressPct">0%</span>
+                    </div>
+                    <progress id="appsMobileProgressBar" max="100" value="0" style="display:block;width:100%;height:12px;accent-color:var(--green)"></progress>
                   </div>
                 </div>
               </div>
@@ -1228,9 +1235,16 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
                     <input id="appsTvFile" type="file" accept=".apk,application/vnd.android.package-archive">
                   </label>
                   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-                    <button type="button" class="btn btn-green" onclick="publishAppTarget('tv')">⬆ Upload &amp; publish</button>
+                    <button type="button" class="btn btn-green" id="appsTvUploadBtn" onclick="publishAppTarget('tv')">⬆ Upload &amp; publish</button>
                     <button type="button" class="btn btn-secondary" onclick="saveAppMetaOnly('tv')">Save version only</button>
                     <a class="btn btn-secondary" id="appsTvLink" href="/downloads/FlixNova-tv.apk">⬇ Current APK</a>
+                  </div>
+                  <div id="appsTvProgress" hidden style="margin-top:12px">
+                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-bottom:5px">
+                      <span id="appsTvProgressText">Preparing upload…</span>
+                      <span id="appsTvProgressPct">0%</span>
+                    </div>
+                    <progress id="appsTvProgressBar" max="100" value="0" style="display:block;width:100%;height:12px;accent-color:var(--green)"></progress>
                   </div>
                 </div>
               </div>
@@ -1961,6 +1975,7 @@ async function saveAppMetaOnly(target){
 
 async function publishAppTarget(target){
   const isTv=target==='tv';
+  const p=isTv?'Tv':'Mobile';
   const fileEl=document.getElementById(isTv?'appsTvFile':'appsMobileFile');
   const file=fileEl&&fileEl.files&&fileEl.files[0];
   if(!file){
@@ -1972,6 +1987,20 @@ async function publishAppTarget(target){
     toast('Set version code and name before upload','error');
     return;
   }
+  const wrap=document.getElementById('apps'+p+'Progress');
+  const bar=document.getElementById('apps'+p+'ProgressBar');
+  const pct=document.getElementById('apps'+p+'ProgressPct');
+  const text=document.getElementById('apps'+p+'ProgressText');
+  const btn=document.getElementById('apps'+p+'UploadBtn');
+  const setProgress=(value,label)=>{
+    const n=Math.max(0,Math.min(100,Math.round(Number(value)||0)));
+    if(wrap)wrap.hidden=false;
+    if(bar)bar.value=n;
+    if(pct)pct.textContent=n+'%';
+    if(text)text.textContent=label||('Uploading '+n+'%…');
+  };
+  setProgress(0,'Preparing '+file.name+'…');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Uploading…';}
   toast('Uploading APK…','info',8000);
   try{
     const headers={
@@ -1983,18 +2012,46 @@ async function publishAppTarget(target){
     };
     if(meta.notes)headers['x-notes']=encodeURIComponent(meta.notes);
     if(meta.downloaderCode)headers['x-downloader-code']=meta.downloaderCode;
-    const r=await fetch(AAPI+'/apps/'+target+'/apk',{method:'PUT',headers,body:file});
-    if(r.status===401){
+    const result=await new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('PUT',AAPI+'/apps/'+target+'/apk',true);
+      Object.entries(headers).forEach(([k,v])=>xhr.setRequestHeader(k,v));
+      xhr.upload.onprogress=e=>{
+        if(e.lengthComputable){
+          const n=(e.loaded/e.total)*100;
+          setProgress(n,'Uploading '+file.name+'…');
+        }else{
+          if(text)text.textContent='Uploading '+file.name+'…';
+        }
+      };
+      xhr.upload.onload=()=>setProgress(100,'Upload complete — verifying and publishing…');
+      xhr.onload=()=>{
+        let data=null;
+        try{data=JSON.parse(xhr.responseText||'{}');}catch(e){}
+        resolve({status:xhr.status,data});
+      };
+      xhr.onerror=()=>reject(new Error('Network error while uploading'));
+      xhr.onabort=()=>reject(new Error('Upload cancelled'));
+      xhr.send(file);
+    });
+    if(result.status===401){
       localStorage.removeItem('adminToken');token=null;
       document.getElementById('loginWrap').style.display='flex';
-      return;
+      throw new Error('Admin session expired — sign in and upload again');
     }
-    const d=await r.json();
-    if(!d?.success){toast(d?.error||'Upload failed','error');return;}
+    const d=result.data;
+    if(!d?.success)throw new Error(d?.error||('Upload failed (HTTP '+result.status+')'));
+    setProgress(100,'Published '+meta.versionName+' successfully');
     toast((isTv?'TV':'Mobile')+' APK published · '+meta.versionName,'success',5000);
     if(fileEl)fileEl.value='';
-    loadAppVersions();
-  }catch(e){toast('Upload failed: '+e.message,'error');}
+    await loadAppVersions();
+    setTimeout(()=>{if(wrap)wrap.hidden=true;},5000);
+  }catch(e){
+    if(text)text.textContent='Upload failed: '+e.message;
+    toast('Upload failed: '+e.message,'error');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='⬆ Upload & publish';}
+  }
 }
 
 async function loadStats(){
