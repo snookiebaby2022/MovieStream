@@ -1164,9 +1164,8 @@ router.post('/validate', async (req, res) => {
 });
 
 /**
- * Same-origin media proxy for Android / Fire Stick WebView.
- * <video> cannot send auth headers, so token is accepted as ?token=
- * Follows redirects server-side (RD CDN hosts vary).
+ * Same-origin media proxy for website + Android / Fire Stick WebView.
+ * Must forward Range correctly so pause/seek/scrub work on progressive MP4.
  */
 router.get('/proxy', async (req, res) => {
   try {
@@ -1189,7 +1188,6 @@ router.get('/proxy', async (req, res) => {
       timeout: 45000,
       maxRedirects: 8,
       validateStatus: () => true,
-      // Large files — do not buffer
       maxContentLength: Infinity,
       maxBodyLength: Infinity
     });
@@ -1199,10 +1197,14 @@ router.get('/proxy', async (req, res) => {
     const upCt = String(upstream.headers['content-type'] || '');
     const upCl = parseInt(String(upstream.headers['content-length'] || '0'), 10) || 0;
     const upCr = String(upstream.headers['content-range'] || '');
-    const upTotal = (() => {
+    const rangeTotal = (() => {
       const m = upCr.match(/\/(\d+)\s*$/);
-      return m ? (parseInt(m[1], 10) || 0) : upCl;
+      return m ? (parseInt(m[1], 10) || 0) : 0;
     })();
+    // Only trust Content-Length as "whole file size" on a non-ranged 200 response.
+    // Seek requests often return a small Content-Length for the byte slice — that is NOT a stub.
+    const wholeFileBytes = rangeTotal || (!range && status === 200 ? upCl : 0);
+
     if (isFailedClipUrl(finalUrl) || isFailedClipUrl(target)) {
       try { upstream.data.destroy(); } catch {}
       return res.status(403).json({
@@ -1211,10 +1213,11 @@ router.get('/proxy', async (req, res) => {
         code: 'ACCOUNT_BLOCKED'
       });
     }
-    // Orange AUTH_BLOCKED / copyright stub MP4s are tiny complete videos
+    // Orange AUTH_BLOCKED / copyright stub MP4s are tiny complete videos (never ranged seeks)
     if (
-      upTotal > 0 &&
-      upTotal < 12 * 1024 * 1024 &&
+      !range &&
+      wholeFileBytes > 0 &&
+      wholeFileBytes < 12 * 1024 * 1024 &&
       /video|mp4|octet-stream/i.test(upCt) &&
       status >= 200 &&
       status < 400
@@ -1249,8 +1252,13 @@ router.get('/proxy', async (req, res) => {
     if (!res.getHeader('content-type')) {
       res.setHeader('Content-Type', 'video/mp4');
     }
+    // Browsers need this to enable the scrubber / rewind even when upstream omits it
+    if (!res.getHeader('accept-ranges')) {
+      res.setHeader('Accept-Ranges', 'bytes');
+    }
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
     res.status(status);
     upstream.data.on('error', () => {
       try { res.end(); } catch {}

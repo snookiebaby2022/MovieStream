@@ -2443,7 +2443,7 @@ function tvHandleDpad(e){
     if(key==='ArrowDown'&&!inModal){e.preventDefault();return tvFocusEl(document.querySelector('.card')||document.querySelector('.bplay'));}
     return false;
   }
-  // Player modal: Left/Right cycle sources, Up to Close
+  // Player modal: Left/Right seek by default; only cycle sources when a chip is focused
   if(inModal){
     if(typeof showPlayerChrome==='function')showPlayerChrome();
     if(key==='ArrowUp'){
@@ -2452,15 +2452,11 @@ function tvHandleDpad(e){
     }
     if(key==='ArrowLeft'||key==='ArrowRight'){
       var chips=[].slice.call(document.querySelectorAll('#schips .sc'));
-      // Exclude toolbar Next/Find-more buttons from chip stepping
       chips=chips.filter(function(c){return c.id!=='nextSrcBtn'&&c.id!=='moreSrvBtn';});
-      if(chips.length){
-        var cur=document.activeElement;
+      var cur=document.activeElement;
+      var onChip=chips.indexOf(cur)>=0;
+      if(onChip&&chips.length){
         var ci=chips.indexOf(cur);
-        if(ci<0){
-          var curChip=document.getElementById('sc'+(S.si||0));
-          ci=Math.max(0,chips.indexOf(curChip));
-        }
         if(key==='ArrowRight'&&ci>=chips.length-1){
           e.preventDefault();
           nextSrc();
@@ -2474,6 +2470,12 @@ function tvHandleDpad(e){
         var ni=key==='ArrowRight'?Math.min(chips.length-1,ci+1):Math.max(0,ci-1);
         e.preventDefault();
         return tvFocusEl(chips[ni]);
+      }
+      // Default: rewind / fast-forward the playing video
+      if(getActivePlayerVideo()){
+        e.preventDefault();
+        seekPlayer(key==='ArrowRight'?10:-10);
+        return true;
       }
       if(key==='ArrowRight'){e.preventDefault();nextSrc();return true;}
       if(key==='ArrowLeft'){e.preventDefault();prevSrc();return true;}
@@ -2626,11 +2628,41 @@ function pwTools(extra){
   setTimeout(armPlayerChromeHide, 0);
   return '<div class="pw-tools">'+
     '<button type="button" class="pw-close" tabindex="0" onclick="closeModal()">✕ Close</button>'+
+    '<button type="button" tabindex="0" onclick="togglePlayerPause()" title="Play / Pause">⏯ Pause</button>'+
+    '<button type="button" tabindex="0" onclick="seekPlayer(-10)" title="Back 10s">−10s</button>'+
+    '<button type="button" tabindex="0" onclick="seekPlayer(10)" title="Forward 10s">+10s</button>'+
     '<button type="button" tabindex="0" onclick="nextSrc()">Next</button>'+
     '<button type="button" tabindex="0" onclick="retryAll()">Reload</button>'+
     (extra||'')+
     '</div>';
 }
+function getActivePlayerVideo(){
+  return document.querySelector('#pw video#dv')||document.querySelector('#pw video#hv')||document.querySelector('#pw video');
+}
+function togglePlayerPause(){
+  var v=getActivePlayerVideo();
+  if(!v)return;
+  try{
+    if(v.paused)v.play().catch(function(){});
+    else v.pause();
+  }catch(e){}
+  showPlayerChrome();
+}
+function seekPlayer(deltaSec){
+  var v=getActivePlayerVideo();
+  if(!v)return;
+  try{
+    var dur=Number(v.duration);
+    var cur=Number(v.currentTime)||0;
+    var next=cur+(Number(deltaSec)||0);
+    if(isFinite(dur)&&dur>0)next=Math.max(0,Math.min(dur-0.25,next));
+    else next=Math.max(0,next);
+    v.currentTime=next;
+  }catch(e){}
+  showPlayerChrome();
+}
+window.togglePlayerPause=togglePlayerPause;
+window.seekPlayer=seekPlayer;
 function showPlayerChrome(sticky){
   var tools=document.querySelector('#pw .pw-tools');
   if(!tools)return;
@@ -2691,6 +2723,8 @@ function armPlaybackWatchdog(video, onStuck){
   var id=setInterval(function(){
     if(!document.body.contains(video)){clearInterval(id);return;}
     ticks++;
+    // User paused or is scrubbing — do not treat as a bad stream
+    if(video.paused||video.seeking){lastT=video.currentTime||lastT;return;}
     var t=video.currentTime||0;
     // After ~4s, if time never advanced meaningfully → black/stuck decode
     if(Date.now()-startAt>=4000){
@@ -2909,7 +2943,8 @@ function srcProviderFamily(s){
 }
 /**
  * RD/AD error clips are real MP4s (orange "API blocked" screen). Detect via URL,
- * title, or claimed GB size with tiny duration — not bare duration alone (false positives).
+ * title, or claimed GB size with tiny duration — never bare short duration alone
+ * (progressive downloads / incomplete metadata falsely report short durations).
  */
 function isRdCopyrightStub(video, source){
   if(!S.debridMode||!video)return false;
@@ -2920,12 +2955,11 @@ function isRdCopyrightStub(video, source){
   if(/AUTH_BLOCKED|access to (the )?debrid api is blocked|check your debrid account|check your (?:debrid )?email|please (?:approve|confirm).{0,40}email/i.test(blob))return true;
   var dur=0;
   try{dur=Number(video.duration)||0;}catch(e){}
-  if(dur>0&&isFinite(dur)&&dur<60){
-    var bytes=parseClaimedBytes(source&&source.size);
-    // Label says multi‑MB/GB feature but the file is a ~10s stub → skip
-    if(bytes>=15*1024*1024)return true;
-    if(dur<22)return true;
-  }
+  if(!(dur>0&&isFinite(dur)&&dur<45))return false;
+  var bytes=parseClaimedBytes(source&&source.size);
+  // Only treat as stub when the listing claims a large feature but duration is tiny
+  if(bytes>=40*1024*1024&&dur<35)return true;
+  if(bytes>=15*1024*1024&&dur<18)return true;
   return false;
 }
 function markProviderFamilyFailed(idx,reason){
@@ -3175,7 +3209,7 @@ function pHls(url,idx,gen){
     if(gen&&gen!==S.playGen)return;
     destroyPlayer();
     $('pw').innerHTML=pwTools('<button type="button" tabindex="0" onclick="setPlayerMode(\'embed\')">Embed</button><button type="button" tabindex="0" onclick="setPlayerMode(\'external\')">External</button>')+
-      '<video id="hv" controls autoplay playsinline webkit-playsinline preload="auto" style="width:100%;height:100%;background:#000"></video>';
+      '<video id="hv" controls controlslist="nodownload" autoplay playsinline webkit-playsinline preload="auto" style="width:100%;height:100%;background:#000"></video>';
     var v=document.getElementById('hv');
     if(!v){failToNext(idx,'no-video');return;}
     try{v.muted=false;v.volume=1;}catch(e0){}
@@ -3258,7 +3292,7 @@ function pDir(url,idx,gen){
     if(gen&&gen!==S.playGen)return;
     destroyPlayer();
     $('pw').innerHTML=pwTools('<button type="button" tabindex="0" onclick="setPlayerMode(\'hls\')">HLS</button><button type="button" tabindex="0" onclick="setPlayerMode(\'embed\')">Embed</button><button type="button" tabindex="0" onclick="setPlayerMode(\'external\')">External</button>')+
-      '<video id="dv" controls autoplay playsinline webkit-playsinline preload="auto" style="width:100%;height:100%;background:#000"></video>';
+      '<video id="dv" controls controlslist="nodownload" autoplay playsinline webkit-playsinline preload="auto" style="width:100%;height:100%;background:#000"></video>';
     var v=$('dv');
     if(!v){failToNext(idx,'no-video');return;}
     try{v.muted=false;v.defaultMuted=false;v.volume=1;}catch(e0){}
@@ -3286,8 +3320,23 @@ function pDir(url,idx,gen){
     };
     var fail=function(why){
       if(gen&&gen!==S.playGen)return;
+      // After playback is healthy, ignore soft startup reasons; keep pause/seek stable
       if(settled&&why!=='black'&&why!=='error'&&why!=='account_blocked')return;
-      if(why==='error'&&S.debridMode){
+      if(why==='error'&&settled){
+        // Seek/network blips after a good start must NOT kill the player
+        try{
+          if(v.error&&v.error.code===2){
+            setSt('sld','Reconnecting stream…');
+            return;
+          }
+        }catch(eN){}
+        // Only treat as blocked if we never got past a few seconds of real media
+        if((v.currentTime||0)>3&&isFinite(v.duration)&&v.duration>60){
+          setSt('sfl','Stream glitch — use −10s/+10s or Next');
+          return;
+        }
+      }
+      if(why==='error'&&S.debridMode&&!settled){
         // Proxy returns JSON 403 for blocked clips — treat as hard account fail
         settled=true;
         if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
@@ -3313,13 +3362,17 @@ function pDir(url,idx,gen){
     v.addEventListener('durationchange',watchStub);
     v.addEventListener('canplay',ok);
     v.addEventListener('loadeddata',ok);
+    // Keep pause/seek usable: don't let seeking media events trip failover
+    v.addEventListener('seeking',function(){showPlayerChrome();});
+    v.addEventListener('seeked',function(){showPlayerChrome();});
+    v.addEventListener('pause',function(){showPlayerChrome();});
     v.onerror=function(){fail('error');};
     try{v.src=playUrl;}catch(e){fail('src');return;}
     armTimer();
     v.play().catch(function(){});
     // Late stub catch: orange error clips often report duration after a moment
-    setTimeout(watchStub,1500);
-    setTimeout(watchStub,4000);
+    setTimeout(watchStub,2500);
+    setTimeout(watchStub,6000);
     if(window.FlixExtra)FlixExtra.bindVideoExtras(v,rawUrl,!!S.debridMode);
     focusTvPlayerChrome();
   };
@@ -3436,6 +3489,34 @@ document.addEventListener('keydown',function(e){
     closeAuth();closeRd();closeWatchGate();closeWelcome(true);closeMoreNav();
     if(window.FlixExtra){FlixExtra.closeProfiles();FlixExtra.closeRequest();FlixExtra.closePayPromo();}
     return;
+  }
+  // Space / media keys pause-resume when a native video is open (don't activate Close)
+  if($('ov')&&$('ov').classList.contains('on')){
+    var vid=getActivePlayerVideo();
+    if(vid&&(e.key===' '||e.key==='MediaPlayPause'||e.key==='k'||e.key==='K')){
+      var tag=(e.target&&e.target.tagName||'').toLowerCase();
+      if(tag!=='input'&&tag!=='textarea'){
+        e.preventDefault();
+        togglePlayerPause();
+        return;
+      }
+    }
+    if(vid&&(e.key==='ArrowLeft'||e.key==='j'||e.key==='J')){
+      var tagL=(e.target&&e.target.tagName||'').toLowerCase();
+      if(tagL!=='input'&&tagL!=='textarea'&&!(e.target&&e.target.closest&&e.target.closest('.schips'))){
+        e.preventDefault();
+        seekPlayer(-10);
+        return;
+      }
+    }
+    if(vid&&(e.key==='ArrowRight'||e.key==='l'||e.key==='L')){
+      var tagR=(e.target&&e.target.tagName||'').toLowerCase();
+      if(tagR!=='input'&&tagR!=='textarea'&&!(e.target&&e.target.closest&&e.target.closest('.schips'))){
+        e.preventDefault();
+        seekPlayer(10);
+        return;
+      }
+    }
   }
   if(e.key==='/'&&(!$('ov')||!$('ov').classList.contains('on'))){e.preventDefault();$('q').focus();return;}
   // Fire Stick / Android TV remote — spatial D-pad
