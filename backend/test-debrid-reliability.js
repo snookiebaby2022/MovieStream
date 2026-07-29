@@ -11,7 +11,8 @@ const {
   balanceByProvider,
   quarantineProviders,
   providerFamily,
-  probeStreamUrl
+  probeStreamUrl,
+  validateTopStreams
 } = require('./debridRoutes');
 
 let passed = 0;
@@ -102,6 +103,19 @@ ok('balanceByProvider caps per family and total', () => {
 
   ok('isAccountErrorText matches orange-screen copy', () => {
     assert.ok(isAccountErrorText('Access to debrid API is blocked. Check your debrid account or email.'));
+  });
+
+  // Regression: unreachable probes must not empty the list (caused "No playable
+  // premium streams" while Find more sources played fine).
+  await okAsync('validateTopStreams keeps candidates when probes fail', async () => {
+    const streams = [
+      { url: 'http://127.0.0.1:9/a.mp4', provider: 'torrentio-realdebrid', quality: '1080p', browserOk: true, cached: true },
+      { url: 'http://127.0.0.1:9/b.mp4', provider: 'comet', quality: '1080p', browserOk: true, cached: true },
+      { url: 'http://127.0.0.1:9/c.mp4', provider: 'mediafusion', quality: '720p', browserOk: true }
+    ];
+    const out = await validateTopStreams(streams, { want: 12, probeLimit: 3, minValidated: 3 });
+    assert.strictEqual(out.length, 3, 'all unverified candidates should survive');
+    assert.ok(out.every(s => !s.validated), 'none should be marked validated');
   });
 
   console.log('\n' + passed + ' checks passed' + (process.exitCode ? ' (with failures)' : ''));

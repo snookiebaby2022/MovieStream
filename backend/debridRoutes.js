@@ -282,6 +282,49 @@ function isAllowedProxyUrl(url) {
   }
 }
 
+/**
+ * Read at most `maxBytes` of the body, then abort. Streaming avoids axios
+ * maxContentLength errors when a host ignores our Range request.
+ */
+async function fetchHeadSample(url, maxBytes = 8192) {
+  const r = await axios.get(url, {
+    timeout: 12000,
+    maxRedirects: 5,
+    responseType: 'stream',
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
+    headers: {
+      'User-Agent': ua(),
+      Range: 'bytes=0-4095',
+      Accept: '*/*'
+    },
+    validateStatus: () => true
+  });
+
+  const chunks = [];
+  let read = 0;
+  await new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try { r.data.destroy(); } catch {}
+      resolve();
+    };
+    r.data.on('data', (c) => {
+      chunks.push(c);
+      read += c.length;
+      if (read >= maxBytes) finish();
+    });
+    r.data.on('end', finish);
+    r.data.on('error', finish);
+    r.data.on('close', finish);
+    setTimeout(finish, 8000);
+  });
+
+  return { res: r, buf: Buffer.concat(chunks) };
+}
+
 /** Probe an RD / resolved stream URL for copyright / infringing / account-error blocks */
 async function probeStreamUrl(url) {
   if (!url || !/^https?:\/\//i.test(url)) {
@@ -291,31 +334,19 @@ async function probeStreamUrl(url) {
     return { url, ok: false, reason: 'account_blocked', finalUrl: url };
   }
   try {
-    const r = await axios.get(url, {
-      timeout: 10000,
-      maxRedirects: 5,
-      responseType: 'arraybuffer',
-      maxContentLength: 8192,
-      maxBodyLength: 8192,
-      headers: {
-        'User-Agent': ua(),
-        Range: 'bytes=0-4095',
-        Accept: '*/*'
-      },
-      validateStatus: () => true
-    });
+    const { res: r, buf } = await fetchHeadSample(url);
     const ct = String(r.headers['content-type'] || '');
     const status = r.status;
-    const buf = Buffer.from(r.data || []);
     const text = buf.toString('utf8', 0, Math.min(buf.length, 4000));
     const finalUrl = String(r.request?.res?.responseUrl || r.request?.responseURL || url);
 
     const cr = String(r.headers['content-range'] || '');
     const crm = cr.match(/\/(\d+)\s*$/);
     const contentLength = parseInt(String(r.headers['content-length'] || '0'), 10) || 0;
-    // Prefer Content-Range total; else Content-Length when the whole object is small (error MP4s).
+    // Content-Range gives the true total. Content-Length is only the total on a
+    // full 200 response — on a 206 it is just the slice we asked for.
     let totalBytes = crm ? (parseInt(crm[1], 10) || 0) : 0;
-    if (!totalBytes && contentLength > 0 && contentLength < 50 * 1024 * 1024) {
+    if (!totalBytes && status === 200 && contentLength > 0) {
       totalBytes = contentLength;
     }
 
@@ -389,11 +420,23 @@ async function probeStreamUrl(url) {
     if (/text\/html/i.test(ct) && (INFRINGE_RE.test(text) || isAccountErrorText(text))) {
       return { url, ok: false, reason: INFRINGE_RE.test(text) ? 'copyright' : 'account_blocked', finalUrl };
     }
-    // Unknown HTML / empty responses are not safe to promote
-    return { url, ok: false, reason: 'unavailable', finalUrl, status };
+    // Nothing conclusive — keep the stream as a playable candidate, just unverified
+    return { url, ok: false, reason: 'inconclusive', finalUrl, status };
   } catch (e) {
     return { url, ok: false, reason: 'probe_error', error: e.message };
   }
+}
+
+/** Probe reasons that mean "definitely do not play this URL". */
+const HARD_FAIL_REASONS = new Set([
+  'account_blocked',
+  'copyright',
+  'copyright_stub',
+  'invalid'
+]);
+
+function isHardProbeFail(result) {
+  return !!result && result.ok === false && HARD_FAIL_REASONS.has(result.reason);
 }
 
 function mapAddonStreams(raw, provider) {
@@ -852,7 +895,8 @@ async function validateTopStreams(streams, {
   probeLimit = 28,
   minValidated = 3,
   keepUnprobed = false,
-  backupUnprobed = 0
+  backupUnprobed = 0,
+  deadlineMs = 9000
 } = {}) {
   if (!streams.length) return [];
   const ranked = streams.slice().sort((a, b) =>
@@ -883,18 +927,12 @@ async function validateTopStreams(streams, {
       return;
     }
     const result = await probeStreamUrl(s.url);
-    if (!result.ok && result.reason === 'account_blocked') {
+    if (result.ok === false && result.reason === 'account_blocked') {
       rejected.add(key);
       blockedFamilies.add(fam);
       return;
     }
-    if (
-      !result.ok &&
-      (result.reason === 'copyright' ||
-        result.reason === 'copyright_stub' ||
-        result.reason === 'unavailable' ||
-        result.reason === 'invalid')
-    ) {
+    if (isHardProbeFail(result)) {
       rejected.add(key);
       return;
     }
@@ -903,9 +941,13 @@ async function validateTopStreams(streams, {
       if (s.browserOk !== false && !s.hardCodec) validated.push(row);
       else backlog.push(row);
     }
+    // inconclusive / probe_error / transient: keep as an unverified candidate
   }
 
-  while (validated.length < minValidated && cursor < limit) {
+  // Stop probing once the deadline passes so first play never hangs on slow hosts
+  const stopAt = Date.now() + Math.max(1500, deadlineMs);
+
+  while (validated.length < minValidated && cursor < limit && Date.now() < stopAt) {
     const batch = [];
     while (batch.length < 5 && cursor < limit) {
       const s = ranked[cursor++];
@@ -924,19 +966,17 @@ async function validateTopStreams(streams, {
     quarantineProviders(validated.concat(backlog.filter(notRejected)), blockedFamilies)
   );
 
-  const backupN = keepUnprobed ? 40 : Math.max(0, backupUnprobed | 0);
-  if (backupN > 0) {
-    const leftover = pool
-      .filter(s => notRejected(s) && !good.some(g => g.url === s.url))
-      .slice(0, backupN);
-    return balanceByProvider(dedupeStreams(good.concat(leftover)), {
-      perProvider: 12,
-      max: Math.max(want, 12)
-    });
-  }
+  // Validated streams lead, but unverified candidates always stay as fallback so a
+  // slow/odd probe never empties the list.
+  const backupN = keepUnprobed ? 40 : Math.max(8, backupUnprobed | 0);
+  const leftover = pool
+    .filter(s => notRejected(s) && !good.some(g => g.url === s.url))
+    .slice(0, backupN);
 
-  if (!good.length) return [];
-  return balanceByProvider(good, { perProvider: 10, max: Math.max(want, 12) });
+  return balanceByProvider(dedupeStreams(good.concat(leftover)), {
+    perProvider: 12,
+    max: Math.max(want, 12) + leftover.length
+  });
 }
 
 router.get('/status', async (req, res) => {
@@ -1005,16 +1045,8 @@ router.post('/validate', async (req, res) => {
     });
     await Promise.all(workers);
 
-    const bad = results
-      .filter(r =>
-        !r.ok &&
-        (r.reason === 'copyright' ||
-          r.reason === 'copyright_stub' ||
-          r.reason === 'account_blocked' ||
-          r.reason === 'unavailable' ||
-          r.reason === 'invalid')
-      )
-      .map(r => r.url);
+    // Only drop links that are definitely unplayable — transient/unknown probes stay
+    const bad = results.filter(isHardProbeFail).map(r => r.url);
     const blocked = results.filter(r => !r.ok && r.reason === 'account_blocked').map(r => r.url);
     res.json({
       success: true,
@@ -1264,11 +1296,12 @@ router.post('/streams', async (req, res) => {
     streams = balanceByProvider(streams, { perProvider: deepLookup ? 16 : 12, max: deepLookup ? 60 : 48 });
     streams = await validateTopStreams(streams, {
       want: deepLookup ? 16 : 12,
-      probeLimit: deepLookup ? 30 : 28,
+      probeLimit: deepLookup ? 30 : 24,
       minValidated: deepLookup ? 5 : 3,
-      // First play: validated only. Deep "Find more" may append a few backups.
+      // Validated lead the list; unverified candidates stay as fallback
       keepUnprobed: false,
-      backupUnprobed: deepLookup ? 8 : 0
+      backupUnprobed: deepLookup ? 16 : 10,
+      deadlineMs: deepLookup ? 16000 : 9000
     });
 
     // Validated always first
@@ -1292,7 +1325,7 @@ router.post('/streams', async (req, res) => {
       providers
     });
 
-    if (!streams.length || validatedCount === 0) {
+    if (!streams.length) {
       return res.json({
         success: false,
         error: 'No playable premium streams found. Debrid may be blocked — check account/email, or try Find more sources.',

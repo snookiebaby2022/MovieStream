@@ -2823,24 +2823,33 @@ function checkAndDropRd(url,idx){
     return false;
   }).catch(function(){return false;});
 }
-/** Preflight the chosen URL; skip blocked families until a healthy starter is found. */
+/** Probe reasons that mean the link must not be played */
+function isHardProbeReason(reason){
+  return /^(account_blocked|copyright|copyright_stub|invalid)$/i.test(String(reason||''));
+}
+/**
+ * Preflight the chosen URL; skip only definitely-bad links. Streams the server
+ * already validated play immediately with no extra round trip.
+ */
 function preflightAndPlay(startIdx){
-  if(!S.debridMode||!S.token){
-    tryS(typeof startIdx==='number'?startIdx:0,{force:true});
+  var n=(S.src&&S.src.length)||0;
+  var idx=typeof startIdx==='number'&&startIdx>=0?startIdx:0;
+  if(!S.debridMode||!S.token||!n){
+    tryS(idx,{force:true});
     return;
   }
-  var n=(S.src&&S.src.length)||0;
-  var idx=typeof startIdx==='number'?startIdx:0;
+  // Server-validated pick needs no client preflight
+  if(S.src[idx]&&S.src[idx].validated){
+    tryS(idx,{force:true});
+    return;
+  }
   var attempts=0;
   function next(){
     if(attempts>=n||idx<0||idx>=n){
+      // Never dead-end: fall back to playing the best remaining candidate
+      var fb=pickNextSrc(idx>=0?idx:0,1);
+      if(fb>=0){tryS(fb,{force:true});return;}
       showPE('No playable premium streams after preflight. Try Find more sources.');
-      return;
-    }
-    if(isSrcFailed(idx)){
-      attempts++;
-      idx=pickNextSrc(idx,1);
-      next();
       return;
     }
     var s=S.src[idx];
@@ -2852,7 +2861,7 @@ function preflightAndPlay(startIdx){
       next();
       return;
     }
-    // Server already marked validated — still confirm once, then play
+    if(s.validated){tryS(idx,{force:true});return;}
     setSt('sld','Checking stream '+(idx+1)+'/'+n+'…');
     $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Starting best stream...</span></div>';
     fetch('/api/debrid/validate',{
@@ -2862,18 +2871,17 @@ function preflightAndPlay(startIdx){
     }).then(function(r){return r.json();}).then(function(d){
       var results=(d&&d.data&&d.data.results)||[];
       var r0=results[0];
-      if(r0&&r0.ok===false){
-        var reason=r0.reason||'unavailable';
-        markSrcFailed(idx,reason==='account_blocked'?'account_blocked':'copyright');
-        if(reason==='account_blocked')markProviderFamilyFailed(idx,'account_blocked');
+      if(r0&&r0.ok===false&&isHardProbeReason(r0.reason)){
+        markSrcFailed(idx,r0.reason==='account_blocked'?'account_blocked':'copyright');
+        if(r0.reason==='account_blocked')markProviderFamilyFailed(idx,'account_blocked');
         attempts++;
         idx=pickNextSrc(idx,1);
         next();
         return;
       }
+      // ok or inconclusive — let the player try it
       tryS(idx,{force:true});
     }).catch(function(){
-      // Network glitch on validate — still try playback
       tryS(idx,{force:true});
     });
   }
