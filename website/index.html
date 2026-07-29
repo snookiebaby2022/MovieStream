@@ -2523,12 +2523,12 @@ function tvHandleDpad(e){
   }
   return false;
 }
-/** App WebView: proxy RD hosts so Range/auth/redirects work reliably */
+/** App + website: proxy RD hosts so Range/auth/redirects work and error clips are rejected */
 function nativePlayUrl(url){
-  if(!url||!S.debridMode||!isNativeApp()||!S.token)return url;
+  if(!url||!S.debridMode||!S.token)return url;
   if(/\/api\/debrid\/proxy\?/i.test(url))return url;
   if(!/^https?:\/\//i.test(url))return url;
-  // Proxy every RD https link on native — host allowlist is enforced server-side
+  // Proxy every RD https link — host allowlist is enforced server-side
   return '/api/debrid/proxy?token='+encodeURIComponent(S.token)+'&u='+encodeURIComponent(url);
 }
 function srcUrlKey(sOrUrl){
@@ -2814,22 +2814,65 @@ function checkAndDropRd(url,idx){
     return false;
   }).catch(function(){return false;});
 }
-/** RD copyright blocks — only trust explicit infringement markers (duration heuristic was false-positive) */
+function parseClaimedBytes(sz){
+  var m=String(sz||'').match(/([\d.]+)\s*(GB|MB|KB)/i);
+  if(!m)return 0;
+  var n=parseFloat(m[1])||0;
+  var u=m[2].toUpperCase();
+  if(u==='GB')return n*1e9;
+  if(u==='MB')return n*1e6;
+  return n*1e3;
+}
+function srcProviderFamily(s){
+  var p=String((s&&(s.provider||s.source))||'').toLowerCase();
+  if(p.indexOf('alldebrid')>=0||p.indexOf('-ad')>=0||/\bad\b/.test(p))return 'alldebrid';
+  if(p.indexOf('realdebrid')>=0||p.indexOf('torrentio-real')>=0||/\brd\b/.test(p))return 'realdebrid';
+  if(p.indexOf('premiumize')>=0||/\bpm\b/.test(p))return 'premiumize';
+  if(p.indexOf('torbox')>=0||/\btb\b/.test(p))return 'torbox';
+  if(p.indexOf('mediafusion')>=0)return 'mediafusion';
+  if(p.indexOf('comet')>=0)return 'comet';
+  if(p.indexOf('torrentio')>=0)return 'torrentio';
+  return p.split(/[\s\-_/]/)[0]||'unknown';
+}
+/**
+ * RD/AD error clips are real MP4s (orange "API blocked" screen). Detect via URL,
+ * title, or claimed GB size with tiny duration — not bare duration alone (false positives).
+ */
 function isRdCopyrightStub(video, source){
   if(!S.debridMode||!video)return false;
   var src='';
   try{src=String(video.currentSrc||video.src||(source&&(source.embedUrl||source.url))||'');}catch(e){}
-  if(/failed_infringement|failed_opening|failed_unexpected|failed_access|\/videos\/failed_/i.test(src))return true;
+  if(/failed_infringement|failed_opening|failed_unexpected|failed_access|failed_unauthorized|failed_premium|\/videos\/failed_/i.test(src))return true;
+  var blob=String((source&&source.title)||'')+' '+String((source&&source.source)||'')+' '+String((source&&source.provider)||'');
+  if(/AUTH_BLOCKED|access to (the )?debrid api is blocked|check your debrid account|check your (?:debrid )?email|please (?:approve|confirm).{0,40}email/i.test(blob))return true;
+  var dur=0;
+  try{dur=Number(video.duration)||0;}catch(e){}
+  if(dur>0&&isFinite(dur)&&dur<60){
+    var bytes=parseClaimedBytes(source&&source.size);
+    // Label says multi‑MB/GB feature but the file is a ~10s stub → skip
+    if(bytes>=15*1024*1024)return true;
+    if(dur<22)return true;
+  }
   return false;
+}
+function markProviderFamilyFailed(idx,reason){
+  var fam=srcProviderFamily(S.src[idx]);
+  if(!fam||fam==='unknown')return;
+  (S.src||[]).forEach(function(s,i){
+    if(i===idx)return;
+    if(srcProviderFamily(s)===fam)markSrcFailed(i,reason||'account_blocked');
+  });
 }
 function dropCopyrightStub(url,idx,gen){
   if(gen&&gen!==S.playGen)return;
   destroyPlayer();
-  setSt('sld','Blocked RD link (copyright) — trying next…');
+  setSt('sld','Blocked debrid clip — trying next source…');
+  markSrcFailed(idx,'account_blocked');
+  markProviderFamilyFailed(idx,'account_blocked');
   if(url){
-    var removed=dropSrcUrls([url],'copyright');
-    if(!removed)failToNext(idx,'copyright');
-  }else failToNext(idx,'copyright');
+    var removed=dropSrcUrls([url],'account_blocked');
+    if(!removed)failToNext(idx,'account_blocked');
+  }else failToNext(idx,'account_blocked');
 }
 function handleSrc(data){
   destroyPlayer();
@@ -2839,10 +2882,13 @@ function handleSrc(data){
   S.failed={};
   S._triedRdExternal=0;
   if(!S.src.length){showPE('No sources found. External providers may be down.');return;}
-  // Drop any already-labeled infringing titles from torrentio
+  // Drop any already-labeled infringing / account-error titles from torrentio
   S.src=S.src.filter(function(s){
-    var t=(s.title||'')+' '+(s.source||'');
-    return !/copyright infringement|infringing|unavailable for legal/i.test(t);
+    var t=(s.title||'')+' '+(s.source||'')+' '+(s.provider||'');
+    if(/copyright infringement|infringing|unavailable for legal/i.test(t))return false;
+    if(/AUTH_BLOCKED|access to (the )?debrid api is blocked|check your debrid account|check your (?:debrid )?email|failed_access|\/videos\/failed_/i.test(t))return false;
+    if(/failed_access|\/videos\/failed_/i.test(String(s.url||'')+' '+String(s.embedUrl||'')))return false;
+    return true;
   });
   if(!S.src.length){showPE('No playable premium links (blocked for copyright). Try Retry streams.');return;}
   // Sort: web 1080→4K→720; Fire Stick/app 1080→720→4K (4K/HEVC often black-screens on TV)
@@ -3124,7 +3170,7 @@ function pDir(url,idx,gen){
       return;
     }
   }
-  var useProxy=!!(isNativeApp()&&S.debridMode);
+  var useProxy=!!(S.debridMode&&S.token);
   var playUrl=useProxy?nativePlayUrl(url):url;
   var triedAlt=false;
   var start=function(){
@@ -3153,10 +3199,21 @@ function pDir(url,idx,gen){
       S.playWatch=armPlaybackWatchdog(v,function(){fail('black');});
       focusTvPlayerChrome();
     };
+    var watchStub=function(){
+      if(settled||(gen&&gen!==S.playGen))return;
+      if(isRdCopyrightStub(v,S.src[idx])){settled=true;dropCopyrightStub(rawUrl,idx,gen);}
+    };
     var fail=function(why){
       if(gen&&gen!==S.playGen)return;
-      if(settled&&why!=='black'&&why!=='error')return;
-      if(isNativeApp()&&S.debridMode&&!triedAlt&&why!=='black'){
+      if(settled&&why!=='black'&&why!=='error'&&why!=='account_blocked')return;
+      if(why==='error'&&S.debridMode){
+        // Proxy returns JSON 403 for blocked clips — treat as hard account fail
+        settled=true;
+        if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
+        dropCopyrightStub(rawUrl,idx,gen);
+        return;
+      }
+      if(isNativeApp()&&S.debridMode&&!triedAlt&&why!=='black'&&why!=='account_blocked'){
         triedAlt=true;
         settled=false;
         playUrl=useProxy?rawUrl:nativePlayUrl(rawUrl);
@@ -3172,12 +3229,16 @@ function pDir(url,idx,gen){
       failToNext(idx,why||'html5');
     };
     v.addEventListener('loadedmetadata',ok);
+    v.addEventListener('durationchange',watchStub);
     v.addEventListener('canplay',ok);
     v.addEventListener('loadeddata',ok);
     v.onerror=function(){fail('error');};
     try{v.src=playUrl;}catch(e){fail('src');return;}
     armTimer();
     v.play().catch(function(){});
+    // Late stub catch: orange error clips often report duration after a moment
+    setTimeout(watchStub,1500);
+    setTimeout(watchStub,4000);
     if(window.FlixExtra)FlixExtra.bindVideoExtras(v,rawUrl,!!S.debridMode);
     focusTvPlayerChrome();
   };
@@ -3201,7 +3262,11 @@ function showPE(msg){
   var p=$('pw').querySelector('p');
   if(p){
     var extra=(soft||hard)?(' Tried '+((soft+hard))+' · soft '+soft+' · hard '+hard+'.'):'';
-    p.textContent=String(msg||'Playback failed')+extra;
+    var base=String(msg||'Playback failed');
+    if(/account_blocked/i.test(JSON.stringify(S.failed||{}))||/debrid api is blocked|check your debrid/i.test(base)){
+      base='Debrid account/API blocked on some providers. Try Find more sources, or approve the debrid email / fix the site token.';
+    }
+    p.textContent=base+extra;
   }
 }
 function retrySoftFailures(){

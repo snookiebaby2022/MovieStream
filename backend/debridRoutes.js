@@ -312,9 +312,32 @@ async function probeStreamUrl(url) {
 
     const cr = String(r.headers['content-range'] || '');
     const crm = cr.match(/\/(\d+)\s*$/);
-    const totalBytes = crm ? (parseInt(crm[1], 10) || 0) : 0;
+    const contentLength = parseInt(String(r.headers['content-length'] || '0'), 10) || 0;
+    // Prefer Content-Range total; else Content-Length when the whole object is small (error MP4s).
+    let totalBytes = crm ? (parseInt(crm[1], 10) || 0) : 0;
+    if (!totalBytes && contentLength > 0 && contentLength < 50 * 1024 * 1024) {
+      totalBytes = contentLength;
+    }
 
-    if (isFailedClipUrl(finalUrl) || isFailedClipUrl(url)) {
+    // Axios redirect chain (Torrentio → failed_access_v2.mp4 on CDN)
+    const redirectUrls = [];
+    try {
+      const chain = r.request?.res?.responseUrl || r.request?.responseURL;
+      if (chain) redirectUrls.push(String(chain));
+      const redirects = r.request?._redirectable?._redirects || r.request?._redirects;
+      if (Array.isArray(redirects)) {
+        redirects.forEach((x) => {
+          if (x && x.href) redirectUrls.push(String(x.href));
+          else if (typeof x === 'string') redirectUrls.push(x);
+        });
+      }
+    } catch {}
+
+    if (
+      isFailedClipUrl(finalUrl) ||
+      isFailedClipUrl(url) ||
+      redirectUrls.some(isFailedClipUrl)
+    ) {
       return { url, ok: false, reason: 'account_blocked', finalUrl };
     }
     if (isAccountErrorText(text) || isAccountErrorText(finalUrl)) {
@@ -345,12 +368,16 @@ async function probeStreamUrl(url) {
       }
     } catch {}
 
-    // Tiny "video" stubs are usually copyright/error clips (~few hundred KB)
-    if (totalBytes > 0 && totalBytes < 8 * 1024 * 1024 && /video|octet-stream|mp4/i.test(ct)) {
-      if (isFailedClipUrl(finalUrl) || totalBytes < 2 * 1024 * 1024) {
-        return { url, ok: false, reason: isFailedClipUrl(finalUrl) ? 'account_blocked' : 'copyright_stub', finalUrl, bytes: totalBytes };
-      }
-      return { url, ok: false, reason: 'copyright_stub', finalUrl, bytes: totalBytes };
+    // Tiny "video" stubs = copyright notice OR AllDebrid/Torrentio orange "API blocked" MP4
+    if (totalBytes > 0 && totalBytes < 12 * 1024 * 1024 && /video|octet-stream|mp4/i.test(ct)) {
+      const accountish = isFailedClipUrl(finalUrl) || redirectUrls.some(isFailedClipUrl) || totalBytes < 3 * 1024 * 1024;
+      return {
+        url,
+        ok: false,
+        reason: accountish ? 'account_blocked' : 'copyright_stub',
+        finalUrl,
+        bytes: totalBytes
+      };
     }
 
     if (status >= 200 && status < 400 && /video|audio|mpegurl|octet-stream|mp2t|mp4/i.test(ct)) {
@@ -997,11 +1024,33 @@ router.get('/proxy', async (req, res) => {
 
     const status = upstream.status;
     const finalUrl = String(upstream.request?.res?.responseUrl || upstream.request?.responseURL || target);
+    const upCt = String(upstream.headers['content-type'] || '');
+    const upCl = parseInt(String(upstream.headers['content-length'] || '0'), 10) || 0;
+    const upCr = String(upstream.headers['content-range'] || '');
+    const upTotal = (() => {
+      const m = upCr.match(/\/(\d+)\s*$/);
+      return m ? (parseInt(m[1], 10) || 0) : upCl;
+    })();
     if (isFailedClipUrl(finalUrl) || isFailedClipUrl(target)) {
       try { upstream.data.destroy(); } catch {}
       return res.status(403).json({
         success: false,
         error: 'Debrid access blocked — check your debrid account or email approval',
+        code: 'ACCOUNT_BLOCKED'
+      });
+    }
+    // Orange AUTH_BLOCKED / copyright stub MP4s are tiny complete videos
+    if (
+      upTotal > 0 &&
+      upTotal < 12 * 1024 * 1024 &&
+      /video|mp4|octet-stream/i.test(upCt) &&
+      status >= 200 &&
+      status < 400
+    ) {
+      try { upstream.data.destroy(); } catch {}
+      return res.status(403).json({
+        success: false,
+        error: 'Debrid returned a blocked/error clip — try another source',
         code: 'ACCOUNT_BLOCKED'
       });
     }

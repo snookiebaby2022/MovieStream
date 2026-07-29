@@ -100,5 +100,9 @@ ok('balanceByProvider caps per family and total', () => {
     assert.strictEqual(r.reason, 'invalid');
   });
 
+  ok('isAccountErrorText matches orange-screen copy', () => {
+    assert.ok(isAccountErrorText('Access to debrid API is blocked. Check your debrid account or email.'));
+  });
+
   console.log('\n' + passed + ' checks passed' + (process.exitCode ? ' (with failures)' : ''));
 })();
