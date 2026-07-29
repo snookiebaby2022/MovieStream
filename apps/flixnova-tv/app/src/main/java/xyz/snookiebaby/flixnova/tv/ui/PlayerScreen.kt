@@ -51,27 +51,24 @@ import xyz.snookiebaby.flixnova.tv.data.StreamItem
 fun PlayerScreen(
     title: String,
     streams: List<StreamItem>,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRequestMore: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var index by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf("Loading…") }
-    // Chrome (buttons/title) + source rail — auto-hide while playing
     var showChrome by remember { mutableStateOf(true) }
     var showRail by remember { mutableStateOf(false) }
     var hideTick by remember { mutableLongStateOf(0L) }
+    var failed by remember { mutableStateOf(setOf<String>()) }
+    var stallEpoch by remember { mutableIntStateOf(0) }
     val closeFocus = remember { FocusRequester() }
     val nextFocus = remember { FocusRequester() }
     val railFocus = remember { FocusRequester() }
 
     val player = remember {
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs */ 2_500,
-                /* maxBufferMs */ 15_000,
-                /* bufferForPlaybackMs */ 1_000,
-                /* bufferForPlaybackAfterRebufferMs */ 2_000
-            )
+            .setBufferDurationsMs(2_500, 15_000, 1_000, 2_000)
             .build()
         ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
@@ -79,22 +76,51 @@ fun PlayerScreen(
             .apply { playWhenReady = true }
     }
 
+    fun urlKey(s: StreamItem?): String =
+        (s?.url ?: "").substringBefore('?').lowercase()
+
     fun bumpChrome(showSources: Boolean = false) {
         showChrome = true
         if (showSources) showRail = true
         hideTick++
     }
 
-    fun playAt(i: Int) {
-        if (i !in streams.indices) {
-            status = "No more sources"
-            bumpChrome()
+    fun pickNext(from: Int, dir: Int = 1): Int {
+        if (streams.isEmpty()) return -1
+        val n = streams.size
+        for (i in 1..n) {
+            val idx = ((from + dir * i) % n + n) % n
+            val key = urlKey(streams.getOrNull(idx))
+            if (key.isBlank()) continue
+            if (key !in failed) return idx
+        }
+        return -1
+    }
+
+    fun playAt(i: Int, markCurrentFailed: Boolean = false) {
+        if (markCurrentFailed) {
+            val cur = urlKey(streams.getOrNull(index))
+            if (cur.isNotBlank()) failed = failed + cur
+        }
+        var target = i
+        if (target !in streams.indices || urlKey(streams.getOrNull(target)).isBlank() || urlKey(streams[target]) in failed) {
+            target = pickNext(if (target in streams.indices) target else index, 1)
+        }
+        if (target < 0) {
+            status = if (onRequestMore != null) "No more sources — search again" else "No more sources"
+            bumpChrome(showSources = true)
             return
         }
-        index = i
-        val raw = streams[i].url ?: return
+        val raw = streams[target].url
+        if (raw.isNullOrBlank()) {
+            failed = failed + urlKey(streams[target])
+            playAt(pickNext(target, 1))
+            return
+        }
+        index = target
         val url = FlixApi.proxyUrl(raw)
-        status = streams[i].label()
+        status = streams[target].label()
+        stallEpoch++
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
         player.play()
@@ -109,10 +135,21 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(streams) {
+        failed = emptySet()
         playAt(0)
     }
 
-    // Auto-hide overlay ~3s after last interaction while playing
+    // Stall watchdog — advance if buffering with no progress
+    LaunchedEffect(stallEpoch, index) {
+        delay(10_000)
+        if (!player.isPlaying &&
+            (player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_IDLE)
+        ) {
+            status = "Stalled — trying next…"
+            playAt(index, markCurrentFailed = true)
+        }
+    }
+
     LaunchedEffect(hideTick, showChrome, showRail) {
         if (!showChrome && !showRail) return@LaunchedEffect
         delay(3000)
@@ -127,13 +164,14 @@ fun PlayerScreen(
             override fun onPlayerError(error: PlaybackException) {
                 status = "Error — trying next…"
                 bumpChrome()
-                playAt(index + 1)
+                playAt(index, markCurrentFailed = true)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
                     status = streams.getOrNull(index)?.label() ?: "Playing"
                     hideTick++
+                    stallEpoch++
                 } else {
                     bumpChrome()
                 }
@@ -182,61 +220,48 @@ fun PlayerScreen(
             .onPreviewKeyEvent { ev ->
                 if (ev.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
                 val code = ev.nativeKeyEvent.keyCode
-                // Menu open: D-pad ←→ moves focus (Next source / Sources).
-                // Seek with ←→ only when chrome is hidden.
                 if (!showChrome && !showRail) {
                     when (code) {
                         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                            seekBy(-10_000)
-                            true
+                            seekBy(-10_000); true
                         }
                         KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                            seekBy(10_000)
-                            true
+                            seekBy(10_000); true
                         }
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                             if (player.isPlaying) player.pause() else player.play()
-                            bumpChrome()
-                            true
+                            bumpChrome(); true
                         }
                         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_MENU,
                         KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_BUTTON_A -> {
-                            bumpChrome()
-                            true
+                            bumpChrome(); true
                         }
                         KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                            playAt(index + 1)
-                            true
+                            playAt(pickNext(index, 1)); true
                         }
                         KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                            playAt((index - 1).coerceAtLeast(0))
-                            true
+                            playAt(pickNext(index, -1)); true
                         }
                         else -> false
                     }
                 } else {
                     when (code) {
                         KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                            seekBy(-10_000)
-                            true
+                            seekBy(-10_000); true
                         }
                         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                            seekBy(10_000)
-                            true
+                            seekBy(10_000); true
                         }
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                             if (player.isPlaying) player.pause() else player.play()
-                            bumpChrome()
-                            true
+                            bumpChrome(); true
                         }
                         KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                            playAt(index + 1)
-                            true
+                            playAt(pickNext(index, 1)); true
                         }
                         KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                            playAt((index - 1).coerceAtLeast(0))
-                            true
+                            playAt(pickNext(index, -1)); true
                         }
                         else -> false
                     }
@@ -246,7 +271,6 @@ fun PlayerScreen(
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
-                    // No built-in Exo controller — it sticks on Fire Stick
                     useController = false
                     keepScreenOn = true
                     layoutParams = FrameLayout.LayoutParams(
@@ -275,7 +299,7 @@ fun PlayerScreen(
                 )
                 Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text(status, color = Gold, fontSize = 14.sp)
-                Text("OK menu · ↓ then ←→ for Next source · seek when menu hidden", color = TextMuted, fontSize = 12.sp)
+                Text("OK menu · Next source wraps · seek when menu hidden", color = TextMuted, fontSize = 12.sp)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 10.dp)
@@ -283,13 +307,16 @@ fun PlayerScreen(
                     FocusButton(
                         "Next source",
                         primary = true,
-                        onClick = { playAt(index + 1) },
+                        onClick = { playAt(pickNext(index, 1)) },
                         modifier = Modifier.focusRequester(nextFocus)
                     )
                     FocusButton("Sources", onClick = {
                         showRail = true
                         bumpChrome(showSources = true)
                     })
+                    if (onRequestMore != null) {
+                        FocusButton("Search again", onClick = onRequestMore)
+                    }
                     FocusButton("−10s", onClick = { seekBy(-10_000) })
                     FocusButton("+10s", onClick = { seekBy(10_000) })
                 }
@@ -311,10 +338,20 @@ fun PlayerScreen(
                     modifier = Modifier.padding(top = 12.dp)
                 ) {
                     itemsIndexed(streams) { i, s ->
+                        val dead = urlKey(s) in failed
                         FocusButton(
-                            label = "${if (i == index) "▶ " else ""}${s.label()}",
+                            label = "${when {
+                                i == index -> "▶ "
+                                dead -> "✕ "
+                                else -> ""
+                            }}${s.label()}",
                             primary = i == index,
-                            onClick = { playAt(i) },
+                            onClick = {
+                                // Force retry even if previously failed
+                                val key = urlKey(s)
+                                if (key.isNotBlank()) failed = failed - key
+                                playAt(i)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .then(if (i == 0) Modifier.focusRequester(railFocus) else Modifier)

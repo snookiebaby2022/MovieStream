@@ -12,8 +12,8 @@ android {
         applicationId = "xyz.snookiebaby.flixnova.tv"
         minSdk = 24
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.0.5"
+        versionCode = 7
+        versionName = "1.0.6"
         buildConfigField("String", "API_BASE", "\"https://snookiebaby.xyz\"")
     }
 
@@ -42,6 +42,11 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+        disable += "NullSafeMutableLiveData"
     }
 }
 

@@ -623,7 +623,7 @@ app.get('/api/discover/adult', async (req, res) => {
 app.get('/api/catalog/home', async (req, res) => {
   try {
     const adult = await allowAdult(req);
-    const ck = `home:catalog:v2:a${adult ? 1 : 0}`;
+    const ck = `home:catalog:v3:a${adult ? 1 : 0}`;
     const c = await getC(ck);
     if (c) return res.json({ success: true, data: c });
 
@@ -641,6 +641,7 @@ app.get('/api/catalog/home', async (req, res) => {
 
     const fetchBrowse = async (type, extra = {}, pages = 1) => {
       const all = [];
+      const seen = new Set();
       for (let p = 1; p <= pages; p++) {
         const d = await tmdb(`/discover/${type}`, {
           page: p,
@@ -648,7 +649,15 @@ app.get('/api/catalog/home', async (req, res) => {
           include_adult: adult,
           ...extra
         });
-        if (d?.results) all.push(...d.results.map(x => mapItem({ ...x, media_type: type })));
+        if (d?.results) {
+          for (const x of d.results) {
+            const item = mapItem({ ...x, media_type: type });
+            const key = `${item.type}:${item.tmdbId || item.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            all.push(item);
+          }
+        }
       }
       return filterAdult(all, adult);
     };
@@ -1601,7 +1610,43 @@ app.post('/api/admin/debrid/test', adminAuth, async (req, res) => {
           timeout: 22000, validateStatus: s => s < 500
         });
         const streams = (r.data?.streams || []).filter(s => /^https?:\/\//i.test(s.url || s.externalUrl || ''));
-        return { provider: label, ok: r.status < 400, streamCount: streams.length, sample: streams.slice(0, 3).map(s => (s.title || s.name || '').split('\n')[0]) };
+        const failedClipRe = /\/videos\/failed[_/]|failed_access|AUTH_BLOCKED|access to (the )?debrid api is blocked|check your debrid account|check your (?:debrid )?email/i;
+        const clean = [];
+        const blocked = [];
+        for (const s of streams.slice(0, 8)) {
+          const play = s.url || s.externalUrl || '';
+          const title = `${s.title || ''} ${s.name || ''}`;
+          if (failedClipRe.test(play) || failedClipRe.test(title)) {
+            blocked.push((s.title || s.name || 'blocked').toString().split('\n')[0].slice(0, 60));
+            continue;
+          }
+          // Follow one sample redirect to catch failed_access_v2.mp4
+          try {
+            const head = await axios.get(play, {
+              timeout: 8000,
+              maxRedirects: 5,
+              responseType: 'arraybuffer',
+              maxContentLength: 2048,
+              headers: { 'User-Agent': 'FlixNova-Admin', Range: 'bytes=0-1023' },
+              validateStatus: () => true
+            });
+            const finalUrl = String(head.request?.res?.responseUrl || head.request?.responseURL || play);
+            if (failedClipRe.test(finalUrl) || head.status === 401 || head.status === 403) {
+              blocked.push((s.title || s.name || finalUrl).toString().split('\n')[0].slice(0, 60));
+              continue;
+            }
+          } catch {}
+          clean.push((s.title || s.name || '').toString().split('\n')[0]);
+        }
+        return {
+          provider: label,
+          ok: r.status < 400 && blocked.length < streams.length,
+          streamCount: streams.length,
+          blockedCount: blocked.length,
+          sample: clean.slice(0, 3),
+          blockedSample: blocked.slice(0, 2),
+          warning: blocked.length ? 'Some streams look like debrid account/email blocks' : undefined
+        };
       } catch (e) {
         return { provider: label, ok: false, streamCount: 0, error: e.message };
       }

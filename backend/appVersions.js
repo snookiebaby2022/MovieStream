@@ -21,14 +21,14 @@ const DEFAULTS = {
   },
   tv: {
     packageId: 'xyz.snookiebaby.flixnova.tv',
-    versionCode: 6,
-    versionName: '1.0.5',
+    versionCode: 7,
+    versionName: '1.0.6',
     apkUrl: 'https://snookiebaby.xyz/downloads/FlixNova-tv.apk',
     downloaderUrl: 'http://aftv.news/5381210',
     downloaderCode: '5381210',
     minVersionCode: 1,
     forceUpdate: false,
-    notes: 'Fix player menu: Right selects Next source'
+    notes: 'Catalog click fix + debrid failover + Next wraps sources'
   },
   updatedAt: null
 };

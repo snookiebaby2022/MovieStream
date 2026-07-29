@@ -526,7 +526,7 @@ body.tv-mode .card.tv-focused{
       <span class="srclbl">Servers:</span>
       <div id="schips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
       <button class="sc" id="nextSrcBtn" onclick="nextSrc()" title="Try next server">Next &#8250;</button>
-      <button class="sc" id="moreSrvBtn" onclick="retryPremiumStreams()" title="Search premium streams again">Retry streams</button>
+      <button class="sc" id="moreSrvBtn" onclick="retryPremiumStreams(true)" title="Search for more premium streams">Find more</button>
       <span class="srclbl" style="margin-left:6px">Player:</span>
       <div class="pchips" id="pchips"></div>
       <button class="list-btn" id="mListBtn" onclick="toggleListModal()">+ Wishlist</button>
@@ -753,11 +753,12 @@ function installAppUpdate(){
   }
 }
 
-// ── ITEM STORE (THE FIX - no JSON in HTML attributes) ──────
+// ── ITEM STORE (keys never recycle in a page session) ──────
 var STORE={};var STOREKEY=0;
 function storeItem(item){var k='k'+(STOREKEY++);STORE[k]=item;return k;}
 function getItem(k){return STORE[k]||null;}
-function clearStore(){STORE={};STOREKEY=0;}
+/** Clear stored items but keep STOREKEY monotonic so live DOM keys stay valid. */
+function clearStore(){STORE={};}
 
 // ── STATE ──────────────────────────────────────────────────
 var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false,hls:null,playGen:0,playerMode:localStorage.getItem('fn_player')||'auto'};
@@ -924,6 +925,16 @@ function fetchDebridStreams(imdbId,type,sn,ep,tmdbId,extra){
   if(token)headers['x-rd-token']=token;
   var x=extra||{};
   var item=S.item||{};
+  var exclude=[];
+  if(x.deep||x.exclude){
+    Object.keys(S.failed||{}).forEach(function(k){
+      if(typeof k==='string'&&k.indexOf('http')===0)exclude.push(k);
+    });
+    (S.src||[]).forEach(function(s){
+      var k=srcUrlKey(s);
+      if(k)exclude.push(k);
+    });
+  }
   return fetch('/api/debrid/streams',{
     method:'POST',
     headers:headers,
@@ -935,7 +946,9 @@ function fetchDebridStreams(imdbId,type,sn,ep,tmdbId,extra){
       tmdbId:tmdbId,
       title:x.title||item.title||'',
       year:x.year||item.year||'',
-      adult:!!(x.adult||item.adult)
+      adult:!!(x.adult||item.adult),
+      deep:!!x.deep,
+      exclude:exclude
     })
   }).then(function(r){
     return r.json().then(function(d){
@@ -1416,7 +1429,7 @@ function seeAll(id){
   S.browseSeen=seen;
   var doRender=function(hasMore){
     clearStore();
-    var cards=all.map(cardHTML).join('');
+    var cards=all.map(function(i){return cardHTML(i);}).join('');
     setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">'+he(d.title)+'</div><div class="gvcount">'+all.length+'+ titles</div></div><button class="gvback" onclick="goBack()">&#8592; Back</button></div><div class="fgrid" id="browseGrid">'+cards+'</div>'+(hasMore?'<button class="loadmore" id="seeAllMore" onclick="loadMoreSeeAll()">Load More</button>':'')+'</div>');
   };
   if(S.browseMoreAp){
@@ -1483,7 +1496,7 @@ function byG(id,type){
   api('/browse/'+type+'?genre='+id+'&pages=3').then(function(d){
     if(d.success&&d.data&&d.data.length){
       var gn='';var el=document.querySelector('.gp[data-gid="'+id+'"]');if(el)gn=el.textContent;
-      clearStore();var cards=d.data.map(cardHTML).join('');
+      clearStore();var cards=d.data.map(function(i){return cardHTML(i);}).join('');
       setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">'+he(gn||'Genre')+'</div><div class="gvcount">'+d.data.length+' titles</div></div><button class="gvback" onclick="clrG(\''+type+'\')">&#8592; Back</button></div><div class="fgrid">'+cards+'</div></div>');
     }else setR('<div class="empty">No results</div>');
   }).catch(function(e){setR('<div class="empty">'+e.message+'</div>');});
@@ -1707,7 +1720,7 @@ function browseQuery(type){
 }
 function renderBrowseGrid(title,type,d){
   clearStore();
-  var cards=(d.data||[]).map(cardHTML).join('');
+  var cards=(d.data||[]).map(function(i){return cardHTML(i);}).join('');
   setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">'+he(title)+'</div><div class="gvcount">'+(d.data||[]).length+'+ titles</div></div><button class="gvback" onclick="go(\''+(S.animeMode?'anime':type)+'\',null)">&#8592; Back</button></div><div class="fgrid" id="browseGrid">'+cards+'</div><button class="loadmore" onclick="loadMoreBrowse()">Load More</button></div>');
 }
 function byYear(year,type,el){
@@ -1751,7 +1764,7 @@ function loadMoreBrowse(){
   if(S.animeMode)q+='&anime=1';
   api(q).then(function(d){
     var g=$('browseGrid');if(!g||!d.data)return;
-    g.insertAdjacentHTML('beforeend',d.data.map(cardHTML).join(''));
+    g.insertAdjacentHTML('beforeend',d.data.map(function(i){return cardHTML(i);}).join(''));
   });
 }
 
@@ -1926,7 +1939,7 @@ function doSearch(){
   ld('Searching "'+q+'"...');
   api('/search/'+encodeURIComponent(q)).then(function(d){
     if(d.success&&d.data&&d.data.length){
-      clearStore();var cards=d.data.map(cardHTML).join('');
+      clearStore();var cards=d.data.map(function(i){return cardHTML(i);}).join('');
       setR('<div class="gv"><div class="gvhdr"><div><div class="gvtitle">Results for "'+he(q)+'"</div><div class="gvcount">'+(d.total||d.data.length)+' found</div></div><button class="gvback" onclick="goHome()">&#8592; Back</button></div><div class="fgrid">'+cards+'</div></div>');
     }else setR('<div class="empty">'+(d.error||'No results for "'+q+'"')+'</div>');
   }).catch(function(e){setR('<div class="empty">Search failed: '+e.message+'</div>');});
@@ -2187,8 +2200,8 @@ function sourcesPath(id,type,sn,ep){
   if(type==='tv'){qs.push('season='+(sn||1));qs.push('episode='+(ep||1));}
   return '/sources/'+id+'/'+type+(qs.length?'?'+qs.join('&'):'');
 }
-function loadAllServers(){retryPremiumStreams();}
-function retryPremiumStreams(){
+function loadAllServers(){retryPremiumStreams(true);}
+function retryPremiumStreams(deep){
   if(!S.item)return;
   if(!isAdFreeUser()){
     if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
@@ -2196,17 +2209,47 @@ function retryPremiumStreams(){
     return;
   }
   var id=S.item.tmdbId||S.item.id,type=S.item.type||'movie';
-  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Searching premium streams again...</span></div>';
+  var keepPlaying=playerIsPlaying();
+  var existingKeys={};
+  (S.src||[]).forEach(function(s){existingKeys[srcUrlKey(s)]=1;});
+  if(!keepPlaying){
+    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Searching for more premium streams...</span></div>';
+  }else{
+    setSt('sld','Finding more sources…');
+  }
   var imdb=S.item.imdbId;
   var imdbP=imdb?Promise.resolve(imdb):api('/details/'+id+'/'+type).then(function(d){return d.success&&d.data?d.data.imdbId:null;});
   imdbP.then(function(idb){
-    return fetchDebridStreams(idb,type,S.sn,S.ep,id,{title:S.item.title,year:S.item.year,adult:!!S.item.adult}).then(function(rd){
+    return fetchDebridStreams(idb,type,S.sn,S.ep,id,{
+      title:S.item.title,year:S.item.year,adult:!!S.item.adult,deep:deep!==false
+    }).then(function(rd){
       if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
-        handleSrc({sources:rd.data.streams,debrid:true});
-        setSt('sok','▶ Premium · retry');
-      }else showPE('Still no premium streams.');
+        var added=0;
+        rd.data.streams.forEach(function(s){
+          var k=srcUrlKey(s);
+          if(!k||existingKeys[k])return;
+          existingKeys[k]=1;
+          S.src.push(s);
+          added++;
+        });
+        if(added){
+          renderSrcChips(S.si||0);
+          $('srcbar').style.display='flex';
+          setSt('sok','▶ Added '+added+' more source'+(added>1?'s':''));
+          if(!keepPlaying)tryS(pickNextSrc(S.si||0,1)||0,{force:true});
+          return;
+        }
+        if(!keepPlaying)handleSrc({sources:rd.data.streams,debrid:true});
+        else setSt('sok','No new sources found');
+        return;
+      }
+      if(keepPlaying)setSt('sld','Still no extra sources');
+      else showPE('Still no premium streams.');
     });
-  }).catch(function(e){showPE(e.message);});
+  }).catch(function(e){
+    if(keepPlaying)setSt('sfl',e.message||'Lookup failed');
+    else showPE(e.message);
+  });
 }
 function nextEp(){
   if(!S.item||(S.item.type||'movie')!=='tv')return;
@@ -2243,7 +2286,7 @@ function bCast(cast){
   var h='<div class="cr">';cast.slice(0,20).forEach(function(c){h+='<div class="cc"><img src="'+(c.photo||PH)+'" onerror="this.src=\''+PH+'\'" loading="lazy"><div class="ccn">'+he(c.name)+'</div><div class="ccc">'+he(c.character||'')+'</div></div>';});h+='</div>';
   $('tpCast').innerHTML=h;
 }
-function bSim(items){clearStore();$('tpSim').innerHTML='<div class="sg">'+items.map(cardHTML).join('')+'</div>';}
+function bSim(items){$('tpSim').innerHTML='<div class="sg">'+(items||[]).map(function(i){return cardHTML(i);}).join('')+'</div>';}
 function bTrail(videos){$('tpTrail').innerHTML='<div class="tb"><iframe src="'+YTN+videos[0].key+'?rel=0&modestbranding=1" allow="autoplay;encrypted-media;fullscreen" allowfullscreen loading="lazy"></iframe></div>';}
 
 // ── SOURCES & PLAYER ───────────────────────────────────────
@@ -2399,17 +2442,32 @@ function tvHandleDpad(e){
       if(closeBtn){e.preventDefault();return tvFocusEl(closeBtn);}
     }
     if(key==='ArrowLeft'||key==='ArrowRight'){
-      var chips=[].slice.call(document.querySelectorAll('#schips .sc:not(.dead), #pchips .pc'));
+      var chips=[].slice.call(document.querySelectorAll('#schips .sc'));
+      // Exclude toolbar Next/Find-more buttons from chip stepping
+      chips=chips.filter(function(c){return c.id!=='nextSrcBtn'&&c.id!=='moreSrvBtn';});
       if(chips.length){
         var cur=document.activeElement;
         var ci=chips.indexOf(cur);
-        if(ci<0)ci=S.si||0;
+        if(ci<0){
+          var curChip=document.getElementById('sc'+(S.si||0));
+          ci=Math.max(0,chips.indexOf(curChip));
+        }
+        if(key==='ArrowRight'&&ci>=chips.length-1){
+          e.preventDefault();
+          nextSrc();
+          return true;
+        }
+        if(key==='ArrowLeft'&&ci<=0){
+          e.preventDefault();
+          prevSrc();
+          return true;
+        }
         var ni=key==='ArrowRight'?Math.min(chips.length-1,ci+1):Math.max(0,ci-1);
         e.preventDefault();
         return tvFocusEl(chips[ni]);
       }
       if(key==='ArrowRight'){e.preventDefault();nextSrc();return true;}
-      if(key==='ArrowLeft'&&typeof prevEp==='function'&&S.item&&S.item.type==='tv'){/* stay */}
+      if(key==='ArrowLeft'){e.preventDefault();prevSrc();return true;}
     }
     if(key==='ArrowDown'){
       var epi=document.querySelector('.epi.on')||document.querySelector('.epi');
@@ -2473,14 +2531,72 @@ function nativePlayUrl(url){
   // Proxy every RD https link on native — host allowlist is enforced server-side
   return '/api/debrid/proxy?token='+encodeURIComponent(S.token)+'&u='+encodeURIComponent(url);
 }
+function srcUrlKey(sOrUrl){
+  var u=typeof sOrUrl==='string'?sOrUrl:((sOrUrl&&(sOrUrl.embedUrl||sOrUrl.url))||'');
+  return String(u||'').split('?')[0].toLowerCase();
+}
+function isSrcFailed(idx,force){
+  if(force)return false;
+  var s=S.src[idx];if(!s)return true;
+  var k=srcUrlKey(s);
+  var f=S.failed[k]||S.failed[idx];
+  if(!f)return false;
+  if(f==='hard'||f===1||f===true)return true;
+  // soft failures can be retried on a second pass
+  return !!f && !S._softPass;
+}
+function markSrcFailed(idx,reason){
+  var s=S.src[idx];
+  var hard=/copyright|empty|invalid|account_blocked|451/i.test(String(reason||''));
+  var soft=/timeout|black|probe_error|hls|html5|hevc|error|unavailable|retry|no-video|src/i.test(String(reason||''));
+  if(s){
+    var k=srcUrlKey(s);
+    S.failed[k]=hard?'hard':(soft?'soft':'soft');
+  }
+  S.failed[idx]=hard?'hard':(soft?'soft':'soft');
+  var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');
+}
+function clearSoftFailures(){
+  Object.keys(S.failed||{}).forEach(function(k){
+    if(S.failed[k]==='soft')delete S.failed[k];
+  });
+}
+/** Find next untried source. Wraps once. Returns -1 when every source is failed. */
+function pickNextSrc(from,dir,forceIdx){
+  if(typeof forceIdx==='number'&&forceIdx>=0&&forceIdx<S.src.length)return forceIdx;
+  if(!S.src||!S.src.length)return -1;
+  var step=dir<0?-1:1;
+  var start=typeof from==='number'?from:S.si;
+  var n=S.src.length;
+  for(var pass=0;pass<2;pass++){
+    if(pass===1){
+      // Second lap: allow soft failures again
+      S._softPass=true;
+    }
+    for(var i=1;i<=n;i++){
+      var idx=(start+step*i+n*10)%n;
+      if(!isSrcFailed(idx))return idx;
+    }
+  }
+  S._softPass=false;
+  return -1;
+}
+function playerIsPlaying(){
+  var v=document.querySelector('#pw video');
+  try{if(v&&!v.paused&&v.readyState>=2&&(v.currentTime||0)>0.2)return true;}catch(e){}
+  var emb=$('emb');
+  if(emb&&emb.src&&emb.src!=='about:blank')return true;
+  return false;
+}
 /** Advance to next RD/source immediately — never stall waiting on validate */
 function failToNext(idx,reason){
-  mFail(idx);
-  var n=(idx||0)+1,total=(S.src&&S.src.length)||0;
-  if(S.debridMode&&n<total){
-    setSt('sld','RD link '+(idx+1)+'/'+total+(reason?' ('+reason+')':'')+' failed — trying next…');
+  markSrcFailed(idx,reason);
+  var total=(S.src&&S.src.length)||0;
+  var next=pickNextSrc(idx,1);
+  if(S.debridMode&&next>=0){
+    setSt('sld','Stream '+(idx+1)+'/'+total+(reason?' ('+reason+')':'')+' failed — trying next…');
   }
-  tryS(n);
+  tryS(next,{fromFail:true});
 }
 function destroyPlayer(){
   if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
@@ -2639,38 +2755,44 @@ function renderSrcChips(activeIdx){
   $('schips').innerHTML=S.src.map(function(s,i){
     var q=s.quality||'Auto';
     var label=s.debrid?(he(s.quality||'HD')+(s.size?' · '+he(s.size):'')):he(s.source);
-    return'<button class="sc'+(i===on?' on':'')+(S.failed[i]?' dead':'')+'" id="sc'+i+'" onclick="tryS('+i+')" title="'+he(s.title||s.source)+'">'+(s.debrid?'RD ':'')+label+'<span class="qbadge q-'+(q==='1080p'||q==='4K'||q==='720p'?'HD':q)+'">'+he(q)+'</span></button>';
+    var dead=!!(S.failed[srcUrlKey(s)]||S.failed[i]);
+    return'<button class="sc'+(i===on?' on':'')+(dead?' dead':'')+'" id="sc'+i+'" onclick="tryS('+i+',{force:true})" title="'+he(s.title||s.source)+'">'+(s.debrid?'RD ':'')+label+'<span class="qbadge q-'+(q==='1080p'||q==='4K'||q==='720p'?'HD':q)+'">'+he(q)+'</span></button>';
   }).join('');
 }
 /** Remove RD links blocked for copyright / infringing_file */
 function dropSrcUrls(badUrls, reason){
   if(!badUrls||!badUrls.length||!S.src||!S.src.length)return 0;
   var bad={};
-  badUrls.forEach(function(u){if(u)bad[u]=1;});
+  badUrls.forEach(function(u){if(u){bad[u]=1;bad[srcUrlKey(u)]=1;}});
   var curUrl=S.src[S.si]&&(S.src[S.si].embedUrl||S.src[S.si].url);
+  var curKey=srcUrlKey(curUrl);
   var before=S.src.length;
+  // Preserve URL-keyed failures across filter
+  var keepFailed={};
+  Object.keys(S.failed||{}).forEach(function(k){
+    if(typeof k==='string'&&k.indexOf('http')===0||k.indexOf('/')>=0)keepFailed[k]=S.failed[k];
+  });
   S.src=S.src.filter(function(s){
     var u=s.embedUrl||s.url||'';
-    return !bad[u];
+    return !bad[u]&&!bad[srcUrlKey(u)];
   });
   var removed=before-S.src.length;
   if(!removed)return 0;
-  S.failed={};
+  S.failed=keepFailed;
   if(!S.src.length){
     renderSrcChips(0);
-    showPE('All premium links were removed (copyright / unavailable). Try Retry streams or another title.');
+    showPE('All premium links were removed (copyright / unavailable). Try Find more sources or another title.');
     return removed;
   }
   var next=0;
   if(curUrl){
-    var keep=S.src.findIndex(function(s){return (s.embedUrl||s.url)===curUrl;});
+    var keep=S.src.findIndex(function(s){return srcUrlKey(s)===curKey;});
     next=keep>=0?keep:0;
   }
   renderSrcChips(next);
   setSt('sld','Removed '+removed+' blocked RD link'+(removed>1?'s':'')+(reason?' ('+reason+')':'')+'…');
-  // If current was removed, switch to next remaining
-  if(!curUrl||bad[curUrl])tryS(next);
-  else renderSrcChips(S.si);
+  if(!curUrl||bad[curUrl]||bad[curKey])tryS(next,{fromFail:true});
+  else{S.si=next;renderSrcChips(S.si);}
   return removed;
 }
 function pruneInfringingRd(){
@@ -2697,7 +2819,7 @@ function isRdCopyrightStub(video, source){
   if(!S.debridMode||!video)return false;
   var src='';
   try{src=String(video.currentSrc||video.src||(source&&(source.embedUrl||source.url))||'');}catch(e){}
-  if(/failed_infringement|failed_opening|failed_unexpected|\/videos\/failed_/i.test(src))return true;
+  if(/failed_infringement|failed_opening|failed_unexpected|failed_access|\/videos\/failed_/i.test(src))return true;
   return false;
 }
 function dropCopyrightStub(url,idx,gen){
@@ -2760,8 +2882,8 @@ function handleSrc(data){
   var moreBtn=$('moreSrvBtn');
   if(moreBtn){
     moreBtn.style.display='inline-flex';
-    moreBtn.textContent='Retry streams';
-    moreBtn.title='Search premium streams again';
+    moreBtn.textContent='Find more';
+    moreBtn.title='Search for more premium streams';
   }
   renderSrcChips(0);
   renderPlayerChips();
@@ -2776,16 +2898,45 @@ function handleSrc(data){
   }
 }
 function setSt(c,m){$('srcst').className='srcst '+c;$('srcst').textContent=m;}
-function nextSrc(){tryS(S.si+1);}
-function tryS(idx){
-  destroyPlayer();
-  if(idx>=S.src.length){
-    showPE('All premium streams failed. Try Retry streams or another title.');
+function nextSrc(){
+  var next=pickNextSrc(S.si,1);
+  tryS(next,{fromFail:false});
+}
+function prevSrc(){
+  var prev=pickNextSrc(S.si,-1);
+  tryS(prev,{fromFail:false});
+}
+function tryS(idx,opts){
+  opts=opts||{};
+  if(typeof idx!=='number'||idx<0){
+    if(playerIsPlaying()){
+      setSt('sok','Last usable source — Find more sources if needed');
+      return;
+    }
+    showPE('All premium streams failed. Try Find more sources or another title.');
     return;
   }
-  // Skip already-failed chips when jumping ahead
-  if(S.failed[idx]){tryS(idx+1);return;}
+  if(idx>=S.src.length){
+    var wrap=pickNextSrc(S.si,1);
+    if(wrap>=0){tryS(wrap,opts);return;}
+    if(playerIsPlaying()){
+      setSt('sok','No more unused sources');
+      return;
+    }
+    showPE('All premium streams failed. Try Find more sources or another title.');
+    return;
+  }
+  // Skip already-failed chips unless user force-clicked one
+  if(!opts.force&&isSrcFailed(idx)){
+    var alt=pickNextSrc(idx,1);
+    if(alt>=0&&alt!==idx){tryS(alt,opts);return;}
+    if(playerIsPlaying()){setSt('sok','No more unused sources');return;}
+    showPE('All premium streams failed. Try Find more sources or another title.');
+    return;
+  }
+  destroyPlayer();
   S.si=idx;
+  S._softPass=false;
   renderSrcChips(idx);
   var s=S.src[idx],url=s.embedUrl||s.url||'';
   var gen=++S.playGen;
@@ -2795,7 +2946,6 @@ function tryS(idx){
     :('Loading '+s.source+'...'));
   if(!url){failToNext(idx,'empty');return;}
 
-  var mode=getPlayerMode();
   var engine=resolvePlayer(s,url);
   if(engine==='external'){pExt(url,idx,gen);return;}
   // Embed mode disabled — treat as HTML5/HLS for debrid URLs
@@ -2832,18 +2982,18 @@ function pEmb(url,idx,gen){
     var frame=$('emb'),loaded=false;
     if(frame){
       frame.addEventListener('load',function(){loaded=true;if(gen&&gen!==S.playGen)return;setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+' · Embed');focusTvPlayerChrome();});
-      frame.addEventListener('error',function(){if(gen&&gen!==S.playGen)return;mFail(idx);tryS(idx+1);});
+      frame.addEventListener('error',function(){if(gen&&gen!==S.playGen)return;failToNext(idx,'embed');});
     }
     focusTvPlayerChrome();
 
     S.failTimer=setTimeout(function(){
       if(gen&&gen!==S.playGen)return;
-      if(!loaded&&!S.failed[idx]){
+      if(!loaded&&!isSrcFailed(idx)){
         setSt('sld',isNativeApp()?'TV player blocked/slow — tap Next':'Slow server — tap Next or switch Player');
-        if(isNativeApp()){mFail(idx);tryS(idx+1);}
+        if(isNativeApp()){failToNext(idx,'timeout');}
       }
     },14000);
-    setTimeout(function(){if(!S.failed[idx]&&(!gen||gen===S.playGen))setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+(isNativeApp()?' · if 403 tap Next':' · Embed'));},4000);
+    setTimeout(function(){if(!isSrcFailed(idx)&&(!gen||gen===S.playGen))setSt('sok','▶ '+(S.src[idx]?S.src[idx].source:'')+(isNativeApp()?' · if 403 tap Next':' · Embed'));},4000);
   };
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
@@ -2964,8 +3114,15 @@ function pDir(url,idx,gen){
   var rawUrl=url;
   var s0=S.src[idx]||{};
   if((isTvApp()||isNativeApp())&&s0.hardCodec){
-    var softer=S.src.some(function(x,i){return i!==idx&&!S.failed[i]&&!x.hardCodec;});
-    if(softer){failToNext(idx,'hevc');return;}
+    var softer=S.src.some(function(x,i){return i!==idx&&!isSrcFailed(i)&&!x.hardCodec;});
+    if(softer){
+      // Deprioritise HEVC on TV — soft-fail so a final pass can still try it
+      markSrcFailed(idx,'hevc');
+      setSt('sld','Skipping hard codec on TV — trying softer stream…');
+      var nxt=pickNextSrc(idx,1);
+      tryS(nxt,{fromFail:true});
+      return;
+    }
   }
   var useProxy=!!(isNativeApp()&&S.debridMode);
   var playUrl=useProxy?nativePlayUrl(url):url;
@@ -3027,16 +3184,35 @@ function pDir(url,idx,gen){
   if(window.FlixExtra)FlixExtra.withPreroll(start);else start();
 }
 
-function mFail(idx){S.failed[idx]=1;var c=document.getElementById('sc'+idx);if(c)c.classList.add('dead');}
+function mFail(idx,reason){markSrcFailed(idx,reason||'error');}
 function showPE(msg){
   destroyPlayer();
   setSt('sfl','Failed');
+  var soft=0,hard=0;
+  Object.keys(S.failed||{}).forEach(function(k){
+    if(S.failed[k]==='soft')soft++;
+    else if(S.failed[k])hard++;
+  });
   $('pw').innerHTML='<div class="pe"><h3>Playback Issue</h3><p></p>'+
-    '<button class="pbtn" onclick="retryAll()">Try Again</button>'+
-    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="nextSrc()">Next Server</button>'+
-    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="retryPremiumStreams()">Retry streams</button>'+
+    '<button class="pbtn" onclick="retrySoftFailures()">Retry soft failures</button>'+
+    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="retryPremiumStreams(true)">Find more sources</button>'+
+    '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="retryAll()">Reload all</button>'+
     '<button class="pbtn" style="background:var(--s4);margin-left:8px" onclick="setPlayerMode(\'external\')">External</button></div>';
-  var p=$('pw').querySelector('p');if(p)p.textContent=String(msg||'Playback failed');
+  var p=$('pw').querySelector('p');
+  if(p){
+    var extra=(soft||hard)?(' Tried '+((soft+hard))+' · soft '+soft+' · hard '+hard+'.'):'';
+    p.textContent=String(msg||'Playback failed')+extra;
+  }
+}
+function retrySoftFailures(){
+  clearSoftFailures();
+  S._softPass=true;
+  var next=pickNextSrc(S.si,1);
+  if(next<0){
+    showPE('No soft failures left to retry.');
+    return;
+  }
+  tryS(next,{force:true});
 }
 function retryAll(){
   if(!S.item)return;

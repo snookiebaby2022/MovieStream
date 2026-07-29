@@ -418,7 +418,9 @@ fun HomeScreen(
                     Text(row.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        itemsIndexed(row.items, key = { _, item -> item.tmdbId.takeIf { it > 0 } ?: item.id }) { itemIndex, item ->
+                        itemsIndexed(row.items, key = { idx, item ->
+                            "${item.type}:${item.tmdbId.takeIf { it > 0 } ?: item.id}:$idx"
+                        }) { itemIndex, item ->
                             val mod = if (rowIndex == 0 && itemIndex == 0) {
                                 Modifier.focusRequester(firstPoster)
                             } else Modifier
@@ -645,7 +647,7 @@ fun DetailScreen(
                         else -> res.error ?: "No streams"
                     }
                 } else {
-                    val list = (res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList()).take(20)
+                    val list = (res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList()).take(40)
                     if (list.isEmpty()) error = "No playable streams found"
                     else onPlay(d, season, ep, list)
                 }

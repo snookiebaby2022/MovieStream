@@ -157,7 +157,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.popBackStack() },
                             onPlay = { details, _, _, streams ->
                                 playTitle = details.title
-                                playStreams = streams.take(20)
+                                playStreams = streams.take(40)
                                 nav.navigate("player")
                             }
                         )
@@ -166,7 +166,8 @@ class MainActivity : ComponentActivity() {
                         PlayerScreen(
                             title = playTitle,
                             streams = playStreams,
-                            onBack = { nav.popBackStack() }
+                            onBack = { nav.popBackStack() },
+                            onRequestMore = { nav.popBackStack() }
                         )
                     }
                 }

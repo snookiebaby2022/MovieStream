@@ -41,9 +41,10 @@ function envToken(key) {
 }
 
 /** Configured debrid providers for Torrentio/Comet */
-function configuredDebrids() {
+function configuredDebrids(preferClientRd) {
   const list = [];
-  const rd = siteToken();
+  const siteRd = siteToken();
+  const rd = (preferClientRd || siteRd || '').toString().trim();
   if (rd) list.push({ id: 'realdebrid', label: 'rd', token: rd });
   const ad = envToken('ALLDEBRID_API_TOKEN');
   if (ad) list.push({ id: 'alldebrid', label: 'ad', token: ad });
@@ -54,10 +55,11 @@ function configuredDebrids() {
   return list;
 }
 
-function anyPremiumConfigured() {
-  return configuredDebrids().length > 0 || !!mediaFusionConfig() || !!aioStreamsBase();
+function anyPremiumConfigured(preferClientRd) {
+  return configuredDebrids(preferClientRd).length > 0 || !!mediaFusionConfig() || !!aioStreamsBase();
 }
 
+/** Prefer an explicitly supplied personal RD token over the site token. */
 function tokenFrom(req) {
   const client = (
     req.headers['x-rd-token'] ||
@@ -66,6 +68,59 @@ function tokenFrom(req) {
     ''
   ).toString().trim();
   return client || siteToken();
+}
+
+function clientRdToken(req) {
+  return (
+    req.headers['x-rd-token'] ||
+    req.body?.token ||
+    req.query?.token ||
+    ''
+  ).toString().trim();
+}
+
+const ACCOUNT_ERR_RE = /AUTH_BLOCKED|access to (the )?debrid api is blocked|check your debrid account|check your (?:debrid )?email|please (?:approve|confirm).{0,40}email|invalid (?:api )?key|expired|not premium|inactive premium|banned|geo.?blocked|ip.?blocked|unauthorized|forbidden|please (re-)?configure|obsolete configuration/i;
+const FAILED_CLIP_RE = /\/videos\/failed[_/]|failed_access|failed_unauthorized|failed_premium/i;
+
+function isFailedClipUrl(url) {
+  return FAILED_CLIP_RE.test(String(url || ''));
+}
+
+function isAccountErrorText(text) {
+  return ACCOUNT_ERR_RE.test(String(text || ''));
+}
+
+function providerFamily(provider) {
+  const p = String(provider || '').toLowerCase();
+  if (p.includes('alldebrid') || p.includes('-ad') || /\bad\b/.test(p)) return 'alldebrid';
+  if (p.includes('realdebrid') || p.includes('torrentio-real') || /\brd\b/.test(p)) return 'realdebrid';
+  if (p.includes('premiumize') || /\bpm\b/.test(p)) return 'premiumize';
+  if (p.includes('torbox') || /\btb\b/.test(p)) return 'torbox';
+  if (p.includes('mediafusion')) return 'mediafusion';
+  if (p.includes('aiostreams')) return 'aiostreams';
+  if (p.includes('comet')) return 'comet';
+  if (p.includes('torrentio')) return 'torrentio';
+  return p.split('-')[0] || p || 'unknown';
+}
+
+/** Cap results per provider family so one blocked provider cannot fill the whole list. */
+function balanceByProvider(streams, { perProvider = 12, max = 40 } = {}) {
+  const counts = new Map();
+  const out = [];
+  for (const s of streams) {
+    const fam = providerFamily(s.provider || s.source);
+    const n = counts.get(fam) || 0;
+    if (n >= perProvider) continue;
+    counts.set(fam, n + 1);
+    out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function quarantineProviders(streams, blockedFamilies) {
+  if (!blockedFamilies || !blockedFamilies.size) return streams;
+  return streams.filter(s => !blockedFamilies.has(providerFamily(s.provider || s.source)));
 }
 
 function parseQuality(title) {
@@ -227,10 +282,13 @@ function isAllowedProxyUrl(url) {
   }
 }
 
-/** Probe an RD / resolved stream URL for copyright / infringing blocks */
+/** Probe an RD / resolved stream URL for copyright / infringing / account-error blocks */
 async function probeStreamUrl(url) {
   if (!url || !/^https?:\/\//i.test(url)) {
     return { url, ok: false, reason: 'invalid' };
+  }
+  if (isFailedClipUrl(url)) {
+    return { url, ok: false, reason: 'account_blocked', finalUrl: url };
   }
   try {
     const r = await axios.get(url, {
@@ -250,42 +308,64 @@ async function probeStreamUrl(url) {
     const status = r.status;
     const buf = Buffer.from(r.data || []);
     const text = buf.toString('utf8', 0, Math.min(buf.length, 4000));
+    const finalUrl = String(r.request?.res?.responseUrl || r.request?.responseURL || url);
 
     const cr = String(r.headers['content-range'] || '');
     const crm = cr.match(/\/(\d+)\s*$/);
     const totalBytes = crm ? (parseInt(crm[1], 10) || 0) : 0;
 
+    if (isFailedClipUrl(finalUrl) || isFailedClipUrl(url)) {
+      return { url, ok: false, reason: 'account_blocked', finalUrl };
+    }
+    if (isAccountErrorText(text) || isAccountErrorText(finalUrl)) {
+      return { url, ok: false, reason: 'account_blocked', finalUrl };
+    }
+    if (status === 401 || status === 403) {
+      return { url, ok: false, reason: 'account_blocked', status, finalUrl };
+    }
+    if (status === 429 || status >= 500) {
+      return { url, ok: false, reason: 'unavailable', status, finalUrl };
+    }
     if (status === 451 || INFRINGE_RE.test(text)) {
-      return { url, ok: false, reason: 'copyright' };
+      return { url, ok: false, reason: 'copyright', finalUrl };
     }
     if (/application\/json|text\/html|text\/plain/i.test(ct) && INFRINGE_RE.test(text)) {
-      return { url, ok: false, reason: 'copyright' };
+      return { url, ok: false, reason: 'copyright', finalUrl };
     }
     try {
       if (/json/i.test(ct) || text.trim().startsWith('{')) {
         const j = JSON.parse(text);
-        if (j && (j.error_code === 35 || j.error === 'infringing_file' || INFRINGE_RE.test(JSON.stringify(j)))) {
-          return { url, ok: false, reason: 'copyright' };
+        const blob = JSON.stringify(j);
+        if (j && (j.error_code === 35 || j.error === 'infringing_file' || INFRINGE_RE.test(blob))) {
+          return { url, ok: false, reason: 'copyright', finalUrl };
+        }
+        if (isAccountErrorText(blob)) {
+          return { url, ok: false, reason: 'account_blocked', finalUrl };
         }
       }
     } catch {}
 
+    // Tiny "video" stubs are usually copyright/error clips (~few hundred KB)
     if (totalBytes > 0 && totalBytes < 8 * 1024 * 1024 && /video|octet-stream|mp4/i.test(ct)) {
-      return { url, ok: false, reason: 'copyright_stub' };
+      if (isFailedClipUrl(finalUrl) || totalBytes < 2 * 1024 * 1024) {
+        return { url, ok: false, reason: isFailedClipUrl(finalUrl) ? 'account_blocked' : 'copyright_stub', finalUrl, bytes: totalBytes };
+      }
+      return { url, ok: false, reason: 'copyright_stub', finalUrl, bytes: totalBytes };
     }
 
     if (status >= 200 && status < 400 && /video|audio|mpegurl|octet-stream|mp2t|mp4/i.test(ct)) {
-      return { url, ok: true, reason: 'media', bytes: totalBytes || undefined };
+      return { url, ok: true, reason: 'media', bytes: totalBytes || undefined, finalUrl };
     }
     if (status >= 200 && status < 400 && !/text\/html/i.test(ct) && buf.length > 0) {
-      return { url, ok: true, reason: 'ok', bytes: totalBytes || undefined };
+      return { url, ok: true, reason: 'ok', bytes: totalBytes || undefined, finalUrl };
     }
-    if (/text\/html/i.test(ct) && INFRINGE_RE.test(text)) {
-      return { url, ok: false, reason: 'copyright' };
+    if (/text\/html/i.test(ct) && (INFRINGE_RE.test(text) || isAccountErrorText(text))) {
+      return { url, ok: false, reason: INFRINGE_RE.test(text) ? 'copyright' : 'account_blocked', finalUrl };
     }
-    return { url, ok: true, reason: 'unknown' };
+    // Unknown HTML / empty responses are not safe to promote
+    return { url, ok: false, reason: 'unavailable', finalUrl, status };
   } catch (e) {
-    return { url, ok: true, reason: 'probe_error' };
+    return { url, ok: false, reason: 'probe_error', error: e.message };
   }
 }
 
@@ -295,11 +375,13 @@ function mapAddonStreams(raw, provider) {
       const playUrl = s.url || s.externalUrl || '';
       if (!/^https?:\/\//i.test(playUrl)) return null;
       if (/magnet:/i.test(playUrl)) return null;
+      if (isFailedClipUrl(playUrl)) return null;
       const title = s.title || s.description || s.name || `Stream ${i + 1}`;
       const name = s.name || provider;
-      if (INFRINGE_RE.test(title) || INFRINGE_RE.test(name)) return null;
-      // Skip Comet/MediaFusion config error notices
-      if (/invalid api key|obsolete configuration|please (re-)?configure|check your configuration/i.test(title + ' ' + name)) {
+      const blob = `${title} ${name}`;
+      if (INFRINGE_RE.test(blob)) return null;
+      // Skip Comet/MediaFusion/Torrentio account & config error notices
+      if (isAccountErrorText(blob) || /invalid api key|obsolete configuration|please (re-)?configure|check your configuration/i.test(blob)) {
         return null;
       }
       const quality = parseQuality(title + ' ' + name);
@@ -408,28 +490,46 @@ async function fetchAioStreams(path) {
 }
 
 /** Parallel Torrentio/Comet per configured debrid + MediaFusion + AIOStreams */
-async function fetchAddonStreams(path) {
-  const debrids = configuredDebrids();
+async function fetchAddonStreams(path, { deep = false, preferClientRd = '' } = {}) {
+  const debrids = configuredDebrids(preferClientRd);
   const jobs = [];
   for (const d of debrids) {
-    jobs.push(fetchTorrentio(d.id, d.token, path).catch(() => []));
-    jobs.push(fetchComet(d.id, d.token, path).catch(() => []));
+    jobs.push(
+      fetchTorrentio(d.id, d.token, path)
+        .then(rows => ({ provider: `torrentio-${d.id}`, rows }))
+        .catch(() => ({ provider: `torrentio-${d.id}`, rows: [] }))
+    );
+    jobs.push(
+      fetchComet(d.id, d.token, path)
+        .then(rows => ({ provider: `comet-${d.id}`, rows }))
+        .catch(() => ({ provider: `comet-${d.id}`, rows: [] }))
+    );
   }
-  jobs.push(fetchMediaFusion(path).catch(() => []));
-  jobs.push(fetchAioStreams(path).catch(() => []));
+  jobs.push(
+    fetchMediaFusion(path)
+      .then(rows => ({ provider: 'mediafusion', rows }))
+      .catch(() => ({ provider: 'mediafusion', rows: [] }))
+  );
+  jobs.push(
+    fetchAioStreams(path)
+      .then(rows => ({ provider: 'aiostreams', rows }))
+      .catch(() => ({ provider: 'aiostreams', rows: [] }))
+  );
   if (!jobs.length) return [];
 
-  // Prefer early results from the first Torrentio (usually RD) for snappy UI
-  const first = jobs[0];
-  const tio = await first;
-  const waitMs = (tio || []).filter(s => s.browserOk).length >= 5 ? 2500 : 10000;
-  const rest = jobs.slice(1).map(p =>
-    Promise.race([p, new Promise(resolve => setTimeout(() => resolve([]), waitMs))])
+  const hardMs = deep ? 22000 : 14000;
+  const raced = await Promise.all(
+    jobs.map(p =>
+      Promise.race([
+        p,
+        new Promise(resolve => setTimeout(() => resolve({ provider: 'timeout', rows: [] }), hardMs))
+      ])
+    )
   );
-  const extras = await Promise.all(rest);
-  const flat = [...(tio || [])];
-  for (const arr of extras) {
-    if (Array.isArray(arr)) flat.push(...arr);
+
+  const flat = [];
+  for (const pack of raced) {
+    if (pack && Array.isArray(pack.rows)) flat.push(...pack.rows);
   }
   return dedupeStreams(flat);
 }
@@ -716,8 +816,8 @@ function dedupeStreams(list) {
 }
 
 /**
- * Probe top candidates and drop copyright stubs / dead links before the client sees them.
- * keepUnprobed=true returns the full list (copyright removed) so the player can try every link.
+ * Probe top candidates and drop copyright stubs / dead / account-blocked links.
+ * keepUnprobed=true returns remaining unprobed rows after validated ones.
  */
 async function validateTopStreams(streams, { want = 8, probeLimit = 14, keepUnprobed = false } = {}) {
   if (!streams.length) return [];
@@ -735,39 +835,51 @@ async function validateTopStreams(streams, { want = 8, probeLimit = 14, keepUnpr
   const validated = [];
   const backlog = [];
   const rejected = new Set();
+  const blockedFamilies = new Set();
 
   const queue = candidates.slice();
   const workers = Array.from({ length: Math.min(5, queue.length) }, async () => {
     while (queue.length) {
       const s = queue.shift();
       if (!s) break;
-      // Once we have enough good probes, still finish rejecting copyright on remaining queue items lightly
       const result = await probeStreamUrl(s.url);
-      if (!result.ok && (result.reason === 'copyright' || result.reason === 'copyright_stub')) {
-        rejected.add(String(s.url || '').split('?')[0].toLowerCase());
+      const key = String(s.url || '').split('?')[0].toLowerCase();
+      if (!result.ok && (result.reason === 'account_blocked')) {
+        rejected.add(key);
+        blockedFamilies.add(providerFamily(s.provider || s.source));
         continue;
       }
-      if (result.ok || result.reason === 'unknown' || result.reason === 'probe_error') {
+      if (!result.ok && (result.reason === 'copyright' || result.reason === 'copyright_stub' || result.reason === 'unavailable' || result.reason === 'invalid')) {
+        rejected.add(key);
+        continue;
+      }
+      if (result.ok) {
         const row = { ...s, validated: true, probeReason: result.reason };
         if (s.browserOk && !s.hardCodec) validated.push(row);
         else backlog.push(row);
       }
+      // probe_error: keep as unvalidated leftover rather than promoting to "validated"
     }
   });
   await Promise.all(workers);
 
+  let pool = quarantineProviders(ranked, blockedFamilies);
   const notRejected = (s) => !rejected.has(String(s.url || '').split('?')[0].toLowerCase());
-  const good = dedupeStreams(validated.concat(backlog.filter(notRejected)));
-  const leftover = ranked.filter(s => notRejected(s) && !good.some(g => g.url === s.url));
+  const good = dedupeStreams(
+    quarantineProviders(validated.concat(backlog.filter(notRejected)), blockedFamilies)
+  );
+  const leftover = pool.filter(s => notRejected(s) && !good.some(g => g.url === s.url));
 
+  // Validated streams always ahead of unprobed leftovers
   if (keepUnprobed) {
-    // Best probed first, then everything else — client walks the full list
-    return dedupeStreams(good.concat(leftover)).slice(0, 40);
+    return balanceByProvider(dedupeStreams(good.concat(leftover)), { perProvider: 12, max: 40 });
   }
 
   const picked = dedupeStreams(validated.concat(backlog.filter(s => s.browserOk && notRejected(s))));
-  if (picked.length >= 2) return picked.slice(0, Math.max(want, 12));
-  return dedupeStreams(picked.concat(ranked.filter(notRejected))).slice(0, 40);
+  if (picked.length >= 2) {
+    return balanceByProvider(picked, { perProvider: 10, max: Math.max(want, 12) });
+  }
+  return balanceByProvider(dedupeStreams(picked.concat(pool.filter(notRejected))), { perProvider: 12, max: 40 });
 }
 
 router.get('/status', async (req, res) => {
@@ -884,10 +996,21 @@ router.get('/proxy', async (req, res) => {
     });
 
     const status = upstream.status;
+    const finalUrl = String(upstream.request?.res?.responseUrl || upstream.request?.responseURL || target);
+    if (isFailedClipUrl(finalUrl) || isFailedClipUrl(target)) {
+      try { upstream.data.destroy(); } catch {}
+      return res.status(403).json({
+        success: false,
+        error: 'Debrid access blocked — check your debrid account or email approval',
+        code: 'ACCOUNT_BLOCKED'
+      });
+    }
     if (status === 401 || status === 403 || status === 451) {
+      try { upstream.data.destroy(); } catch {}
       return res.status(status).json({ success: false, error: 'Upstream blocked', code: status });
     }
     if (status >= 400) {
+      try { upstream.data.destroy(); } catch {}
       return res.status(502).json({ success: false, error: `Upstream HTTP ${status}` });
     }
 
@@ -928,12 +1051,19 @@ router.post('/streams', async (req, res) => {
   try {
     if (!(await requireEntitled(req, res))) return;
 
-    const rdToken = siteToken() || tokenFrom(req);
+    const personalRd = clientRdToken(req);
+    const rdToken = personalRd || siteToken();
     const {
       imdbId, type, season, episode, tmdbId,
-      title, year, adult
+      title, year, adult, deep, exclude
     } = req.body || {};
-    if (!anyPremiumConfigured() && !rdToken) {
+    const deepLookup = deep === true || deep === 1 || deep === '1' || deep === 'true';
+    const excludeKeys = new Set(
+      (Array.isArray(exclude) ? exclude : [])
+        .map(u => String(u || '').split('?')[0].toLowerCase())
+        .filter(Boolean)
+    );
+    if (!anyPremiumConfigured(personalRd) && !rdToken) {
       return res.status(400).json({
         success: false,
         error: 'No debrid providers configured (set REALDEBRID_API_TOKEN or other premium keys)'
@@ -995,20 +1125,21 @@ router.post('/streams', async (req, res) => {
       path,
       imdb,
       adult: isAdult,
+      deep: deepLookup,
       title: metaTitle?.slice(0, 40),
-      providers: configuredDebrids().map(d => d.id),
+      providers: configuredDebrids(personalRd).map(d => d.id),
       mediafusion: !!mediaFusionConfig(),
       aiostreams: !!aioStreamsBase()
     });
 
     let streams = [];
     if (path) {
-      streams = await fetchAddonStreams(path);
+      streams = await fetchAddonStreams(path, { deep: deepLookup, preferClientRd: personalRd });
     }
 
     // ApiBay magnet resolve is RD-only — only when we have an RD token
     const playableSoFar = streams.filter(s => s.browserOk && s.cached).length;
-    const needApibay = rdToken && (isAdult || !streams.length || playableSoFar < 2);
+    const needApibay = rdToken && (isAdult || !streams.length || playableSoFar < 2 || deepLookup);
     if (needApibay) {
       try {
         const extra = await fetchApibayRdStreams(rdToken, {
@@ -1027,6 +1158,10 @@ router.post('/streams', async (req, res) => {
       return res.status(400).json({ success: false, error: 'IMDB id or title required for debrid streams' });
     }
 
+    if (excludeKeys.size) {
+      streams = streams.filter(s => !excludeKeys.has(String(s.url || '').split('?')[0].toLowerCase()));
+    }
+
     // Priority: 1080p → 4K → 720p → other, then browser-friendly / cached
     streams = streams.slice().sort((a, b) =>
       (qualityRank(b.quality) - qualityRank(a.quality)) ||
@@ -1038,22 +1173,30 @@ router.post('/streams', async (req, res) => {
       ((b.seeders || 0) - (a.seeders || 0))
     );
 
-    streams = streams.slice(0, 40);
-    streams = await validateTopStreams(streams, { want: 12, probeLimit: 16, keepUnprobed: true });
+    streams = balanceByProvider(streams, { perProvider: deepLookup ? 16 : 12, max: deepLookup ? 60 : 48 });
+    streams = await validateTopStreams(streams, {
+      want: deepLookup ? 16 : 12,
+      probeLimit: deepLookup ? 24 : 16,
+      keepUnprobed: true
+    });
 
+    // Keep validated ahead after final sort
     streams = streams.slice().sort((a, b) =>
+      ((b.validated ? 1 : 0) - (a.validated ? 1 : 0)) ||
       (qualityRank(b.quality) - qualityRank(a.quality)) ||
       ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
       ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
       ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
       ((b.browserScore || 0) - (a.browserScore || 0))
-    ).slice(0, 40);
+    );
+    streams = balanceByProvider(streams, { perProvider: 12, max: 40 });
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
     console.log('Debrid result:', {
       imdb,
       total: streams.length,
       browserFriendly: streams.filter(s => s.browserOk).length,
       cached: streams.filter(s => s.cached).length,
+      validated: streams.filter(s => s.validated).length,
       providers
     });
 
@@ -1067,7 +1210,8 @@ router.post('/streams', async (req, res) => {
         cached: streams.filter(s => s.cached).length,
         providers,
         provider: providers.join('+') || 'none',
-        adult: isAdult
+        adult: isAdult,
+        deep: deepLookup
       }
     });
   } catch (e) {
@@ -1077,3 +1221,9 @@ router.post('/streams', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.probeStreamUrl = probeStreamUrl;
+module.exports.isFailedClipUrl = isFailedClipUrl;
+module.exports.isAccountErrorText = isAccountErrorText;
+module.exports.balanceByProvider = balanceByProvider;
+module.exports.providerFamily = providerFamily;
+module.exports.quarantineProviders = quarantineProviders;
