@@ -568,13 +568,35 @@ function cometConfigB64(token, debridService = 'realdebrid') {
     .replace(/=+$/g, '');
 }
 
-async function fetchJsonStreams(url, label) {
+/** Cap parallel Torrentio hits — multi-account fan-out was causing mass 429s. */
+let torrentioInFlight = 0;
+const torrentioWaiters = [];
+async function withTorrentioSlot(fn) {
+  if (torrentioInFlight >= 2) {
+    await new Promise(resolve => torrentioWaiters.push(resolve));
+  }
+  torrentioInFlight++;
+  try {
+    return await fn();
+  } finally {
+    torrentioInFlight--;
+    const next = torrentioWaiters.shift();
+    if (next) next();
+  }
+}
+
+async function fetchJsonStreams(url, label, { retries = 0 } = {}) {
   try {
     const r = await axios.get(url, {
       headers: { 'User-Agent': ua(), Accept: 'application/json' },
       timeout: 22000,
       validateStatus: s => s < 500
     });
+    if (r.status === 429 && retries > 0) {
+      console.warn(`Debrid/${label}: HTTP 429 — backing off`);
+      await new Promise(r => setTimeout(r, 1200 + Math.floor(Math.random() * 800)));
+      return fetchJsonStreams(url, label, { retries: retries - 1 });
+    }
     if (r.status >= 400) {
       console.warn(`Debrid/${label}: HTTP ${r.status}`);
       return [];
@@ -586,20 +608,35 @@ async function fetchJsonStreams(url, label) {
   }
 }
 
-async function fetchTorrentio(service, token, path) {
-  const cfgClean = `${service}=${encodeURIComponent(token)}|qualityfilter=hdr,dolbyvision,threed,scr,cam,unknown`;
+async function fetchTorrentio(service, token, path, { deep = false } = {}) {
   const cfgSoft = `${service}=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
   const cfgAll = `${service}=${encodeURIComponent(token)}`;
   const label = `torrentio-${service}`;
-  let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgClean}${path}`, label);
-  if (streams.filter(s => s.browserOk || s.quality === '1080p' || s.quality === '4K').length < 3) {
-    const more = await fetchJsonStreams(`${TORRENTIO}/${cfgSoft}${path}`, label);
-    streams = dedupeStreams(streams.concat(more));
+  // First play: one soft request. Deep: escalate only if needed.
+  return withTorrentioSlot(async () => {
+    let streams = await fetchJsonStreams(`${TORRENTIO}/${cfgSoft}${path}`, label, { retries: 1 });
+    if (deep && streams.filter(s => s.browserOk || s.quality === '1080p' || s.quality === '4K').length < 3) {
+      const more = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, label, { retries: 1 });
+      streams = dedupeStreams(streams.concat(more));
+    } else if (!streams.length) {
+      streams = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, label, { retries: deep ? 1 : 0 });
+    }
+    return streams;
+  });
+}
+
+/** First play: one account per provider. Deep: all configured accounts. */
+function debridsForLookup(preferClientRd, deep, env = process.env) {
+  const all = configuredDebrids(preferClientRd, env);
+  if (deep) return all;
+  const seen = new Set();
+  const primary = [];
+  for (const d of all) {
+    if (seen.has(d.id)) continue;
+    seen.add(d.id);
+    primary.push(d);
   }
-  if (!streams.length) {
-    streams = await fetchJsonStreams(`${TORRENTIO}/${cfgAll}${path}`, label);
-  }
-  return streams;
+  return primary;
 }
 
 async function fetchComet(service, token, path) {
@@ -621,12 +658,12 @@ async function fetchAioStreams(path) {
 
 /** Parallel Torrentio/Comet per configured debrid + MediaFusion + AIOStreams */
 async function fetchAddonStreams(path, { deep = false, preferClientRd = '' } = {}) {
-  const debrids = configuredDebrids(preferClientRd);
+  const debrids = debridsForLookup(preferClientRd, deep);
   const jobs = [];
   for (const d of debrids) {
     const accountSuffix = d.slot > 1 ? `-${d.slot}` : '';
     jobs.push(
-      fetchTorrentio(d.id, d.token, path)
+      fetchTorrentio(d.id, d.token, path, { deep })
         .then(rows => rows.map(row => ({ ...row, provider: `torrentio-${d.id}${accountSuffix}` })))
         .then(rows => ({ provider: `torrentio-${d.id}${accountSuffix}`, rows }))
         .catch(() => ({ provider: `torrentio-${d.id}${accountSuffix}`, rows: [] }))
@@ -650,7 +687,8 @@ async function fetchAddonStreams(path, { deep = false, preferClientRd = '' } = {
   );
   if (!jobs.length) return [];
 
-  const hardMs = deep ? 22000 : 14000;
+  // First play stays snappy; deep waits longer after rate-limit backoff
+  const hardMs = deep ? 26000 : 16000;
   const raced = await Promise.all(
     jobs.map(p =>
       Promise.race([
@@ -1310,73 +1348,75 @@ router.post('/streams', async (req, res) => {
       adult: isAdult,
       deep: deepLookup,
       title: metaTitle?.slice(0, 40),
-      providers: configuredDebrids(personalRd).map(d => d.id),
+      providers: debridsForLookup(personalRd, deepLookup).map(d => `${d.id}:${d.slot}`),
       mediafusion: !!mediaFusionConfig(),
       aiostreams: !!aioStreamsBase()
     });
 
-    let streams = [];
-    if (path) {
-      streams = await fetchAddonStreams(path, { deep: deepLookup, preferClientRd: personalRd });
+    async function gatherStreams(deep) {
+      let list = [];
+      if (path) {
+        list = await fetchAddonStreams(path, { deep, preferClientRd: personalRd });
+      }
+      const playableSoFar = list.filter(s => s.browserOk && s.cached).length;
+      const needApibay = rdToken && (isAdult || !list.length || playableSoFar < 2 || deep);
+      if (needApibay) {
+        try {
+          const extra = await fetchApibayRdStreams(rdToken, {
+            imdb: imdb && imdb.startsWith('tt') ? imdb : '',
+            title: metaTitle,
+            year: metaYear,
+            adult: isAdult
+          });
+          list = dedupeStreams(list.concat(extra));
+        } catch (e) {
+          console.warn('ApiBay RD:', e.message);
+        }
+      }
+      if (excludeKeys.size) {
+        list = list.filter(s => !excludeKeys.has(String(s.url || '').split('?')[0].toLowerCase()));
+      }
+      list = list.slice().sort((a, b) =>
+        (qualityRank(b.quality) - qualityRank(a.quality)) ||
+        ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
+        ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
+        ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
+        ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
+        ((b.browserScore || 0) - (a.browserScore || 0)) ||
+        ((b.seeders || 0) - (a.seeders || 0))
+      );
+      list = balanceByProvider(list, { perProvider: deep ? 16 : 12, max: deep ? 60 : 48 });
+      list = await validateTopStreams(list, {
+        want: deep ? 16 : 12,
+        probeLimit: deep ? 30 : 24,
+        minValidated: deep ? 5 : 3,
+        keepUnprobed: false,
+        backupUnprobed: deep ? 16 : 10,
+        deadlineMs: deep ? 16000 : 9000
+      });
+      list = list.slice().sort((a, b) =>
+        ((b.validated ? 1 : 0) - (a.validated ? 1 : 0)) ||
+        ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
+        (qualityRank(b.quality) - qualityRank(a.quality)) ||
+        ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
+        ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
+        ((b.browserScore || 0) - (a.browserScore || 0))
+      );
+      return balanceByProvider(list, { perProvider: 12, max: 40 });
     }
 
-    // ApiBay magnet resolve is RD-only — only when we have an RD token
-    const playableSoFar = streams.filter(s => s.browserOk && s.cached).length;
-    const needApibay = rdToken && (isAdult || !streams.length || playableSoFar < 2 || deepLookup);
-    if (needApibay) {
-      try {
-        const extra = await fetchApibayRdStreams(rdToken, {
-          imdb: imdb && imdb.startsWith('tt') ? imdb : '',
-          title: metaTitle,
-          year: metaYear,
-          adult: isAdult
-        });
-        streams = dedupeStreams(streams.concat(extra));
-      } catch (e) {
-        console.warn('ApiBay RD:', e.message);
-      }
+    let streams = await gatherStreams(deepLookup);
+    // First play empty (usually Torrentio 429) → automatically do what "Find more sources" does
+    if (!streams.length && !deepLookup) {
+      console.warn('Debrid first-pass empty — auto deep retry');
+      await new Promise(r => setTimeout(r, 900));
+      streams = await gatherStreams(true);
     }
 
     if (!streams.length && !imdb && !metaTitle) {
       return res.status(400).json({ success: false, error: 'IMDB id or title required for debrid streams' });
     }
 
-    if (excludeKeys.size) {
-      streams = streams.filter(s => !excludeKeys.has(String(s.url || '').split('?')[0].toLowerCase()));
-    }
-
-    // Priority: 1080p → 4K → 720p → other, then browser-friendly / cached
-    streams = streams.slice().sort((a, b) =>
-      (qualityRank(b.quality) - qualityRank(a.quality)) ||
-      ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
-      ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
-      ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
-      ((a.rdRisky ? 1 : 0) - (b.rdRisky ? 1 : 0)) ||
-      ((b.browserScore || 0) - (a.browserScore || 0)) ||
-      ((b.seeders || 0) - (a.seeders || 0))
-    );
-
-    streams = balanceByProvider(streams, { perProvider: deepLookup ? 16 : 12, max: deepLookup ? 60 : 48 });
-    streams = await validateTopStreams(streams, {
-      want: deepLookup ? 16 : 12,
-      probeLimit: deepLookup ? 30 : 24,
-      minValidated: deepLookup ? 5 : 3,
-      // Validated lead the list; unverified candidates stay as fallback
-      keepUnprobed: false,
-      backupUnprobed: deepLookup ? 16 : 10,
-      deadlineMs: deepLookup ? 16000 : 9000
-    });
-
-    // Validated always first
-    streams = streams.slice().sort((a, b) =>
-      ((b.validated ? 1 : 0) - (a.validated ? 1 : 0)) ||
-      ((b.cached ? 1 : 0) - (a.cached ? 1 : 0)) ||
-      (qualityRank(b.quality) - qualityRank(a.quality)) ||
-      ((b.browserOk ? 1 : 0) - (a.browserOk ? 1 : 0)) ||
-      ((a.hardCodec ? 1 : 0) - (b.hardCodec ? 1 : 0)) ||
-      ((b.browserScore || 0) - (a.browserScore || 0))
-    );
-    streams = balanceByProvider(streams, { perProvider: 12, max: 40 });
     const validatedCount = streams.filter(s => s.validated).length;
     const providers = [...new Set(streams.map(s => s.provider).filter(Boolean))];
     console.log('Debrid result:', {
@@ -1385,7 +1425,8 @@ router.post('/streams', async (req, res) => {
       browserFriendly: streams.filter(s => s.browserOk).length,
       cached: streams.filter(s => s.cached).length,
       validated: validatedCount,
-      providers
+      providers,
+      deep: deepLookup || (!streams.length ? false : undefined)
     });
 
     if (!streams.length) {
@@ -1434,3 +1475,4 @@ module.exports.providerFamily = providerFamily;
 module.exports.quarantineProviders = quarantineProviders;
 module.exports.validateTopStreams = validateTopStreams;
 module.exports.configuredDebrids = configuredDebrids;
+module.exports.debridsForLookup = debridsForLookup;

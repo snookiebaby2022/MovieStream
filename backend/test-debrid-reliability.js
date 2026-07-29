@@ -13,7 +13,8 @@ const {
   providerFamily,
   probeStreamUrl,
   validateTopStreams,
-  configuredDebrids
+  configuredDebrids,
+  debridsForLookup
 } = require('./debridRoutes');
 
 let passed = 0;
@@ -116,6 +117,23 @@ ok('personal RD token overrides all site RD slots but keeps other providers', ()
   };
   const out = configuredDebrids('personal-rd', env);
   assert.deepStrictEqual(out.map(d => d.key), ['PERSONAL_REALDEBRID_TOKEN', 'TORBOX_API_TOKEN']);
+});
+
+ok('debridsForLookup uses one account per provider on first play', () => {
+  const env = {
+    REALDEBRID_API_TOKEN: 'rd1',
+    REALDEBRID_API_TOKEN_2: 'rd2',
+    ALLDEBRID_API_TOKEN: 'ad1',
+    ALLDEBRID_API_TOKEN_2: 'ad2'
+  };
+  assert.deepStrictEqual(
+    debridsForLookup('', false, env).map(d => d.key),
+    ['REALDEBRID_API_TOKEN', 'ALLDEBRID_API_TOKEN']
+  );
+  assert.deepStrictEqual(
+    debridsForLookup('', true, env).map(d => d.key),
+    ['REALDEBRID_API_TOKEN', 'REALDEBRID_API_TOKEN_2', 'ALLDEBRID_API_TOKEN', 'ALLDEBRID_API_TOKEN_2']
+  );
 });
 
 (async () => {
