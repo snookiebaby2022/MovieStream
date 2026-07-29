@@ -12,7 +12,8 @@ const {
   quarantineProviders,
   providerFamily,
   probeStreamUrl,
-  validateTopStreams
+  validateTopStreams,
+  configuredDebrids
 } = require('./debridRoutes');
 
 let passed = 0;
@@ -88,6 +89,35 @@ ok('balanceByProvider caps per family and total', () => {
   assert.ok(Object.keys(counts).length >= 2, 'should diversify across providers');
 });
 
+ok('configuredDebrids loads numbered slots in order and deduplicates tokens', () => {
+  const env = {
+    REALDEBRID_API_TOKEN_3: 'rd-three',
+    REALDEBRID_API_TOKEN: 'rd-one',
+    REALDEBRID_API_TOKEN_2: 'rd-two',
+    ALLDEBRID_API_TOKEN: 'ad-one',
+    ALLDEBRID_API_TOKEN_2: 'ad-one',
+    PREMIUMIZE_API_TOKEN: '  '
+  };
+  const out = configuredDebrids('', env);
+  assert.deepStrictEqual(out.map(d => d.key), [
+    'REALDEBRID_API_TOKEN',
+    'REALDEBRID_API_TOKEN_2',
+    'REALDEBRID_API_TOKEN_3',
+    'ALLDEBRID_API_TOKEN'
+  ]);
+  assert.deepStrictEqual(out.map(d => d.slot), [1, 2, 3, 1]);
+});
+
+ok('personal RD token overrides all site RD slots but keeps other providers', () => {
+  const env = {
+    REALDEBRID_API_TOKEN: 'site-rd',
+    REALDEBRID_API_TOKEN_2: 'site-rd-two',
+    TORBOX_API_TOKEN: 'tb-one'
+  };
+  const out = configuredDebrids('personal-rd', env);
+  assert.deepStrictEqual(out.map(d => d.key), ['PERSONAL_REALDEBRID_TOKEN', 'TORBOX_API_TOKEN']);
+});
+
 (async () => {
   await okAsync('probeStreamUrl rejects failed_access without network', async () => {
     const r = await probeStreamUrl('https://torrentio.strem.fun/videos/failed_access_v2.mp4');
@@ -116,6 +146,25 @@ ok('balanceByProvider caps per family and total', () => {
     const out = await validateTopStreams(streams, { want: 12, probeLimit: 3, minValidated: 3 });
     assert.strictEqual(out.length, 3, 'all unverified candidates should survive');
     assert.ok(out.every(s => !s.validated), 'none should be marked validated');
+  });
+
+  await okAsync('blocked numbered account does not quarantine healthy sibling account', async () => {
+    const streams = [
+      {
+        url: 'https://torrentio.strem.fun/videos/failed_access_v2.mp4',
+        provider: 'torrentio-realdebrid-2',
+        quality: '1080p',
+        cached: true
+      },
+      {
+        url: 'http://127.0.0.1:9/primary.mp4',
+        provider: 'torrentio-realdebrid',
+        quality: '1080p',
+        cached: true
+      }
+    ];
+    const out = await validateTopStreams(streams, { probeLimit: 2, minValidated: 1 });
+    assert.deepStrictEqual(out.map(s => s.provider), ['torrentio-realdebrid']);
   });
 
   console.log('\n' + passed + ' checks passed' + (process.exitCode ? ' (with failures)' : ''));

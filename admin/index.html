@@ -1297,31 +1297,37 @@ code,pre,.logbox,.config-key,.mono{font-family:'JetBrains Mono',ui-monospace,SFM
                   <p>These power premium streams for all entitled users (48h trial + £1/month). See <code>docs/PREMIUM_SETUP.md</code> for how to get each key.</p>
                 </div>
               </div>
-              <div id="debridKeysForm">
-                <label class="form-label">Real-Debrid API token <span id="hint-REALDEBRID_API_TOKEN" style="color:var(--muted);font-weight:400"></span></label>
-                <input class="form-input" id="key-REALDEBRID_API_TOKEN" type="password" placeholder="Paste new Real-Debrid token" autocomplete="off" style="margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:12px">
-
-                <label class="form-label">AllDebrid API token <span id="hint-ALLDEBRID_API_TOKEN" style="color:var(--muted);font-weight:400"></span></label>
-                <input class="form-input" id="key-ALLDEBRID_API_TOKEN" type="password" placeholder="Paste AllDebrid API key" autocomplete="off" style="margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:12px">
-
-                <label class="form-label">Premiumize API token <span id="hint-PREMIUMIZE_API_TOKEN" style="color:var(--muted);font-weight:400"></span></label>
-                <input class="form-input" id="key-PREMIUMIZE_API_TOKEN" type="password" placeholder="Paste Premiumize API key" autocomplete="off" style="margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:12px">
-
-                <label class="form-label">TorBox API token <span id="hint-TORBOX_API_TOKEN" style="color:var(--muted);font-weight:400"></span></label>
-                <input class="form-input" id="key-TORBOX_API_TOKEN" type="password" placeholder="Paste TorBox API key" autocomplete="off" style="margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:12px">
-
-                <label class="form-label">MediaFusion config <span id="hint-MEDIAFUSION_CONFIG" style="color:var(--muted);font-weight:400"></span></label>
-                <input class="form-input" id="key-MEDIAFUSION_CONFIG" type="text" placeholder="Encrypted path segment (or full MediaFusion manifest URL)" autocomplete="off" style="margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:12px">
-
-                <label class="form-label">AIOStreams base URL <span id="hint-AIOSTREAMS_BASE_URL" style="color:var(--muted);font-weight:400"></span></label>
-                <input class="form-input" id="key-AIOSTREAMS_BASE_URL" type="text" placeholder="https://aiostreams.elfhosted.com/stremio/YOUR_ID" autocomplete="off" style="margin-bottom:12px;font-family:'JetBrains Mono',monospace;font-size:12px">
+              <div id="debridAccountsForm"></div>
+              <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:4px 0 16px">
+                <div class="form-group" style="min-width:180px">
+                  <label class="form-label">Add another account</label>
+                  <select class="form-input" id="newDebridProvider">
+                    <option value="REALDEBRID">Real-Debrid</option>
+                    <option value="ALLDEBRID">AllDebrid</option>
+                    <option value="PREMIUMIZE">Premiumize</option>
+                    <option value="TORBOX">TorBox</option>
+                  </select>
+                </div>
+                <button class="btn btn-secondary" onclick="addDebridAccount()">＋ Add account</button>
               </div>
+              <details style="margin-bottom:14px">
+                <summary style="cursor:pointer;color:var(--muted);font-size:13px">Addon configuration</summary>
+                <div style="padding-top:12px">
+                  <label class="form-label">MediaFusion config <span id="hint-MEDIAFUSION_CONFIG" style="color:var(--muted);font-weight:400"></span></label>
+                  <input class="form-input" id="key-MEDIAFUSION_CONFIG" type="text" placeholder="Encrypted path segment (or full MediaFusion manifest URL)" autocomplete="off" style="margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:12px">
+                  <label class="form-label">MediaFusion URL <span id="hint-MEDIAFUSION_URL" style="color:var(--muted);font-weight:400"></span></label>
+                  <input class="form-input" id="key-MEDIAFUSION_URL" type="url" placeholder="https://mediafusion.elfhosted.com" autocomplete="off" style="margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:12px">
+                  <label class="form-label">AIOStreams base URL <span id="hint-AIOSTREAMS_BASE_URL" style="color:var(--muted);font-weight:400"></span></label>
+                  <input class="form-input" id="key-AIOSTREAMS_BASE_URL" type="url" placeholder="https://aiostreams.elfhosted.com/stremio/YOUR_ID" autocomplete="off" style="margin-bottom:12px;font-family:'JetBrains Mono',monospace;font-size:12px">
+                </div>
+              </details>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-                <button class="btn btn-green" onclick="saveDebridKeys()">Save all keys</button>
-                <button class="btn btn-secondary" onclick="clearDebridKey('REALDEBRID_API_TOKEN')">Clear RD</button>
+                <button class="btn btn-green" onclick="saveDebridKeys()">Save changes</button>
+                <button class="btn btn-primary" id="testAccountsBtn" onclick="testAllDebridAccounts()">Test all accounts</button>
                 <button class="btn btn-yellow" onclick="procAction('restart')">♻️ Restart App</button>
               </div>
               <div id="rdMsg" style="font-size:13px;color:var(--muted)"></div>
+              <div id="debridAccountResults" style="margin-top:12px"></div>
               <p style="margin-top:12px;font-size:12px;color:var(--muted)">After saving, click <b>Restart App</b> so streams pick up new keys. RD: <a href="https://real-debrid.com/apitoken" target="_blank" rel="noreferrer" style="color:#bfdcff">apitoken</a> · AD / PM / TorBox / MediaFusion / AIOStreams: see setup guide.</p>
             </div>
           </div>
@@ -2492,14 +2498,70 @@ async function loadAnalytics(){
     </tr>`).join('');
 }
 
-const DEBRID_KEY_IDS=[
-  'REALDEBRID_API_TOKEN',
-  'ALLDEBRID_API_TOKEN',
-  'PREMIUMIZE_API_TOKEN',
-  'TORBOX_API_TOKEN',
-  'MEDIAFUSION_CONFIG',
-  'AIOSTREAMS_BASE_URL'
-];
+const DEBRID_ADDON_KEY_IDS=['MEDIAFUSION_CONFIG','MEDIAFUSION_URL','AIOSTREAMS_BASE_URL'];
+const DEBRID_PROVIDER_NAMES={
+  REALDEBRID:'Real-Debrid',
+  ALLDEBRID:'AllDebrid',
+  PREMIUMIZE:'Premiumize',
+  TORBOX:'TorBox'
+};
+let debridAccounts=[];
+let debridProviders={};
+
+function debridPrefix(key){return String(key||'').match(/^(REALDEBRID|ALLDEBRID|PREMIUMIZE|TORBOX)_API_TOKEN/)?.[1]||'';}
+function debridSlot(key){return Number(String(key||'').match(/_(\d+)$/)?.[1]||1);}
+function renderDebridAccounts(pending={}){
+  const form=document.getElementById('debridAccountsForm');
+  form.innerHTML=debridAccounts.map(a=>{
+    const name=DEBRID_PROVIDER_NAMES[debridPrefix(a.key)]||a.provider||a.key;
+    const slot=debridSlot(a.key);
+    const hint=a.set?('set ('+esc(a.hint||'yes')+')'):'not set';
+    return `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-bottom:10px">
+      <div>
+        <label class="form-label">${esc(name)} account ${slot} <span style="color:var(--muted);font-weight:400">· ${hint}</span></label>
+        <input class="form-input debrid-account-input" data-key="${escAttr(a.key)}" type="password"
+          placeholder="Paste ${esc(name)} API token" value="${escAttr(pending[a.key]||'')}" autocomplete="off"
+          style="font-family:'JetBrains Mono',monospace;font-size:12px">
+      </div>
+      <button class="btn btn-secondary btn-sm" data-key="${escAttr(a.key)}" onclick="removeDebridAccount(this.dataset.key)">${a.set?'Clear':'Remove'}</button>
+    </div>`;
+  }).join('');
+}
+
+function pendingDebridValues(){
+  const out={};
+  document.querySelectorAll('.debrid-account-input').forEach(inp=>{if(inp.value.trim())out[inp.dataset.key]=inp.value.trim();});
+  return out;
+}
+
+function addDebridAccount(){
+  const pending=pendingDebridValues();
+  const prefix=document.getElementById('newDebridProvider').value;
+  const slots=debridAccounts.filter(a=>debridPrefix(a.key)===prefix).map(a=>debridSlot(a.key));
+  const slot=Math.max(1,...slots)+1;
+  const key=`${prefix}_API_TOKEN_${slot}`;
+  debridAccounts.push({key,provider:DEBRID_PROVIDER_NAMES[prefix],set:false,hint:''});
+  debridAccounts.sort((a,b)=>(debridPrefix(a.key).localeCompare(debridPrefix(b.key))||debridSlot(a.key)-debridSlot(b.key)));
+  renderDebridAccounts(pending);
+  document.querySelector(`[data-key="${key}"]`)?.focus();
+}
+
+async function removeDebridAccount(key){
+  const account=debridAccounts.find(a=>a.key===key);
+  if(account?.set){
+    if(!confirm('Clear '+key+' from the server?'))return;
+    const body={};body[key]='';
+    const d=await af('/debrid/keys',{method:'PUT',body});
+    if(!d?.success){toast(d?.error||'Failed','error');return;}
+    toast(key+' cleared','success');
+    await loadDebrid();
+    return;
+  }
+  const pending=pendingDebridValues();
+  delete pending[key];
+  debridAccounts=debridAccounts.filter(a=>a.key!==key);
+  renderDebridAccounts(pending);
+}
 
 async function loadDebrid(){
   const msg=document.getElementById('rdMsg');
@@ -2508,30 +2570,35 @@ async function loadDebrid(){
     const d=await af('/debrid');
     if(!d)return;
     const st=document.getElementById('rd-status');
-    const providers=d.providers||{};
-    const setCount=Object.values(providers).filter(p=>p&&p.set).length;
-    document.getElementById('rd-hint').textContent=setCount+' / '+Object.keys(providers).length;
-    DEBRID_KEY_IDS.forEach(k=>{
+    debridProviders=d.providers||{};
+    debridAccounts=(d.accounts||[]).slice().sort((a,b)=>
+      debridPrefix(a.key).localeCompare(debridPrefix(b.key))||debridSlot(a.key)-debridSlot(b.key)
+    );
+    renderDebridAccounts();
+    const accountCount=debridAccounts.filter(a=>a.set).length;
+    const addonCount=DEBRID_ADDON_KEY_IDS.filter(k=>debridProviders[k]?.set).length;
+    document.getElementById('rd-hint').textContent=accountCount+' accounts';
+    DEBRID_ADDON_KEY_IDS.forEach(k=>{
       const hintEl=document.getElementById('hint-'+k);
-      const p=providers[k];
+      const p=debridProviders[k];
       if(hintEl)hintEl.textContent=p&&p.set?('· set ('+(p.hint||'yes')+')'):'· not set';
       const inp=document.getElementById('key-'+k);
       if(inp)inp.value='';
     });
-    if(d.success&&d.configured&&d.data){
+    if(accountCount){
       st.textContent='ACTIVE';
       st.style.color='#a8f1ca';
-      document.getElementById('rd-status-sub').textContent='Real-Debrid site key OK';
-      document.getElementById('rd-user').textContent=d.data.username||'—';
-      document.getElementById('rd-email').textContent=d.data.email||'';
-      document.getElementById('rd-prem').textContent=d.data.premium?'YES':'NO';
-      document.getElementById('rd-exp').textContent=d.data.expiration?('Expires '+new Date(d.data.expiration).toLocaleDateString()):'—';
+      document.getElementById('rd-status-sub').textContent=accountCount+' account'+(accountCount===1?'':'s')+' configured';
+      document.getElementById('rd-user').textContent=accountCount+' configured';
+      document.getElementById('rd-email').textContent='Click Test all accounts';
+      document.getElementById('rd-prem').textContent='TEST';
+      document.getElementById('rd-exp').textContent=addonCount+' addon config'+(addonCount===1?'':'s');
     }else{
-      st.textContent=setCount?'PARTIAL':'OFF';
-      st.style.color=setCount?'#f5d78e':'#ffb1ba';
-      document.getElementById('rd-status-sub').textContent=d.error||(setCount?'RD missing — other keys set':'No debrid keys');
+      st.textContent=addonCount?'PARTIAL':'OFF';
+      st.style.color=addonCount?'#f5d78e':'#ffb1ba';
+      document.getElementById('rd-status-sub').textContent=addonCount?'Addon configured; no account tokens':'No debrid accounts';
       document.getElementById('rd-user').textContent='—';
-      document.getElementById('rd-email').textContent='Add keys below';
+      document.getElementById('rd-email').textContent='Add accounts below';
       document.getElementById('rd-prem').textContent='—';
       document.getElementById('rd-exp').textContent='—';
     }
@@ -2544,7 +2611,11 @@ async function saveDebridKeys(){
   const msg=document.getElementById('rdMsg');
   const body={};
   let any=false;
-  DEBRID_KEY_IDS.forEach(k=>{
+  document.querySelectorAll('.debrid-account-input').forEach(inp=>{
+    const val=inp.value.trim();
+    if(val){body[inp.dataset.key]=val;any=true;}
+  });
+  DEBRID_ADDON_KEY_IDS.forEach(k=>{
     const inp=document.getElementById('key-'+k);
     const val=(inp&&inp.value||'').trim();
     if(val){body[k]=val;any=true;}
@@ -2555,23 +2626,67 @@ async function saveDebridKeys(){
   if(d?.success){
     toast(d.message||'Saved','success');
     if(msg)msg.textContent=(d.message||'Saved')+' — click Restart App when ready.';
-    DEBRID_KEY_IDS.forEach(k=>{const inp=document.getElementById('key-'+k);if(inp)inp.value='';});
     actLog.push({time:Date.now(),action:'debrid-keys-save',data:{keys:Object.keys(body)}});
-    loadDebrid();
+    await loadDebrid();
   }else{
     toast(d?.error||'Failed','error');
     if(msg)msg.textContent=d?.error||'Failed';
   }
 }
 async function clearDebridKey(key){
-  if(!confirm('Clear '+key+' from the server?'))return;
-  const body={};body[key]='';
-  const d=await af('/debrid/keys',{method:'PUT',body});
-  if(d?.success){toast(key+' cleared','success');loadDebrid();}
-  else toast(d?.error||'Failed','error');
+  return removeDebridAccount(key);
 }
 async function saveDebrid(){return saveDebridKeys();}
 async function clearDebrid(){return clearDebridKey('REALDEBRID_API_TOKEN');}
+function debridExpiration(value){
+  if(!value)return '—';
+  let n=Number(value);
+  if(Number.isFinite(n)&&n>0&&n<1e12)n*=1000;
+  const d=new Date(Number.isFinite(n)&&n>0?n:value);
+  return Number.isNaN(d.getTime())?'—':d.toLocaleDateString();
+}
+async function testAllDebridAccounts(){
+  const btn=document.getElementById('testAccountsBtn');
+  const out=document.getElementById('debridAccountResults');
+  btn.disabled=true;
+  btn.textContent='Testing…';
+  out.innerHTML='<div style="color:var(--muted);font-size:13px">Contacting every configured provider…</div>';
+  try{
+    const d=await af('/debrid/test-all',{method:'POST',body:{}});
+    const rows=d?.data?.accounts||[];
+    if(!d?.success)throw new Error(d?.error||'Test failed');
+    if(!rows.length){
+      out.innerHTML='<div class="callout"><div class="icon">ℹ️</div><div><h3>No accounts configured</h3><p>Add and save an API token first.</p></div></div>';
+      return;
+    }
+    out.innerHTML=rows.map(r=>{
+      const a=r.account||{};
+      const premium=r.ok?(a.premium?'<span class="badge badge-green">premium</span>':'<span class="badge badge-yellow">not premium</span>'):'';
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <b>${esc(r.provider||r.key)} <span style="color:var(--muted);font-size:11px">${esc(r.key)}</span></b>
+          <span class="badge ${r.ok?'badge-green':'badge-red'}">${r.ok?'healthy':'failed'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">
+          ${r.ok?`${esc(a.username||a.email||r.hint||'Account')} · ${premium} · expires ${esc(debridExpiration(a.expiration))}`:esc(r.error||'Account check failed')}
+          · ${Number(r.elapsedMs||0)}ms
+        </div>
+      </div>`;
+    }).join('');
+    const healthy=Number(d.data.healthy||0),total=Number(d.data.total||rows.length);
+    document.getElementById('rd-prem').textContent=healthy+'/'+total;
+    document.getElementById('rd-exp').textContent='accounts healthy';
+    document.getElementById('rd-status').textContent=healthy===total?'ACTIVE':'ISSUES';
+    document.getElementById('rd-status').style.color=healthy===total?'#a8f1ca':'#f5d78e';
+    toast(healthy+' of '+total+' accounts healthy',healthy===total?'success':'error');
+  }catch(e){
+    out.innerHTML='<div style="color:#ffb1ba;font-size:13px">'+esc(e.message)+'</div>';
+    toast(e.message,'error');
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Test all accounts';
+  }
+}
 async function testDebrid(){
   const box=document.getElementById('rdTestOut');
   box.textContent='Testing premium streams…';

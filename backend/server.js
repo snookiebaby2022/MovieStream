@@ -18,6 +18,7 @@ const { Server }      = require('socket.io');
 const ScraperManager  = require('./scrapers/ScraperManager');
 const { router: authRouter, verifyToken } = require('./authRoutes');
 const debridRouter = require('./debridRoutes');
+const { configuredDebrids } = debridRouter;
 const { router: featureRouter } = require('./featureRoutes');
 const { router: payRouter, handleWebhook } = require('./paymentRoutes');
 const { PlayEvent, User, ContactMessage, TitleRequest, Promo } = require('./models');
@@ -1329,7 +1330,7 @@ const ADMIN_WRITABLE_SECRETS = new Set([
   'COMET_URL'
 ]);
 
-const DEBRID_ENV_KEYS = [
+const BASE_DEBRID_ENV_KEYS = [
   'REALDEBRID_API_TOKEN',
   'ALLDEBRID_API_TOKEN',
   'PREMIUMIZE_API_TOKEN',
@@ -1339,6 +1340,28 @@ const DEBRID_ENV_KEYS = [
   'AIOSTREAMS_BASE_URL'
 ];
 
+const DEBRID_TOKEN_KEY_RE = /^(REALDEBRID|ALLDEBRID|PREMIUMIZE|TORBOX)_API_TOKEN(?:_([2-9]\d*))?$/;
+const DEBRID_ADDON_KEYS = new Set(['MEDIAFUSION_CONFIG', 'MEDIAFUSION_URL', 'AIOSTREAMS_BASE_URL']);
+
+function isWritableAdminSecret(key) {
+  return ADMIN_WRITABLE_SECRETS.has(key) || DEBRID_TOKEN_KEY_RE.test(key);
+}
+
+function debridEnvKeys(env = process.env) {
+  const dynamic = Object.keys(env).filter(key => DEBRID_TOKEN_KEY_RE.test(key));
+  return [...new Set(BASE_DEBRID_ENV_KEYS.concat(dynamic))];
+}
+
+function debridProviderFromKey(key) {
+  const prefix = String(key || '').match(DEBRID_TOKEN_KEY_RE)?.[1];
+  return {
+    REALDEBRID: 'Real-Debrid',
+    ALLDEBRID: 'AllDebrid',
+    PREMIUMIZE: 'Premiumize',
+    TORBOX: 'TorBox'
+  }[prefix] || '';
+}
+
 function maskSecret(val) {
   const s = String(val || '').trim();
   if (!s) return '';
@@ -1347,9 +1370,10 @@ function maskSecret(val) {
 }
 
 function upsertEnvKey(key, value) {
+  if (!/^[A-Z0-9_]+$/.test(String(key || ''))) throw new Error('Invalid environment key');
   let raw = '';
   try { raw = fs.readFileSync(ENV_FILE, 'utf8'); } catch { raw = ''; }
-  const re = new RegExp(`^${key}=.*$`, 'm');
+  const re = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}=.*$`, 'm');
   const line = `${key}=${value ?? ''}`;
   raw = re.test(raw) ? raw.replace(re, line) : (raw.replace(/\s*$/, '') + `\n${line}\n`);
   fs.writeFileSync(ENV_FILE, raw);
@@ -1391,7 +1415,7 @@ app.put('/api/admin/config', adminAuth, (req, res) => {
   if (!key || !/^[A-Z0-9_]+$/i.test(key)) {
     return res.status(400).json({ success: false, error: 'Valid key required' });
   }
-  if (isSecretEnvKey(key) && !ADMIN_WRITABLE_SECRETS.has(key)) {
+  if (isSecretEnvKey(key) && !isWritableAdminSecret(key)) {
     return res.status(400).json({ success: false, error: 'This secret cannot be edited from the UI' });
   }
   // Don't overwrite secrets when UI sends the masked placeholder
@@ -1442,54 +1466,27 @@ app.put('/api/admin/integrations', adminAuth, (req, res) => {
   }
 });
 
-/** Admin Real-Debrid + multi-debrid keys */
-app.get('/api/admin/debrid', adminAuth, async (req, res) => {
-  const token = (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').trim();
+/** Admin multi-account debrid configuration */
+app.get('/api/admin/debrid', adminAuth, (req, res) => {
   const providers = {};
-  for (const key of DEBRID_ENV_KEYS) {
+  for (const key of debridEnvKeys()) {
     const val = (process.env[key] || '').trim();
     providers[key] = {
       set: !!val,
-      hint: val ? maskSecret(val) : ''
+      hint: val ? maskSecret(val) : '',
+      provider: debridProviderFromKey(key) || key
     };
   }
-  if (!token) {
-    return res.json({
-      success: true,
-      configured: false,
-      siteConfigured: false,
-      providers
-    });
-  }
-  try {
-    const r = await axios.get('https://api.real-debrid.com/rest/1.0/user', {
-      headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'FlixNova-Admin' },
-      timeout: 10000
-    });
-    res.json({
-      success: true,
-      configured: true,
-      siteConfigured: true,
-      providers,
-      data: {
-        username: r.data.username,
-        email: r.data.email,
-        premium: r.data.type === 'premium',
-        expiration: r.data.expiration,
-        points: r.data.points,
-        tokenHint: maskSecret(token)
-      }
-    });
-  } catch (e) {
-    const status = e.response?.status;
-    res.status(status === 401 ? 401 : 502).json({
-      success: false,
-      configured: true,
-      siteConfigured: true,
-      providers,
-      error: status === 401 ? 'Invalid Real-Debrid token' : (e.message || 'RD check failed')
-    });
-  }
+  const accounts = Object.entries(providers)
+    .filter(([key]) => DEBRID_TOKEN_KEY_RE.test(key))
+    .map(([key, value]) => ({ key, ...value }));
+  res.json({
+    success: true,
+    configured: accounts.some(account => account.set),
+    siteConfigured: accounts.some(account => account.set),
+    providers,
+    accounts
+  });
 });
 
 /** Save any combination of debrid / addon keys (empty string clears) */
@@ -1498,7 +1495,8 @@ app.put('/api/admin/debrid/keys', adminAuth, (req, res) => {
     const body = req.body || {};
     let saved = 0;
     const cleared = [];
-    for (const key of DEBRID_ENV_KEYS) {
+    for (const key of Object.keys(body)) {
+      if (!DEBRID_TOKEN_KEY_RE.test(key) && !DEBRID_ADDON_KEYS.has(key)) continue;
       if (body[key] === undefined || body[key] === null) continue;
       let val = String(body[key]).trim();
       if (val === '***' || val === '••••') continue;
@@ -1527,6 +1525,130 @@ app.put('/api/admin/debrid/keys', adminAuth, (req, res) => {
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
+});
+
+async function testDebridAccount(key, token) {
+  const provider = debridProviderFromKey(key);
+  const started = Date.now();
+  const common = { timeout: 10000, validateStatus: () => true, headers: { 'User-Agent': 'FlixNova-Admin' } };
+  let r;
+  try {
+    if (key.startsWith('REALDEBRID_')) {
+      r = await axios.get('https://api.real-debrid.com/rest/1.0/user', {
+        ...common,
+        headers: { ...common.headers, Authorization: `Bearer ${token}` }
+      });
+      if (r.status !== 200) throw Object.assign(new Error('Account rejected'), { accountStatus: r.status });
+      return {
+        key, provider, ok: true, hint: maskSecret(token), elapsedMs: Date.now() - started,
+        account: {
+          username: r.data?.username || '',
+          email: r.data?.email || '',
+          premium: r.data?.type === 'premium',
+          expiration: r.data?.expiration || null
+        }
+      };
+    }
+    if (key.startsWith('ALLDEBRID_')) {
+      r = await axios.get('https://api.alldebrid.com/v4/user', {
+        ...common,
+        params: { agent: 'FlixNova', apikey: token }
+      });
+      const user = r.data?.data?.user;
+      if (r.status !== 200 || r.data?.status !== 'success' || !user) {
+        throw Object.assign(new Error('Account rejected'), { accountStatus: r.status });
+      }
+      return {
+        key, provider, ok: true, hint: maskSecret(token), elapsedMs: Date.now() - started,
+        account: {
+          username: user.username || '',
+          email: user.email || '',
+          premium: !!user.isPremium,
+          expiration: user.premiumUntil || null
+        }
+      };
+    }
+    if (key.startsWith('PREMIUMIZE_')) {
+      r = await axios.get('https://www.premiumize.me/api/account/info', {
+        ...common,
+        params: { apikey: token }
+      });
+      if (r.status !== 200 || r.data?.status !== 'success') {
+        throw Object.assign(new Error('Account rejected'), { accountStatus: r.status });
+      }
+      return {
+        key, provider, ok: true, hint: maskSecret(token), elapsedMs: Date.now() - started,
+        account: {
+          username: r.data?.customer_id ? String(r.data.customer_id) : '',
+          premium: Number(r.data?.premium_until || 0) * 1000 > Date.now(),
+          expiration: r.data?.premium_until ? Number(r.data.premium_until) * 1000 : null,
+          points: r.data?.limit_used ?? null
+        }
+      };
+    }
+    if (key.startsWith('TORBOX_')) {
+      r = await axios.get('https://api.torbox.app/v1/api/user/me', {
+        ...common,
+        headers: { ...common.headers, Authorization: `Bearer ${token}` }
+      });
+      const user = r.data?.data;
+      if (r.status !== 200 || r.data?.success === false || !user) {
+        throw Object.assign(new Error('Account rejected'), { accountStatus: r.status });
+      }
+      return {
+        key, provider, ok: true, hint: maskSecret(token), elapsedMs: Date.now() - started,
+        account: {
+          username: user.email || user.username || '',
+          email: user.email || '',
+          premium: Number(user.plan || 0) > 0,
+          expiration: user.premium_expires_at || user.plan_expiration || null,
+          plan: user.plan_name || user.plan || null
+        }
+      };
+    }
+    throw new Error('Unsupported debrid provider');
+  } catch (e) {
+    const status = e.accountStatus || e.response?.status || 0;
+    let error = 'Could not reach provider';
+    if (status === 401 || status === 403) error = 'Invalid or unauthorized API token';
+    else if (status >= 400 && status < 500) error = `Provider rejected account (${status})`;
+    else if (e.code === 'ECONNABORTED') error = 'Provider timed out';
+    return {
+      key,
+      provider,
+      ok: false,
+      hint: maskSecret(token),
+      elapsedMs: Date.now() - started,
+      error
+    };
+  }
+}
+
+const debridAccountTestLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many account tests — wait a few minutes' }
+});
+
+app.post('/api/admin/debrid/test-all', adminAuth, debridAccountTestLimiter, async (req, res) => {
+  const accounts = debridEnvKeys()
+    .filter(key => DEBRID_TOKEN_KEY_RE.test(key))
+    .map(key => ({ key, token: String(process.env[key] || '').trim() }))
+    .filter(account => account.token);
+  if (!accounts.length) {
+    return res.json({ success: true, data: { total: 0, healthy: 0, accounts: [] } });
+  }
+  const results = await Promise.all(accounts.map(account => testDebridAccount(account.key, account.token)));
+  res.json({
+    success: true,
+    data: {
+      total: results.length,
+      healthy: results.filter(result => result.ok).length,
+      accounts: results
+    }
+  });
 });
 
 app.put('/api/admin/debrid', adminAuth, async (req, res) => {
@@ -1570,8 +1692,7 @@ app.delete('/api/admin/debrid', adminAuth, (req, res) => {
 
 app.post('/api/admin/debrid/test', adminAuth, async (req, res) => {
   try {
-    const token = (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').trim();
-    if (!token) return res.status(400).json({ success: false, error: 'No site RD token configured' });
+    const accounts = configuredDebrids();
     const { tmdbId = '27205', type = 'movie', season = 1, episode = 1, adult = false, title = '' } = req.body || {};
     const media = type === 'tv' ? 'tv' : 'movie';
     let imdb = '';
@@ -1592,16 +1713,8 @@ app.post('/api/admin/debrid/test', adminAuth, async (req, res) => {
         : `/stream/movie/${imdb}.json`)
       : null;
     const t0 = Date.now();
-    const TORRENTIO = 'https://torrentio.strem.fun';
-    const COMET = 'https://comet.elfhosted.com';
-    const cfg = `realdebrid=${encodeURIComponent(token)}|qualityfilter=scr,cam,unknown`;
-    const cometB64 = Buffer.from(JSON.stringify({
-      cachedOnly: false, removeTrash: true, resultFormat: ['all'],
-      maxResultsPerResolution: 0, maxSize: 0,
-      debridService: 'realdebrid', debridApiKey: token,
-      debridServices: [], enableTorrent: false, debridStreamProxyPassword: '',
-      languages: { exclude: [], priority: [] }, resolutions: {}, options: {}
-    })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const TORRENTIO = (process.env.TORRENTIO_URL || 'https://torrentio.strem.fun').replace(/\/$/, '');
+    const COMET = (process.env.COMET_URL || 'https://comet.elfhosted.com').replace(/\/$/, '');
 
     async function countAddon(url, label) {
       try {
@@ -1620,22 +1733,14 @@ app.post('/api/admin/debrid/test', adminAuth, async (req, res) => {
             blocked.push((s.title || s.name || 'blocked').toString().split('\n')[0].slice(0, 60));
             continue;
           }
-          // Follow one sample redirect to catch failed_access_v2.mp4
-          try {
-            const head = await axios.get(play, {
-              timeout: 8000,
-              maxRedirects: 5,
-              responseType: 'arraybuffer',
-              maxContentLength: 2048,
-              headers: { 'User-Agent': 'FlixNova-Admin', Range: 'bytes=0-1023' },
-              validateStatus: () => true
-            });
-            const finalUrl = String(head.request?.res?.responseUrl || head.request?.responseURL || play);
-            if (failedClipRe.test(finalUrl) || head.status === 401 || head.status === 403) {
-              blocked.push((s.title || s.name || finalUrl).toString().split('\n')[0].slice(0, 60));
+          // Probe a small sample using the same classifier as production playback.
+          if (clean.length < 3) {
+            const probe = await debridRouter.probeStreamUrl(play);
+            if (probe.ok === false && /^(account_blocked|copyright|copyright_stub|invalid)$/.test(probe.reason || '')) {
+              blocked.push((s.title || s.name || probe.reason).toString().split('\n')[0].slice(0, 60));
               continue;
             }
-          } catch {}
+          }
           clean.push((s.title || s.name || '').toString().split('\n')[0]);
         }
         return {
@@ -1648,21 +1753,39 @@ app.post('/api/admin/debrid/test', adminAuth, async (req, res) => {
           warning: blocked.length ? 'Some streams look like debrid account/email blocks' : undefined
         };
       } catch (e) {
-        return { provider: label, ok: false, streamCount: 0, error: e.message };
+        const status = e.response?.status;
+        return {
+          provider: label,
+          ok: false,
+          streamCount: 0,
+          error: status ? `Addon request failed (${status})` : (e.code === 'ECONNABORTED' ? 'Addon timed out' : 'Addon unavailable')
+        };
       }
     }
 
-    const results = [];
+    const jobs = [];
     if (pathStr) {
-      results.push(await countAddon(`${TORRENTIO}/${cfg}${pathStr}`, 'torrentio'));
-      results.push(await countAddon(`${COMET}/${cometB64}${pathStr}`, 'comet'));
+      for (const account of accounts) {
+        const cfg = `${account.id}=${encodeURIComponent(account.token)}|qualityfilter=scr,cam,unknown`;
+        const cometB64 = Buffer.from(JSON.stringify({
+          cachedOnly: false, removeTrash: true, resultFormat: ['all'],
+          maxResultsPerResolution: 0, maxSize: 0,
+          debridService: account.id, debridApiKey: account.token,
+          debridServices: [], enableTorrent: false, debridStreamProxyPassword: '',
+          languages: { exclude: [], priority: [] }, resolutions: {}, options: {}
+        })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        jobs.push(countAddon(`${TORRENTIO}/${cfg}${pathStr}`, `torrentio-${account.label}`));
+        jobs.push(countAddon(`${COMET}/${cometB64}${pathStr}`, `comet-${account.label}`));
+      }
       const mfCfg = (process.env.MEDIAFUSION_CONFIG || '').trim().replace(/^\/+|\/+$/g, '');
       if (mfCfg) {
-        results.push(await countAddon(`https://mediafusion.elfhosted.com/${mfCfg}${pathStr}`, 'mediafusion'));
-      } else {
-        results.push({ provider: 'mediafusion', ok: false, streamCount: 0, error: 'Set MEDIAFUSION_CONFIG env to enable' });
+        const mfBase = (process.env.MEDIAFUSION_URL || 'https://mediafusion.elfhosted.com').replace(/\/$/, '');
+        jobs.push(countAddon(`${mfBase}/${mfCfg}${pathStr}`, 'mediafusion'));
       }
+      const aioBase = (process.env.AIOSTREAMS_BASE_URL || '').trim().replace(/\/$/, '').replace(/\/manifest\.json$/i, '');
+      if (aioBase) jobs.push(countAddon(`${aioBase}${pathStr}`, 'aiostreams'));
     }
+    const results = await Promise.all(jobs);
 
     // Adult / title ApiBay probe (count only — no RD magnet spam in admin test)
     let apibay = { provider: 'apibay', ok: false, streamCount: 0 };

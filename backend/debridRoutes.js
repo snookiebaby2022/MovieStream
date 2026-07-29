@@ -33,25 +33,77 @@ function ua() {
 }
 
 function siteToken() {
-  return (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').toString().trim();
+  const base = (process.env.REALDEBRID_API_TOKEN || process.env.RD_API_TOKEN || '').toString().trim();
+  if (base) return base;
+  const numbered = Object.keys(process.env)
+    .filter(key => /^REALDEBRID_API_TOKEN_[2-9]\d*$/.test(key))
+    .sort((a, b) => Number(a.match(/(\d+)$/)?.[1]) - Number(b.match(/(\d+)$/)?.[1]));
+  for (const key of numbered) {
+    const token = String(process.env[key] || '').trim();
+    if (token) return token;
+  }
+  return '';
 }
 
 function envToken(key) {
   return (process.env[key] || '').toString().trim();
 }
 
-/** Configured debrid providers for Torrentio/Comet */
-function configuredDebrids(preferClientRd) {
+const DEBRID_ACCOUNT_TYPES = [
+  { prefix: 'REALDEBRID', id: 'realdebrid', label: 'rd' },
+  { prefix: 'ALLDEBRID', id: 'alldebrid', label: 'ad' },
+  { prefix: 'PREMIUMIZE', id: 'premiumize', label: 'pm' },
+  { prefix: 'TORBOX', id: 'torbox', label: 'tb' }
+];
+
+/**
+ * Enumerate base and numbered account slots, e.g. REALDEBRID_API_TOKEN_2.
+ * Duplicate tokens are ignored so one account is not queried twice.
+ */
+function configuredDebrids(preferClientRd, env = process.env) {
   const list = [];
-  const siteRd = siteToken();
-  const rd = (preferClientRd || siteRd || '').toString().trim();
-  if (rd) list.push({ id: 'realdebrid', label: 'rd', token: rd });
-  const ad = envToken('ALLDEBRID_API_TOKEN');
-  if (ad) list.push({ id: 'alldebrid', label: 'ad', token: ad });
-  const pm = envToken('PREMIUMIZE_API_TOKEN');
-  if (pm) list.push({ id: 'premiumize', label: 'pm', token: pm });
-  const tb = envToken('TORBOX_API_TOKEN');
-  if (tb) list.push({ id: 'torbox', label: 'tb', token: tb });
+  const seenTokens = new Set();
+  const personal = String(preferClientRd || '').trim();
+
+  if (personal) {
+    list.push({
+      id: 'realdebrid',
+      label: 'rd-personal',
+      token: personal,
+      key: 'PERSONAL_REALDEBRID_TOKEN',
+      slot: 0
+    });
+    seenTokens.add(personal);
+  }
+
+  for (const type of DEBRID_ACCOUNT_TYPES) {
+    const re = new RegExp(`^${type.prefix}_API_TOKEN(?:_(\\d+))?$`);
+    const keys = Object.keys(env)
+      .filter(key => re.test(key))
+      .sort((a, b) => {
+        const as = Number(a.match(re)?.[1] || 1);
+        const bs = Number(b.match(re)?.[1] || 1);
+        return as - bs || a.localeCompare(b);
+      });
+    // Preserve the legacy RD_API_TOKEN fallback as account slot 1.
+    if (type.id === 'realdebrid' && !keys.includes('REALDEBRID_API_TOKEN') && env.RD_API_TOKEN) {
+      keys.unshift('RD_API_TOKEN');
+    }
+    for (const key of keys) {
+      if (personal && type.id === 'realdebrid') continue;
+      const token = String(env[key] || '').trim();
+      if (!token || seenTokens.has(token)) continue;
+      const slot = Number(key.match(/_(\d+)$/)?.[1] || 1);
+      list.push({
+        id: type.id,
+        label: `${type.label}${slot > 1 ? slot : ''}`,
+        token,
+        key,
+        slot
+      });
+      seenTokens.add(token);
+    }
+  }
   return list;
 }
 
@@ -103,6 +155,14 @@ function providerFamily(provider) {
   return p.split('-')[0] || p || 'unknown';
 }
 
+/** Keep numbered accounts independent for quarantine while balancing by provider. */
+function providerFailureGroup(provider) {
+  const p = String(provider || '').toLowerCase();
+  const family = providerFamily(p);
+  const slot = p.match(/-(\d+)$/)?.[1];
+  return slot ? `${family}:${slot}` : family;
+}
+
 /** Cap results per provider family so one blocked provider cannot fill the whole list. */
 function balanceByProvider(streams, { perProvider = 12, max = 40 } = {}) {
   const counts = new Map();
@@ -120,7 +180,7 @@ function balanceByProvider(streams, { perProvider = 12, max = 40 } = {}) {
 
 function quarantineProviders(streams, blockedFamilies) {
   if (!blockedFamilies || !blockedFamilies.size) return streams;
-  return streams.filter(s => !blockedFamilies.has(providerFamily(s.provider || s.source)));
+  return streams.filter(s => !blockedFamilies.has(providerFailureGroup(s.provider || s.source)));
 }
 
 function parseQuality(title) {
@@ -564,15 +624,18 @@ async function fetchAddonStreams(path, { deep = false, preferClientRd = '' } = {
   const debrids = configuredDebrids(preferClientRd);
   const jobs = [];
   for (const d of debrids) {
+    const accountSuffix = d.slot > 1 ? `-${d.slot}` : '';
     jobs.push(
       fetchTorrentio(d.id, d.token, path)
-        .then(rows => ({ provider: `torrentio-${d.id}`, rows }))
-        .catch(() => ({ provider: `torrentio-${d.id}`, rows: [] }))
+        .then(rows => rows.map(row => ({ ...row, provider: `torrentio-${d.id}${accountSuffix}` })))
+        .then(rows => ({ provider: `torrentio-${d.id}${accountSuffix}`, rows }))
+        .catch(() => ({ provider: `torrentio-${d.id}${accountSuffix}`, rows: [] }))
     );
     jobs.push(
       fetchComet(d.id, d.token, path)
-        .then(rows => ({ provider: `comet-${d.id}`, rows }))
-        .catch(() => ({ provider: `comet-${d.id}`, rows: [] }))
+        .then(rows => rows.map(row => ({ ...row, provider: `comet-${d.id}${accountSuffix}` })))
+        .then(rows => ({ provider: `comet-${d.id}${accountSuffix}`, rows }))
+        .catch(() => ({ provider: `comet-${d.id}${accountSuffix}`, rows: [] }))
     );
   }
   jobs.push(
@@ -921,7 +984,7 @@ async function validateTopStreams(streams, {
     const key = String(s.url || '').split('?')[0].toLowerCase();
     if (!key || probedKeys.has(key) || rejected.has(key)) return;
     probedKeys.add(key);
-    const fam = providerFamily(s.provider || s.source);
+    const fam = providerFailureGroup(s.provider || s.source);
     if (blockedFamilies.has(fam)) {
       rejected.add(key);
       return;
@@ -952,7 +1015,7 @@ async function validateTopStreams(streams, {
     while (batch.length < 5 && cursor < limit) {
       const s = ranked[cursor++];
       const key = String(s.url || '').split('?')[0].toLowerCase();
-      const fam = providerFamily(s.provider || s.source);
+      const fam = providerFailureGroup(s.provider || s.source);
       if (!key || probedKeys.has(key) || rejected.has(key) || blockedFamilies.has(fam)) continue;
       batch.push(s);
     }
@@ -1370,3 +1433,4 @@ module.exports.balanceByProvider = balanceByProvider;
 module.exports.providerFamily = providerFamily;
 module.exports.quarantineProviders = quarantineProviders;
 module.exports.validateTopStreams = validateTopStreams;
+module.exports.configuredDebrids = configuredDebrids;
