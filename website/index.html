@@ -2542,6 +2542,20 @@ function nativePlayUrl(url){
   // Proxy every RD https link — host allowlist is enforced server-side
   return '/api/debrid/proxy?token='+encodeURIComponent(S.token)+'&u='+encodeURIComponent(url);
 }
+/** Can we route this stream through our own server at all? */
+function canProxyStream(){
+  return !!(S.debridMode&&S.token);
+}
+/**
+ * Hybrid delivery: TV/native WebViews need the same-origin proxy (auth + Range quirks),
+ * desktop browsers stream straight from the debrid CDN so video bytes skip our server.
+ * Either path can fall back to the other before we give up on the source.
+ */
+function shouldProxyFirst(){
+  if(!canProxyStream())return false;
+  if(isNativeApp()||isTvApp())return true;
+  return false;
+}
 function srcUrlKey(sOrUrl){
   var u=typeof sOrUrl==='string'?sOrUrl:((sOrUrl&&(sOrUrl.embedUrl||sOrUrl.url))||'');
   return String(u||'').split('?')[0].toLowerCase();
@@ -3204,6 +3218,8 @@ function copyStreamUrl(){
 function pHls(url,idx,gen){
   var label=S.src[idx]?(S.src[idx].quality||S.src[idx].source):'';
   var rawUrl=url;
+  // HLS always goes through the proxy: hls.js fetches segments with XHR and debrid
+  // CDNs do not send CORS headers, so direct playback would fail.
   var playUrl=nativePlayUrl(url);
   var start=function(){
     if(gen&&gen!==S.playGen)return;
@@ -3285,8 +3301,10 @@ function pDir(url,idx,gen){
       return;
     }
   }
-  var useProxy=!!(S.debridMode&&S.token);
-  var playUrl=useProxy?nativePlayUrl(url):url;
+  var canProxy=canProxyStream();
+  // Desktop browsers stream direct from the debrid CDN; TV/native start on the proxy
+  var usingProxy=shouldProxyFirst();
+  var playUrl=usingProxy?nativePlayUrl(url):url;
   var triedAlt=false;
   var start=function(){
     if(gen&&gen!==S.playGen)return;
@@ -3310,7 +3328,7 @@ function pDir(url,idx,gen){
       settled=true;
       if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
       try{v.muted=false;v.volume=1;}catch(e1){}
-      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':'')+' · HTML5 · '+(idx+1)+'/'+S.src.length);
+      setSt('sok','▶ '+label+(S.debridMode?' · Real-Debrid · no ads':'')+' · HTML5'+(S.debridMode?(usingProxy?' · proxy':' · direct'):'')+' · '+(idx+1)+'/'+S.src.length);
       S.playWatch=armPlaybackWatchdog(v,function(){fail('black');});
       focusTvPlayerChrome();
     };
@@ -3336,18 +3354,20 @@ function pDir(url,idx,gen){
           return;
         }
       }
-      if(why==='error'&&S.debridMode&&!settled){
-        // Proxy returns JSON 403 for blocked clips — treat as hard account fail
+      if(why==='error'&&S.debridMode&&usingProxy&&!settled){
+        // Our proxy already validated this link, so its failure means a blocked clip
         settled=true;
         if(S.failTimer){clearTimeout(S.failTimer);S.failTimer=null;}
         dropCopyrightStub(rawUrl,idx,gen);
         return;
       }
-      if(isNativeApp()&&S.debridMode&&!triedAlt&&why!=='black'&&why!=='account_blocked'){
+      // Swap delivery path once before giving up: direct ⇄ proxy
+      if(canProxy&&!triedAlt&&why!=='black'&&why!=='account_blocked'){
         triedAlt=true;
         settled=false;
-        playUrl=useProxy?rawUrl:nativePlayUrl(rawUrl);
-        setSt('sld','RD '+(idx+1)+'/'+S.src.length+' — retrying '+(useProxy?'direct':'proxy')+'…');
+        usingProxy=!usingProxy;
+        playUrl=usingProxy?nativePlayUrl(rawUrl):rawUrl;
+        setSt('sld','Stream '+(idx+1)+'/'+S.src.length+' — retrying '+(usingProxy?'via proxy':'direct')+'…');
         try{v.removeAttribute('src');v.load();v.src=playUrl;v.muted=false;v.volume=1;v.play().catch(function(){});}catch(e){settled=true;failToNext(idx,'retry');return;}
         armTimer();
         return;
