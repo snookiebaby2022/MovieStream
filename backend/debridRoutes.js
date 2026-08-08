@@ -1304,7 +1304,8 @@ router.post('/streams', async (req, res) => {
 
     let metaTitle = (title || '').toString().trim();
     let metaYear = year ? String(year).replace(/\D/g, '').slice(0, 4) : '';
-    let isAdult = adult === true || adult === 1 || adult === '1' || adult === 'true';
+    // Adult / XXX lookup path removed — always treat titles as mainstream
+    const isAdult = false;
 
     if (tmdbId) {
       const KEY = process.env.TMDB_API_KEY || '';
@@ -1331,7 +1332,6 @@ router.post('/streams', async (req, res) => {
                 const date = d.release_date || d.first_air_date || '';
                 metaYear = date.slice(0, 4);
               }
-              if (d.adult) isAdult = true;
             }).catch(() => {})
           );
           await Promise.all(tasks);

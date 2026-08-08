@@ -312,7 +312,7 @@ router.post('/checkout', authOptional, async (req, res) => {
             recurring: { interval: 'month' },
             product_data: {
               name: 'FlixNova Premium',
-              description: 'Monthly access — premium debrid streams, no FlixNova ads, Adult/XXX catalog.'
+              description: 'Monthly access — premium debrid streams and no FlixNova ads.'
             }
           }
         }];

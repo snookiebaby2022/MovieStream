@@ -13,7 +13,7 @@
   };
 
   var HOUSE_ADS = [
-    { t: 'Go Ad-Free forever', d: 'One-time £1 — Real-Debrid, no ads, and Adult/XXX catalog.', cta: 'Unlock £1', action: 'pay' },
+    { t: 'Go Ad-Free forever', d: 'One-time £1 — Real-Debrid premium streams and no FlixNova ads.', cta: 'Unlock £1', action: 'pay' },
     { t: 'Real-Debrid for members', d: 'Paying members get direct RD links. Free accounts use embeds.', cta: 'Unlock £1', action: 'pay' },
     { t: 'Request missing titles', d: 'Can’t find something? Send a request and we’ll check it.', cta: 'Request', action: 'request' }
   ];
@@ -571,7 +571,7 @@
     }
     if (blurb) {
       blurb.textContent = active
-        ? 'Sign up (or log in), then claim a free lifetime Premium spot — debrid streams, no FlixNova ads, and XXX catalog.'
+        ? 'Sign up (or log in), then claim a free lifetime Premium spot — debrid streams and no FlixNova ads.'
         : 'Sign up and browse free. First Play starts a 48-hour trial, then £1/month for premium streams.';
     }
     if (note) {

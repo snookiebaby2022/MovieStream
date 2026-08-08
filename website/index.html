@@ -223,8 +223,6 @@ iframe[src*="ads"],iframe[src*="doubleclick"],iframe[id*="google_ads"]{display:n
 .auth-btn:hover{border-color:var(--red);background:rgba(229,9,20,.15)}
 .auth-btn.primary{background:var(--red);border-color:var(--red);color:#fff}
 .auth-btn.primary:hover{filter:brightness(1.08);background:var(--red)}
-.auth-btn.xxx{border-color:rgba(255,80,120,.35);color:#ff8ab0}
-.auth-btn.xxx.on{background:rgba(255,40,90,.22);border-color:#ff2d6a;color:#fff}
 #authOv,#rdOv,#watchGateOv,#payPromoOv,#welcomeOv,#appUpdateOv{display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
 #authOv.on,#rdOv.on,#watchGateOv.on,#payPromoOv.on,#welcomeOv.on,#appUpdateOv.on{display:flex}
 #appUpdateOv{z-index:1300}
@@ -436,7 +434,6 @@ body.tv-mode .card.tv-focused{
       <button class="nb tv-nav-extra" type="button" onclick="go('anime',this)">Anime</button>
       <button class="nb tv-nav-extra" type="button" onclick="go('genres',this)">Genres</button>
       <button class="nb tv-nav-extra" type="button" onclick="go('list',this)">Wishlist</button>
-      <button class="nb tv-nav-extra" id="nb-adult-tv" type="button" onclick="go('adult',this)" style="display:none">XXX</button>
       <div class="nav-more" id="navMore">
         <button class="nb" type="button" onclick="toggleMoreNav(event)">More ▾</button>
         <div class="nav-drop" id="navDrop">
@@ -444,7 +441,6 @@ body.tv-mode .card.tv-focused{
           <button class="nb" id="nb-anime" onclick="go('anime',this);closeMoreNav()">Anime</button>
           <button class="nb" id="nb-genres" onclick="go('genres',this);closeMoreNav()">Genres</button>
           <button class="nb" id="nb-list" onclick="go('list',this);closeMoreNav()">Wishlist</button>
-          <button class="nb" id="nb-adult" onclick="go('adult',this);closeMoreNav()" style="display:none">XXX</button>
           <button class="nb" id="nb-request" onclick="closeMoreNav();FlixExtra.openRequest()">Request a title</button>
           <a class="nb" id="nb-getapp" href="/get-app.html#firetv" onclick="closeMoreNav()">Get App</a>
         </div>
@@ -456,7 +452,6 @@ body.tv-mode .card.tv-focused{
         <option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option>
       </select>
       <a class="auth-btn" id="getAppBtn" href="/get-app.html#firetv" title="Android, Fire Stick, iPhone">Get App</a>
-      <button class="auth-btn xxx" id="xxxBtn" onclick="toggleAdultMode()" title="Adult / XXX content (off by default)">XXX Off</button>
       <button class="auth-btn" id="adfreeBtn" onclick="FlixExtra.openPayPromo(true)" title="Premium £1/month">Premium £1/mo</button>
       <span class="adfree-badge" id="adfreeBadge">Premium ✓</span>
       <button class="auth-btn" id="profBtn" style="display:none" onclick="FlixExtra.openProfiles()" title="Profiles">Profiles</button>
@@ -586,11 +581,11 @@ body.tv-mode .card.tv-focused{
       <span id="promoRemainWrap"><span id="promoRemain">10</span> spots left.</span>
     </div>
     <p class="promo-price" id="promoPrice">£1 <span>per month · cancel anytime</span></p>
-    <p id="promoBlurb">Sign up and browse free. The first time you press Play, your 48-hour trial starts. Then £1/month for premium debrid streams, no FlixNova ads, and Adult/XXX.</p>
+    <p id="promoBlurb">Sign up and browse free. The first time you press Play, your 48-hour trial starts. Then £1/month for premium debrid streams and no FlixNova ads.</p>
     <ul class="promo-perks">
       <li><span>▶</span><span><b>Premium debrid links</b> — Real-Debrid and more (no iframe embeds)</span></li>
       <li><span>✕</span><span><b>Ad-Free player</b> — no FlixNova ads while you watch</span></li>
-      <li><span>✕</span><span><b>Adult / XXX catalog</b> — toggle in the header (off by default)</span></li>
+      <li><span>⚡</span><span><b>Faster playback</b> — validated streams that start cleanly</span></li>
     </ul>
     <div class="promo-actions">
       <button type="button" class="pbtn gold" id="promoClaimBtn" style="display:none" onclick="FlixExtra.claimFirst10Promo()">Claim free lifetime Premium</button>
@@ -946,7 +941,7 @@ function fetchDebridStreams(imdbId,type,sn,ep,tmdbId,extra){
       tmdbId:tmdbId,
       title:x.title||item.title||'',
       year:x.year||item.year||'',
-      adult:!!(x.adult||item.adult),
+      adult:false,
       deep:!!x.deep,
       exclude:exclude
     })
@@ -1285,55 +1280,15 @@ function $(id){return document.getElementById(id);}
 function imgp(p,s){s=s||'w500';return p?(p.indexOf('http')===0?p:IMGB+'/'+s+p):PH;}
 function nm(n){return n?String(Math.round(Number(n)*10)/10):'';}
 function he(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-function adultModeOn(){
-  if(window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive())return false;
-  if(!isAdFreeUser())return false;
-  return localStorage.getItem('fn_adult')==='1';
-}
-function withAdult(path){
-  if(!adultModeOn())return path;
-  return path+(path.indexOf('?')>=0?'&':'?')+'adult=1';
-}
+function adultModeOn(){ return false; }
+function withAdult(path){ return path; }
 function syncAdultUi(){
-  var on=adultModeOn();
-  var paid=isAdFreeUser();
-  var btn=$('xxxBtn');
-  if(btn){
-    var kids=window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive();
-    btn.style.display=kids?'none':'';
-    btn.classList.toggle('on',on);
-    if(!paid){
-      btn.textContent='XXX £1/mo';
-      btn.title='Adult / XXX is included with Premium (£1/month or trial)';
-    }else{
-      btn.textContent=on?'XXX On':'XXX Off';
-      btn.title=on?'Adult content visible — click to hide':'Adult / XXX (Premium perk · off by default)';
-    }
-  }
-  var nav=$('nb-adult');
-  if(nav)nav.style.display=on?'':'none';
-  var navTv=$('nb-adult-tv');
-  if(navTv)navTv.style.display=on?'':'none';
+  try{ localStorage.setItem('fn_adult','0'); }catch(e){}
+  var btn=$('xxxBtn'); if(btn) btn.style.display='none';
+  var nav=$('nb-adult'); if(nav) nav.style.display='none';
+  var navTv=$('nb-adult-tv'); if(navTv) navTv.style.display='none';
 }
-function toggleAdultMode(){
-  if(window.FlixExtra&&FlixExtra.kidsActive&&FlixExtra.kidsActive()){
-    alert('Adult mode is disabled on Kids profiles.');
-    return;
-  }
-  if(!isAdFreeUser()){
-    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
-    else alert('Adult / XXX is included with Premium (£1/month).');
-    return;
-  }
-  if(!adultModeOn()){
-    if(!confirm('Enable Adult / XXX content?\n\nYou must be 18+. Content may be explicit.'))return;
-    localStorage.setItem('fn_adult','1');
-  }else{
-    localStorage.setItem('fn_adult','0');
-  }
-  syncAdultUi();
-  go(S.section||'home',null);
-}
+function toggleAdultMode(){ /* Adult / XXX removed */ }
 function api(path){
   var headers={};
   if(S.token)headers['x-user-token']=S.token;
@@ -1626,40 +1581,8 @@ function resumeHeroMedia(){
 
 // ── NAV ────────────────────────────────────────────────────
 function goHome(){go('home',$('nb-home'));}
-function loadAdult(){
-  if(!isAdFreeUser()){
-    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
-    go('home',$('nb-home'));
-    return Promise.resolve();
-  }
-  if(!adultModeOn()){go('home',$('nb-home'));return Promise.resolve();}
-  clearInterval(S.ht);$('hero').style.display='none';ld('Loading XXX...');
-  return Promise.all([
-    api('/discover/adult?page=1'),
-    api('/discover/adult?page=2'),
-    api('/discover/adult?page=3'),
-    api('/discover/adult?page=4')
-  ]).then(function(pages){
-    clearStore();
-    var seen={};var items=[];
-    pages.forEach(function(d){
-      (d&&d.data||[]).forEach(function(item){if(!seen[item.id]){seen[item.id]=1;items.push(item);}});
-    });
-    if(!items.length){setR('<div class="empty">No adult titles found</div>');return;}
-    S.browsePage=4;
-    S.browseTotalPages=Math.max(80, pages[0]&&pages[0].totalPages||80);
-    S.browseMoreAp='/discover/adult';
-    S.browseSeen=seen;
-    renderBrowseGrid('XXX · Adult ('+items.length+'+)', 'movie', {data:items,totalPages:S.browseTotalPages});
-    // Ensure Load More uses page counter correctly
-    var btn=document.querySelector('.loadmore');
-    if(!btn){
-      var grid=$('browseGrid');
-      if(grid)grid.insertAdjacentHTML('afterend','<button class="loadmore" id="seeAllMore" onclick="loadMoreSeeAll()">Load More</button>');
-    }else{btn.id='seeAllMore';btn.setAttribute('onclick','loadMoreSeeAll()');}
-  }).catch(function(e){setR('<div class="empty">'+e.message+'</div>');});
-}
 function go(section,btn){
+  if(section==='adult'){ section='home'; btn=$('nb-home'); }
   S.section=section;S.year='';S.decade='';S.country='';S.animeMode=false;
   stopHeroMedia();
   $('hero').style.display='none';$('gbar').style.display='none';
@@ -1667,11 +1590,11 @@ function go(section,btn){
   var cb=$('cbar');if(cb)cb.remove();
   closeMoreNav();
   document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on');});
-  var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',anime:'nb-anime',genres:'nb-genres',new:'nb-new',list:'nb-list',adult:'nb-adult'};
+  var map={home:'nb-home',movies:'nb-movies',tv:'nb-tv',anime:'nb-anime',genres:'nb-genres',new:'nb-new',list:'nb-list'};
   if(btn&&btn.id)btn.classList.add('on');
   else{var el=$(map[section]);if(el)el.classList.add('on');if(section==='new'){var n2=$('nb-new2');if(n2)n2.classList.add('on');}}
   sockEmit('page-view',{page:section});ld();S.rc=0;
-  var loader=section==='home'?loadHome:section==='movies'?loadMovies:section==='tv'?loadTV:section==='anime'?loadAnime:section==='genres'?loadGenresPage:section==='list'?loadList:section==='adult'?loadAdult:loadNew;
+  var loader=section==='home'?loadHome:section==='movies'?loadMovies:section==='tv'?loadTV:section==='anime'?loadAnime:section==='genres'?loadGenresPage:section==='list'?loadList:loadNew;
   loader().catch(function(e){setR('<div class="empty">Failed: '+e.message+'</div>');});
 }
 function loadList(){
@@ -1773,7 +1696,7 @@ function loadHome(){
   var contP=S.token
     ?(window.FlixExtra?FlixExtra.loadContinueFromServer():Promise.resolve(cleanContinueLocal()))
     :Promise.resolve([]);
-  // Paint fast: hero + catalog first. Adult rows load after so XXX doesn't block home.
+  // Paint fast: hero + catalog first.
   return Promise.all([
     api('/hero').catch(function(){return {success:false,data:[]};}),
     api('/catalog/home').catch(function(){return {success:false,data:[]};}),
@@ -1794,27 +1717,6 @@ function loadHome(){
     });
     if(!secs.length&&!cont.length){setR('<div class="notice"><h3>Setup Required</h3><p>Add TMDB_API_KEY to .env then restart</p></div>');return;}
     setR(rowsH(secs));initArr();
-    if(!adultModeOn())return;
-    return Promise.all([
-      api('/discover/adult?page=1').catch(function(){return {success:false,data:[]};}),
-      api('/discover/adult?page=2').catch(function(){return {success:false,data:[]};})
-    ]).then(function(ar){
-      if(S.section&&S.section!=='home')return;
-      var seen={};var adult=[];
-      ar.forEach(function(r){(r&&r.data||[]).forEach(function(item){if(!seen[item.id]){seen[item.id]=1;adult.push(item);}});});
-      if(!adult.length)return;
-      var extra=[];
-      extra.push({title:'XXX · Adult',items:adult.slice(0,40),ap:'/discover/adult'});
-      if(adult.length>40)extra.push({title:'XXX · More Adult',items:adult.slice(40,80),ap:'/discover/adult?page=2'});
-      // Re-render with adult rows after Continue Watching
-      var rebuilt=[];
-      if(cont.length)rebuilt.push({title:(window.FlixExtra?FlixExtra.t('continueWatching'):'Continue Watching'),items:cont.slice(0,18),ap:'',cw:true});
-      rebuilt=rebuilt.concat(extra);
-      catalog.forEach(function(row){
-        if(row&&row.items&&row.items.length)rebuilt.push({title:row.title,items:row.items.slice(0,36),ap:row.ap||''});
-      });
-      setR(rowsH(rebuilt));initArr();
-    });
   });
 }
 
@@ -2017,15 +1919,14 @@ function openModal(item){
         if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
         return;
       }
-      var isAdult=!!(S.item&&S.item.adult);
-      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding best stream'+(isAdult?' (XXX)':'')+'...</span></div>';
-      return fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item&&S.item.title,year:S.item&&S.item.year,adult:isAdult}).then(function(rd){
+      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding best stream...</span></div>';
+      return fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item&&S.item.title,year:S.item&&S.item.year}).then(function(rd){
         if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
           S.siteRd=true;refreshRdBtn();
           handleSrc({sources:rd.data.streams,debrid:true});
           var prov=(rd.data.providers&&rd.data.providers.length)?rd.data.providers.join('+'):'premium';
           var vcount=rd.data.validated||rd.data.streams.filter(function(s){return s.validated;}).length;
-          setSt('sok','▶ Premium · '+prov+(vcount?' · '+vcount+' checked':'')+(isAdult?' · XXX':''));
+          setSt('sok','▶ Premium · '+prov+(vcount?' · '+vcount+' checked':''));
           return;
         }
         var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no premium links';
@@ -2036,10 +1937,6 @@ function openModal(item){
         }
         if(rd&&rd.code==='NO_PLAYABLE_STREAMS'){
           showPE(rd.error||'No playable streams yet. Try Find more sources, or check debrid account/email.');
-          return;
-        }
-        if(isAdult){
-          showPE('No XXX streams found yet ('+why+'). Try another title.');
           return;
         }
         showPE('No premium streams yet ('+why+'). Try Retry streams or another title.');
@@ -2184,7 +2081,7 @@ function pEp(tid,sn,ep,el){
     }
     var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
     return imdbP.then(function(idb){
-      return fetchDebridStreams(idb,'tv',sn,ep,tid,{title:S.item&&S.item.title,year:S.item&&S.item.year,adult:!!(S.item&&S.item.adult)}).then(function(rd){
+      return fetchDebridStreams(idb,'tv',sn,ep,tid,{title:S.item&&S.item.title,year:S.item&&S.item.year}).then(function(rd){
         if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
           handleSrc({sources:rd.data.streams,debrid:true});
           setSt('sok','▶ Premium streams');
@@ -2230,7 +2127,7 @@ function retryPremiumStreams(deep){
   var imdbP=imdb?Promise.resolve(imdb):api('/details/'+id+'/'+type).then(function(d){return d.success&&d.data?d.data.imdbId:null;});
   imdbP.then(function(idb){
     return fetchDebridStreams(idb,type,S.sn,S.ep,id,{
-      title:S.item.title,year:S.item.year,adult:!!S.item.adult,deep:deep!==false
+      title:S.item.title,year:S.item.year,deep:deep!==false
     }).then(function(rd){
       if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
         var added=0;
@@ -3462,15 +3359,14 @@ function retryAll(){
     return;
   }
   var imdb=S.item.imdbId;
-  var isAdult=!!S.item.adult;
-  fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item.title,year:S.item.year,adult:isAdult}).then(function(rd){
+  fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item.title,year:S.item.year}).then(function(rd){
     if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){handleSrc({sources:rd.data.streams,debrid:true});return;}
     if(rd&&rd.code==='ADFREE_REQUIRED'){
       showPE(rd.error||'Subscribe £1/month to keep watching.');
       if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
       return;
     }
-    showPE(isAdult?'No XXX streams found on retry.':'No premium streams found on retry.');
+    showPE('No premium streams found on retry.');
   }).catch(function(e){showPE(e.message);});
 }
 function closeModal(){

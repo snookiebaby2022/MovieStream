@@ -387,22 +387,9 @@ function wantAdultQuery(req) {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-/** Adult/XXX requires premium entitlement (trial / subscription / lifetime) */
-async function allowAdult(req) {
-  if (!wantAdultQuery(req)) return false;
-  const tok = req.headers['x-user-token'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  const payload = verifyToken(tok);
-  if (!payload?.id) return false;
-  try {
-    if (require('mongoose').connection.readyState !== 1) return false;
-    const { isEntitled, ensureTrialClock } = require('./entitlement');
-    let u = await User.findById(payload.id);
-    if (!u) return false;
-    u = await ensureTrialClock(u);
-    return isEntitled(u);
-  } catch {
-    return false;
-  }
+/** Adult/XXX catalog removed — always filter adult titles out of browse. */
+async function allowAdult() {
+  return false;
 }
 
 function filterAdult(list, allow) {
@@ -570,54 +557,13 @@ app.get('/api/hero', async (req, res) => {
   }
 });
 
-/** Adult / XXX catalog — Ad-Free accounts only (bounded but larger catalog) */
-app.get('/api/discover/adult', async (req, res) => {
-  try {
-    if (!(await allowAdult(req))) {
-      return res.status(403).json({
-        success: false,
-        error: 'Adult / XXX is included with Ad-Free £1. Unlock then turn XXX On.',
-        code: 'ADFREE_REQUIRED'
-      });
-    }
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const ck = `adult:cat:v6:${page}`;
-    const c = await getC(ck);
-    if (c) return res.json({ success: true, data: c.r, totalPages: c.tp, page });
-    const all = [];
-    const queries = [
-      'xxx', 'adult', 'erotic', 'pornographic', 'softcore', 'hardcore',
-      'hentai', 'explicit', 'adult film', 'japanese adult', 'european adult',
-      'playboy', 'penthouse', 'nude', 'lesbian', 'gay adult', 'milf',
-      'pornstar', 'uncensored', 'blue movie', 'adult comedy', 'erotica',
-      'sex comedy', 'erotic thriller', 'adult anime', 'jav', 'av idol'
-    ];
-    // Rotate fewer queries per page (faster cold cache); discover pages fill the rest
-    const start = ((page - 1) * 6) % queries.length;
-    const qSlice = [];
-    for (let i = 0; i < 6; i++) qSlice.push(queries[(start + i) % queries.length]);
-    await Promise.all(qSlice.map(async (q) => {
-      const d = await tmdb('/search/movie', { query: q, page, include_adult: true });
-      if (d?.results) all.push(...d.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-    }));
-    await Promise.all([0, 1, 2].map(async (off) => {
-      const p = page + off;
-      const dm = await tmdb('/discover/movie', { page: p, include_adult: true, sort_by: 'popularity.desc' });
-      if (dm?.results) all.push(...dm.results.filter(x => x.adult).map(x => mapItem({ ...x, media_type: 'movie' })));
-    }));
-    const seen = new Set();
-    const r = all
-      .filter(x => {
-        if (seen.has(x.id)) return false;
-        seen.add(x.id);
-        return true;
-      })
-      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    await setC(ck, { r, tp: 80 }, 3600);
-    res.json({ success: true, data: r, totalPages: 80, page });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
+/** Adult / XXX catalog removed */
+app.get('/api/discover/adult', (req, res) => {
+  res.status(410).json({
+    success: false,
+    error: 'Adult / XXX catalog has been removed',
+    code: 'ADULT_REMOVED'
+  });
 });
 
 /** Fat home catalog — many movie/TV rows in one request */
