@@ -575,11 +575,55 @@ fun DetailScreen(
     var loading by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Prefetch cache: "season:episode" -> ready stream list
+    var prefetch by remember { mutableStateOf<Map<String, List<StreamItem>>>(emptyMap()) }
     val scope = rememberCoroutineScope()
     val playFocus = remember { FocusRequester() }
 
+    fun cacheKey(s: Int, e: Int) = "$s:$e"
+
+    fun rankStreams(raw: List<StreamItem>): List<StreamItem> {
+        val validated = raw.filter { it.validated == true }
+        val rest = raw.filter { it.validated != true }
+        return (if (validated.isNotEmpty()) validated + rest else raw).take(40)
+    }
+
+    fun prefetchStreams(d: MediaDetails, s: Int, e: Int) {
+        val auth = FlixApi.bearer() ?: return
+        val tok = FlixApi.token() ?: return
+        val key = cacheKey(s, e)
+        if (prefetch.containsKey(key)) return
+        scope.launch {
+            try {
+                try {
+                    FlixApi.service.startTrial(auth, tok)
+                } catch (_: Exception) {
+                }
+                val body = StreamsBody(
+                    imdbId = d.imdbId ?: "",
+                    type = d.type,
+                    season = s,
+                    episode = e,
+                    tmdbId = d.tmdbId.takeIf { it > 0 } ?: d.id,
+                    title = d.title,
+                    year = d.year,
+                    adult = false
+                )
+                val res = FlixApi.service.streams(auth, tok, body)
+                if (res.success) {
+                    val list = rankStreams(res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList())
+                    if (list.isNotEmpty()) {
+                        prefetch = prefetch + (key to list)
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     LaunchedEffect(tmdbId, type) {
         loading = true
+        prefetch = emptyMap()
         try {
             val res = FlixApi.service.details(tmdbId, type, FlixApi.bearer(), FlixApi.token())
             if (res.success && res.data != null) {
@@ -598,11 +642,19 @@ fun DetailScreen(
         }
     }
 
-    LaunchedEffect(loading, details) {
+    LaunchedEffect(loading, details, episodes, season) {
         if (!loading && details != null) {
             try {
                 playFocus.requestFocus()
             } catch (_: Exception) {
+            }
+            val d = details!!
+            if (d.type != "tv") {
+                prefetchStreams(d, 1, 1)
+            } else {
+                val firstEp = episodes.firstOrNull()?.episode ?: 1
+                prefetchStreams(d, season, firstEp)
+                episodes.getOrNull(1)?.episode?.let { prefetchStreams(d, season, it) }
             }
         }
     }
@@ -622,6 +674,12 @@ fun DetailScreen(
         val d = details ?: return
         val auth = FlixApi.bearer() ?: return
         val tok = FlixApi.token() ?: return
+        val key = cacheKey(season, ep)
+        val ready = prefetch[key]
+        if (ready != null && ready.isNotEmpty()) {
+            onPlay(d, season, ep, ready)
+            return
+        }
         scope.launch {
             busy = true
             error = null
@@ -638,7 +696,7 @@ fun DetailScreen(
                     tmdbId = d.tmdbId.takeIf { it > 0 } ?: d.id,
                     title = d.title,
                     year = d.year,
-                    adult = d.adult
+                    adult = false
                 )
                 val res = FlixApi.service.streams(auth, tok, body)
                 if (!res.success) {
@@ -649,13 +707,12 @@ fun DetailScreen(
                         else -> res.error ?: "No streams"
                     }
                 } else {
-                    val raw = (res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList())
-                    val validated = raw.filter { it.validated == true }
-                    val rest = raw.filter { it.validated != true }
-                    // Prefer server-validated streams first; keep a few backups after
-                    val list = (if (validated.isNotEmpty()) validated + rest else raw).take(40)
+                    val list = rankStreams(res.data?.streams?.filter { !it.url.isNullOrBlank() } ?: emptyList())
                     if (list.isEmpty()) error = "No playable streams found"
-                    else onPlay(d, season, ep, list)
+                    else {
+                        prefetch = prefetch + (key to list)
+                        onPlay(d, season, ep, list)
+                    }
                 }
             } catch (e: Exception) {
                 error = e.message
@@ -711,7 +768,11 @@ fun DetailScreen(
                     if (error != null) Text(error!!, color = Red, fontSize = 14.sp)
                     if (d.type != "tv") {
                         FocusButton(
-                            label = if (busy) "Finding best stream…" else "Play",
+                            label = when {
+                                busy -> "Finding best stream…"
+                                prefetch.containsKey("1:1") -> "Play · Ready"
+                                else -> "Play"
+                            },
                             primary = true,
                             onClick = { play(1) },
                             modifier = Modifier.focusRequester(playFocus)

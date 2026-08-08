@@ -12,8 +12,8 @@ android {
         applicationId = "xyz.snookiebaby.flixnova.tv"
         minSdk = 24
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = 10
+        versionName = "1.0.9"
         buildConfigField("String", "API_BASE", "\"https://snookiebaby.xyz\"")
     }
 

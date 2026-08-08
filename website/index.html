@@ -756,7 +756,7 @@ function getItem(k){return STORE[k]||null;}
 function clearStore(){STORE={};}
 
 // ── STATE ──────────────────────────────────────────────────
-var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false,hls:null,playGen:0,playerMode:localStorage.getItem('fn_player')||'auto'};
+var S={section:'home',hl:[],hi:0,ht:null,hMute:true,item:null,src:[],si:0,failed:{},sn:1,ep:1,rd:{},rc:0,year:'',decade:'',country:'',animeMode:false,browsePage:1,browseType:'',failTimer:null,popupHits:0,playerReadyAt:0,autoNext:localStorage.getItem('fn_autonext')==='true',episodes:[],authMode:'login',user:null,token:localStorage.getItem('fn_token')||'',cleanMode:localStorage.getItem('fn_clean')!=='0',siteRd:false,hls:null,playGen:0,playerMode:localStorage.getItem('fn_player')||'auto',_streamCache:{},_warmTimer:null};
 function dismissAdTip(){var e=$('adtip');if(e)e.classList.remove('on');localStorage.setItem('fn_adtip','1');}
 function isAdFreeUser(){
   // Entitled = trial OR subscription OR lifetime (server maps this to adFree)
@@ -909,6 +909,15 @@ function verifyRd(){
     }
   }).catch(function(e){$('rdOk').style.display='none';$('rdErr').textContent=e.message;$('rdErr').style.display='block';});
 }
+function streamPrefetchKey(type,tmdbId,sn,ep){
+  return String(type||'movie')+':'+String(tmdbId||0)+':'+String(sn||1)+':'+String(ep||1);
+}
+function pruneStreamCache(){
+  var keys=Object.keys(S._streamCache||{});
+  if(keys.length<=40)return;
+  keys.sort(function(a,b){return (S._streamCache[a].at||0)-(S._streamCache[b].at||0);});
+  keys.slice(0,keys.length-30).forEach(function(k){delete S._streamCache[k];});
+}
 function fetchDebridStreams(imdbId,type,sn,ep,tmdbId,extra){
   if(!isAdFreeUser()||!S.token)return Promise.resolve(null);
   var headers={
@@ -952,6 +961,94 @@ function fetchDebridStreams(imdbId,type,sn,ep,tmdbId,extra){
       return d;
     });
   }).catch(function(){return null;});
+}
+/**
+ * Start (or reuse) a stream lookup as soon as a title is known.
+ * Successful results are cached ~12 minutes so Play feels instant on reopen.
+ */
+function startStreamPrefetch(opts){
+  opts=opts||{};
+  if(!isAdFreeUser()||!S.token)return Promise.resolve(null);
+  var type=opts.type==='tv'?'tv':'movie';
+  var tmdbId=opts.tmdbId;
+  if(!tmdbId)return Promise.resolve(null);
+  var sn=opts.sn||1, ep=opts.ep||1;
+  var key=streamPrefetchKey(type,tmdbId,sn,ep);
+  if(!S._streamCache)S._streamCache={};
+  var hit=S._streamCache[key];
+  var now=Date.now();
+  if(!opts.deep&&hit&&hit.result&&hit.result.success&&hit.result.data&&hit.result.data.streams&&hit.result.data.streams.length&&(now-hit.at)<12*60*1000){
+    return Promise.resolve(hit.result);
+  }
+  if(!opts.deep&&hit&&hit.promise)return hit.promise;
+  var promise=fetchDebridStreams(opts.imdbId||'',type,sn,ep,tmdbId,{
+    title:opts.title||'',
+    year:opts.year||'',
+    deep:!!opts.deep,
+    exclude:!!opts.deep
+  }).then(function(rd){
+    if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+      S._streamCache[key]={at:Date.now(), result:rd, promise:null};
+      pruneStreamCache();
+    }else if(S._streamCache[key]){
+      S._streamCache[key].promise=null;
+    }
+    return rd;
+  }).catch(function(){
+    if(S._streamCache[key])S._streamCache[key].promise=null;
+    return null;
+  });
+  S._streamCache[key]={at:now, result:(hit&&hit.result)||null, promise:promise};
+  return promise;
+}
+function warmItemStreams(item,sn,ep){
+  if(!item||!isAdFreeUser()||!S.token)return;
+  var id=item.tmdbId||item.id;
+  if(!id)return;
+  startStreamPrefetch({
+    imdbId:item.imdbId||'',
+    type:item.type||'movie',
+    sn:sn||item.season||1,
+    ep:ep||item.episode||1,
+    tmdbId:id,
+    title:item.title||'',
+    year:item.year||''
+  });
+}
+window.warmCardStreams=function(k){
+  if(!isAdFreeUser()||!S.token)return;
+  if(S._warmTimer)clearTimeout(S._warmTimer);
+  S._warmTimer=setTimeout(function(){
+    var item=getItem(k);
+    if(item)warmItemStreams(item);
+  },280);
+};
+function applyStreamResult(rd,opts){
+  opts=opts||{};
+  if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
+    S.siteRd=true;refreshRdBtn();
+    handleSrc({sources:rd.data.streams,debrid:true});
+    var prov=(rd.data.providers&&rd.data.providers.length)?rd.data.providers.join('+'):'premium';
+    var vcount=rd.data.validated||rd.data.streams.filter(function(s){return s.validated;}).length;
+    setSt('sok','▶ Premium · '+prov+(vcount?' · '+vcount+' checked':'')+(opts.fromCache?' · ready':''));
+    return true;
+  }
+  if(rd&&rd.code==='ADFREE_REQUIRED'){
+    showPE(rd.error||'Subscribe £1/month to keep watching.');
+    if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
+    return true;
+  }
+  if(rd&&rd.code==='NO_PLAYABLE_STREAMS'){
+    showPE(rd.error||(opts.episode
+      ?'No playable streams for this episode. Try Find more sources.'
+      :'No playable streams yet. Try Find more sources, or check debrid account/email.'));
+    return true;
+  }
+  var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no premium links';
+  showPE(opts.episode
+    ?'No premium streams for this episode.'
+    :('No premium streams yet ('+why+'). Try Retry streams or another title.'));
+  return false;
 }
 function positionMoreNav(){
   var n=$('navMore'),drop=$('navDrop'),btn=n&&n.querySelector('button.nb');
@@ -1326,7 +1423,7 @@ function cardHTML(item,wide,isContinue){
   var tit=he(item.title||'');
   var listed=inList(item);
   var epLabel=(item.type==='tv'&&item.season)?' · S'+item.season+'E'+(item.episode||1):'';
-  return '<div class="card" tabindex="0" role="button" onclick="cardClick(\''+k+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();cardClick(\''+k+'\');}">'
+  return '<div class="card" tabindex="0" role="button" onclick="cardClick(\''+k+'\')" onmouseenter="warmCardStreams(\''+k+'\')" onfocus="warmCardStreams(\''+k+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();cardClick(\''+k+'\');}">'
     +'<div class="ci">'
     +'<img src="'+src+'" loading="lazy" onerror="this.src=\''+PH+'\'" alt="'+tit+'">'
     +'<div class="cpanel"><div class="cplay">&#9654;</div><div class="cpname">'+tit+epLabel+'</div>'
@@ -1894,53 +1991,47 @@ function openModal(item){
       if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
       return null;
     }
-    $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding best stream...</span></div>';
-    return api('/details/'+id+'/'+type).then(function(det){
-      var imdb=null;
+    var cacheKey=streamPrefetchKey(type,id,S.sn,S.ep);
+    var cached=S._streamCache&&S._streamCache[cacheKey];
+    var fromCache=!!(cached&&cached.result&&cached.result.success&&cached.result.data&&cached.result.data.streams&&cached.result.data.streams.length);
+    $('pw').innerHTML=fromCache
+      ?'<div class="pst"><div class="sp"></div><span>Starting best stream...</span></div>'
+      :'<div class="pst"><div class="sp"></div><span>Finding best stream...</span></div>';
+    // Kick streams off immediately in parallel with details (tmdbId is enough)
+    var streamsP=startStreamPrefetch({
+      imdbId:item.imdbId||'',
+      type:type,
+      sn:S.sn,
+      ep:S.ep,
+      tmdbId:id,
+      title:item.title||'',
+      year:item.year||''
+    });
+    var detailsP=api('/details/'+id+'/'+type).catch(function(){return null;});
+    return Promise.all([detailsP, streamsP]).then(function(pair){
+      var det=pair[0], rd=pair[1];
       if(det&&det.success){
         fillDet(det.data,id,type);
-        imdb=det.data.imdbId||null;
         if(S.item){
-          S.item.imdbId=imdb;
+          S.item.imdbId=det.data.imdbId||S.item.imdbId||null;
           S.item.title=det.data.title||S.item.title;
           S.item.poster=det.data.poster||S.item.poster;
           S.item.backdrop=det.data.backdrop||S.item.backdrop;
           S.item.year=det.data.year||S.item.year;
           S.item.rating=det.data.rating||S.item.rating;
           S.item.overview=det.data.overview||S.item.overview;
-          S.item.adult=!!(det.data.adult||S.item.adult);
           sockWatchingUpdate();
           saveContinue(S.item,S.sn,S.ep);
         }
       }
-      premium=isAdFreeUser();
-      if(!premium){
+      if(!isAdFreeUser()){
         showPE('Your free trial has ended. Subscribe for £1/month to keep watching.');
         if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
         return;
       }
-      $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>Finding best stream...</span></div>';
-      return fetchDebridStreams(imdb,type,S.sn,S.ep,id,{title:S.item&&S.item.title,year:S.item&&S.item.year}).then(function(rd){
-        if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
-          S.siteRd=true;refreshRdBtn();
-          handleSrc({sources:rd.data.streams,debrid:true});
-          var prov=(rd.data.providers&&rd.data.providers.length)?rd.data.providers.join('+'):'premium';
-          var vcount=rd.data.validated||rd.data.streams.filter(function(s){return s.validated;}).length;
-          setSt('sok','▶ Premium · '+prov+(vcount?' · '+vcount+' checked':''));
-          return;
-        }
-        var why=(rd&&(rd.error||rd.code))?(rd.error||rd.code):'no premium links';
-        if(rd&&rd.code==='ADFREE_REQUIRED'){
-          showPE(rd.error||'Subscribe £1/month to keep watching.');
-          if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
-          return;
-        }
-        if(rd&&rd.code==='NO_PLAYABLE_STREAMS'){
-          showPE(rd.error||'No playable streams yet. Try Find more sources, or check debrid account/email.');
-          return;
-        }
-        showPE('No premium streams yet ('+why+'). Try Retry streams or another title.');
-      });
+      // Still on same title?
+      if(!S.item||String(S.item.tmdbId||S.item.id)!==String(id))return;
+      applyStreamResult(rd,{fromCache:fromCache});
     });
   }).catch(function(e){
     if(/Login required/i.test(e.message||'')){closeModal();requireWatchAuth(item);return;}
@@ -2048,7 +2139,7 @@ function lSn(tid,num,btn){
     S.episodes=d.data.episodes.map(function(ep){return{episode:ep.episode,name:ep.name,season:num};});
     updateEpLabel();
     list.innerHTML=d.data.episodes.map(function(ep){
-      return'<div class="epi'+(ep.episode===S.ep?' on':'')+'" onclick="pEp('+tid+','+num+','+ep.episode+',this)">'
+      return'<div class="epi'+(ep.episode===S.ep?' on':'')+'" tabindex="0" onclick="pEp('+tid+','+num+','+ep.episode+',this)" onmouseenter="warmItemStreams(S.item,'+num+','+ep.episode+')" onfocus="warmItemStreams(S.item,'+num+','+ep.episode+')">'
         +'<img class="epth" src="'+(ep.stillPath||PH)+'" onerror="this.src=\''+PH+'\'" loading="lazy">'
         +'<div style="flex:1;min-width:0"><div class="epn">S'+num+' E'+ep.episode+'</div>'
         +'<div class="epnm">'+he(ep.name||'Episode '+ep.episode)+'</div>'
@@ -2056,6 +2147,11 @@ function lSn(tid,num,btn){
         +'<div class="epi2">'+(ep.airDate||'')+(ep.runtime?' &middot; '+ep.runtime+'m':'')+(ep.rating?' &middot; &#9733;'+nm(ep.rating):'')+'</div></div>'
         +'<div class="epgo">&#9654;</div></div>';
     }).join('');
+    // Prefetch the first couple of episodes so the first click is ready
+    if(S.item&&d.data.episodes.length){
+      warmItemStreams(S.item,num,d.data.episodes[0].episode);
+      if(d.data.episodes[1])setTimeout(function(){warmItemStreams(S.item,num,d.data.episodes[1].episode);},600);
+    }
   }).catch(function(e){list.innerHTML='<div class="empty">'+e.message+'</div>';});
 }
 function updateEpLabel(){
@@ -2066,38 +2162,32 @@ function pEp(tid,sn,ep,el){
   if(!requireWatchAuth(S.item))return;
   S.sn=sn;S.ep=ep;updateEpLabel();
   document.querySelectorAll('.epi').forEach(function(e){e.classList.remove('on');});if(el)el.classList.add('on');
-  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>S'+sn+'E'+ep+'...</span></div>';
+  var cacheKey=streamPrefetchKey('tv',tid,sn,ep);
+  var cached=S._streamCache&&S._streamCache[cacheKey];
+  var fromCache=!!(cached&&cached.result&&cached.result.success&&cached.result.data&&cached.result.data.streams&&cached.result.data.streams.length);
+  $('pw').innerHTML='<div class="pst"><div class="sp"></div><span>'+(fromCache?'Starting':'Finding')+' S'+sn+'E'+ep+'...</span></div>';
   $('srcbar').style.display='none';S.src=[];S.si=0;S.failed={};S._triedEmbeds=0;
   $('pw').scrollIntoView({behavior:'smooth',block:'start'});
   try{history.replaceState(null,'','/watch/tv/'+tid+'/'+sn+'/'+ep);}catch(ex){}
   sockWatchingUpdate();
   if(S.item)saveContinue(S.item,sn,ep);
-  var imdb=S.item&&S.item.imdbId;
   ensureAdFreeReady().then(function(premium){
     if(!premium){
       showPE('Your free trial has ended. Subscribe for £1/month to keep watching.');
       if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
       return;
     }
-    var imdbP=imdb?Promise.resolve(imdb):api('/details/'+tid+'/tv').then(function(d){return d.success&&d.data?d.data.imdbId:null;});
-    return imdbP.then(function(idb){
-      return fetchDebridStreams(idb,'tv',sn,ep,tid,{title:S.item&&S.item.title,year:S.item&&S.item.year}).then(function(rd){
-        if(rd&&rd.success&&rd.data&&rd.data.streams&&rd.data.streams.length){
-          handleSrc({sources:rd.data.streams,debrid:true});
-          setSt('sok','▶ Premium streams');
-          return;
-        }
-        if(rd&&rd.code==='ADFREE_REQUIRED'){
-          showPE(rd.error||'Subscribe £1/month to keep watching.');
-          if(window.FlixExtra&&FlixExtra.openPayPromo)FlixExtra.openPayPromo(true);
-          return;
-        }
-        if(rd&&rd.code==='NO_PLAYABLE_STREAMS'){
-          showPE(rd.error||'No playable streams for this episode. Try Find more sources.');
-          return;
-        }
-        showPE('No premium streams for this episode.');
-      });
+    return startStreamPrefetch({
+      imdbId:(S.item&&S.item.imdbId)||'',
+      type:'tv',
+      sn:sn,
+      ep:ep,
+      tmdbId:tid,
+      title:S.item&&S.item.title||'',
+      year:S.item&&S.item.year||''
+    }).then(function(rd){
+      if(!S.item||String(S.item.tmdbId||S.item.id)!==String(tid)||S.sn!==sn||S.ep!==ep)return;
+      applyStreamResult(rd,{fromCache:fromCache,episode:true});
     });
   }).catch(function(e){showPE(e.message);});
 }
